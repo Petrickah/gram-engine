@@ -1,0 +1,17 @@
+BuildConfig(
+    name: "gram-engine",
+    version: "0.1.0",
+    modules: [
+        ModuleConfig(
+            name: "gram",
+            lang: "cargo",
+            src: "gram/Cargo.toml",
+            deps: [
+                "anyhow",
+            ],
+            targets: [
+                "linux",
+            ],
+        ),
+    ],
+)
