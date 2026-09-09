@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 
 mod init;
+mod build;
+mod common;
 
 /// Gram — build tool CLI for the Gram game engine.
 #[derive(Parser)]
@@ -21,6 +23,8 @@ enum Commands {
     },
     /// Build the current project by reading gram-build.ron.
     Build {
+        #[arg(short, long, default_value = "")]
+        path: String,
         /// Produce artifacts in the CI-standard layout instead of the local one.
         #[arg(long)]
         ci: bool,
@@ -40,8 +44,14 @@ fn main() {
                 }
             }
         }
-        Commands::Build { ci } => {
-            todo!("gram build (ci={ci}): not yet implemented (Task 0.3/0.4)");
+        Commands::Build { path, ci } => {
+            match build::project(&path, &ci) {
+                Ok(_) => println!("Project built successfully."),
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(1)
+                }
+            }
         }
     }
 }
