@@ -15,6 +15,7 @@ BuildConfig(
             ],
             targets: [
                 "linux",
+                "windows",
             ],
         ),
     ],

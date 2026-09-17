@@ -40,7 +40,7 @@ pub struct BuildConfig {
     version: String,
     /// Name of the project's main runtime module, set once by `gram init`. `gram run`
     /// falls back to this when --module is omitted. Empty (the default for a
-    /// gram-build.ron predating this field) means there's no implicit default.
+    /// Gram.ron predating this field) means there's no implicit default.
     #[serde(default)]
     main: String,
     modules: Vec<ModuleConfig>
@@ -74,7 +74,7 @@ impl BuildConfig {
 
     pub fn open(path: &str) -> io::Result<Self> {
         let path = PathBuf::new().join(path);
-        let mut file = fs::File::open(path.join("gram-build.ron"))?;
+        let mut file = fs::File::open(path.join("Gram.ron"))?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
 
@@ -168,7 +168,7 @@ impl BuildConfig {
             println!("gram module (name={module}, lang={lang}) created");
             self.add_module(module, lang, kind, targets)?;
             self.modules.last().unwrap().save(&project)?;
-            project.write_file("gram-build.ron", self)?;
+            project.write_file("Gram.ron", self)?;
             self.write_vscode_settings(&project)?;
         } else if !targets.is_empty() {
             validate_targets(targets)?;
@@ -178,7 +178,7 @@ impl BuildConfig {
                 let added_display = added.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", ");
                 existing.targets.extend(added.into_iter().cloned());
                 println!("gram module (name={module}): added target(s) {added_display}");
-                project.write_file("gram-build.ron", self)?;
+                project.write_file("Gram.ron", self)?;
             }
         }
 
@@ -221,14 +221,14 @@ impl BuildConfig {
                     .find(|m| m.name == module)
                     .expect("checked above")
                     .add_module_ref(dependency)?;
-                return project.write_file("gram-build.ron", self);
+                return project.write_file("Gram.ron", self);
             }
 
             self.modules.iter_mut()
                 .find(|m| m.name == module)
                 .expect("module was just created above, or already existed")
                 .add_dependency(dependency, url, tag, *vcpkg)?;
-            return project.write_file("gram-build.ron", self);
+            return project.write_file("Gram.ron", self);
         }
 
         Ok(())
@@ -242,7 +242,7 @@ impl BuildConfig {
                 .find(|m| m.name == module)
                 .expect("module already existed")
                 .rm_dependency(dependency)?;
-            return project.write_file("gram-build.ron", self);
+            return project.write_file("Gram.ron", self);
         }
 
         if self.modules.iter().any(|m| m.name == module) {
@@ -250,7 +250,7 @@ impl BuildConfig {
             if self.main == module {
                 self.main = String::new();
             }
-            project.write_file("gram-build.ron", self)?;
+            project.write_file("Gram.ron", self)?;
             self.write_vscode_settings(&project)?;
 
             if *purge {
@@ -268,7 +268,7 @@ impl BuildConfig {
     pub fn save(&mut self, path: &str) -> io::Result<()> {
         let name = self.name.clone();
         let project = Directory::new(path)?;
-        project.write_file("gram-build.ron", self)?;
+        project.write_file("Gram.ron", self)?;
         println!("gram init (name={name}, path={path})");
         for curr_module in &self.modules {
             curr_module.save(&project)?;
@@ -321,7 +321,7 @@ impl ModuleConfig {
         }
     }
 
-    /// Adds another module already in gram-build.ron as a dependency (same-language only,
+    /// Adds another module already in Gram.ron as a dependency (same-language only,
     /// enforced by the caller): a cargo path dependency, or a cmake add_subdirectory +
     /// target_link_libraries. Unlike an external dependency, gram knows the exact target
     /// name here (it generated it), so it can wire the link itself.
@@ -590,14 +590,14 @@ impl ModuleConfig {
     fn build_target(&self, project: &BuildConfig, ci: &bool, target: &str) -> io::Result<()> {
         let name = self.name.clone();
         println!("gram target (name={name}, target={target})");
-
+        
+        let project_name = project.name.clone();
         let builds = match ci {
             true => {
                 let version = project.version.clone();
-                let project = project.name.clone();
-                format!("builds/{project}_{version}_{target}")
+                format!("build/{project_name}_{version}_{target}")
             },
-            false => format!("builds/{target}"),
+            false => format!("build/{project_name}/{target}"),
         };
 
         fs::create_dir_all(&builds)?;
@@ -623,7 +623,7 @@ impl ModuleConfig {
         }
 
         let (prefix, ext) = self.artifact_naming(target);
-        let path = format!("builds/{target}/{prefix}{}{ext}", self.name);
+        let path = format!("build/{target}/{prefix}{}{ext}", self.name);
 
         if !Path::new(&path).exists() {
             return Err(io::Error::new(
@@ -657,7 +657,7 @@ impl ModuleConfig {
 
         if self.kind == "library" {
             // No [lib] crate-type management yet (defaults to rlib) — there's no
-            // standalone binary to place under builds/, just compile it. Revisit once
+            // standalone binary to place under build/, just compile it. Revisit once
             // something (Corrosion, Wave 1) needs a specific crate-type artifact here.
             match target {
                 "linux" => {},
@@ -700,7 +700,7 @@ impl ModuleConfig {
         let manifest_dir = manifest_dir.to_str().expect("module src path is not valid UTF-8");
 
         let mut configure = Command::new("cmake");
-        // --fresh: gram-build.ron and CMakeLists.txt are regenerated on every add/remove,
+        // --fresh:  and CMakeLists.txt are regenerated on every add/remove,
         // so reconfigure from scratch each build too — otherwise settings that only take
         // effect on a build dir's *first* configure (CMAKE_TOOLCHAIN_FILE among them) go
         // stale once a module gets vcpkg wired up on top of an already-configured build dir.
