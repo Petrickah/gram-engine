@@ -139,7 +139,7 @@ impl BuildConfig {
         self.modules.iter()
             .find(|m| m.name == module)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("module not found: {module}")))?
-            .run(target, args)
+            .run(&self.name, target, args)
     }
 
     pub fn build(&self, ci: &bool, target: &str) -> io::Result<()> {
@@ -614,7 +614,7 @@ impl ModuleConfig {
         }
     }
 
-    pub fn run(&self, target: &str, args: &[String]) -> io::Result<i32> {
+    pub fn run(&self, project: &str, target: &str, args: &[String]) -> io::Result<i32> {
         if self.kind != "runtime" {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -623,7 +623,7 @@ impl ModuleConfig {
         }
 
         let (prefix, ext) = self.artifact_naming(target);
-        let path = format!("build/{target}/{prefix}{}{ext}", self.name);
+        let path = format!("build/{project}/{target}/{prefix}{}{ext}", self.name);
 
         if !Path::new(&path).exists() {
             return Err(io::Error::new(
