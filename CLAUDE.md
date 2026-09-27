@@ -8,7 +8,7 @@ Gram — a personal game engine (Rust + C++), started from rediscovered passion,
 
 ## Waves
 
-- **Wave 0 — Gram Build**: a pure-Rust CLI build tool (`gram init`, `gram build`) — no C++, no runtime deps. Defines projects via a `.ron` file (serde + `ron-rs`), a format reused later for asset definitions.
+- **Wave 0 — Gram Build** (done): a pure-Rust CLI build tool — no C++, no runtime deps. Full command set: `gram init`/`build`/`add`/`remove`/`run`, driving a `Gram.ron` project file (serde + `ron-rs`, a format reused later for asset definitions). A `cargo` module kind delegates straight to real `cargo`; a `cmake` module kind scaffolds a C++ project with FetchContent/vcpkg dependency resolution, for when Wave 1 needs it. The project is self-hosting (`gram` builds itself via its own `Gram.ron`). Details: `docs/wave-0-*.md`.
 - **Wave 1 — Hello Triangle**: window + Vulkan + triangle, C++/Rust interop. C++ owns `main()` and the renderer core (static, never reloaded). Rust is the reloadable gameplay layer, split into two crates for `TypeId` stability across recompiles: `gram-core` (linked statically into the C++ binary via `cxx` + Corrosion, defines the `bevy_ecs` `World` and Component/Resource types) and `gram-hot` (`cdylib`, reloaded at runtime via `LoadLibrary`/`dlopen`, contains the Systems). The dynamic reload boundary is plain `extern "C"` / `#[repr(C)]`, not `cxx` — `cxx` is only used between `gram-core` (static) and C++. Build system: CMake + Corrosion (Premake was considered and rejected — it doesn't generate a CMake project on Linux).
 - **Wave 2 — Ray Tracer**: Vulkan compute shader pipeline, spheres driven by Rust entities (position/color/radius).
 - **Wave 3+**: raster pipeline, post-processing, asset manager, world serialization — noted, unplanned.
@@ -21,15 +21,29 @@ Gram — a personal game engine (Rust + C++), started from rediscovered passion,
 
 ## Commands
 
-- Build: `cargo build`
-- Run: `cargo run -- <args>` (e.g. `cargo run -- --help`, `cargo run -- init hello-world`)
-- Test: `cargo test`
+The `gram` crate lives at `gram/Cargo.toml`, not the repo root, so plain `cargo` needs `--manifest-path` (or `cd gram` first):
+
+- Build: `cargo build --manifest-path gram/Cargo.toml`
+- Run: `cargo run --manifest-path gram/Cargo.toml -- <args>` (e.g. `-- --help`, `-- init hello-world`)
+- Test: `cargo test --manifest-path gram/Cargo.toml`
+- Self-hosted (once built once): from the repo root, `gram/target/debug/gram build`/`build --ci` builds `gram` using the checked-in root `Gram.ron` — this is what CI would actually run.
 
 ## Architecture (current)
 
-Single Rust binary crate, `gram` (package name in `Cargo.toml`), built with `clap` (derive API). Currently one file, `src/main.rs`, defining `Cli`/`Commands` (`init`, `build`) — both stubs (`todo!()`) pending the tasks that parse `gram-build.ron` (via `serde` + `ron-rs`) and invoke a compiler.
+Rust binary crate `gram` (package name in `gram/Cargo.toml`, edition 2024), built with `clap` (derive API) + `serde`/`ron-rs`. Split across `gram/src/`:
 
-No C++ interop yet — introduced in Wave 1, where CMake + Corrosion get invoked as a build step from `gram build` for modules declaring a C++/Rust mix.
+- `main.rs` — `Cli`/`Commands`: `init`, `build`, `add`, `remove`, `run` (see `README.md` for the full flag reference).
+- `common.rs` — the actual engine. `BuildConfig` is the `Gram.ron` project (`name`, `version`, `main` — the default runtime module, set once by `gram init` — and `modules: Vec<ModuleConfig>`). `ModuleConfig` is one module (`name`, `lang`: `"cargo"`|`"cmake"`, `kind`: `"runtime"`|`"library"` — cmake-only — `src`, `deps`, `targets`: `"linux"`|`"windows"`, `macos` planned for Wave 2/MoltenVK).
+- `init.rs`/`build.rs`/`add.rs`/`rm.rs`/`run.rs` — thin per-subcommand wrappers around `BuildConfig` methods.
+
+Module language behavior:
+- `cargo` modules delegate straight to real `cargo` (`init`/`add`/`rm`/`build`), including cross-compiling to `x86_64-pc-windows-gnu` via the vendored `.cargo/config.toml` (mingw linker, static CRT).
+- `cmake` modules are scaffolded by `gram` (`CMakeLists.txt` + `src/main.cpp`, or for a library `include/<name>/<name>.hpp` + `src/<name>.cpp`) and built by invoking `cmake` directly. A managed region in `CMakeLists.txt` (`# --- gram dependencies ---` markers) lets `add`/`remove` edit `FetchContent_Declare` blocks (`--url`/`--tag`) or vcpkg `find_package` calls (`--vcpkg`, needs `VCPKG_ROOT`) as text, without a real CMake parser. Windows cross-compile sets `CMAKE_SYSTEM_NAME=Windows` plus the mingw compilers directly (no toolchain file); vcpkg cross-compile isn't wired up yet (vcpkg dependencies only build for the linux host today).
+- Either language supports `--module-ref` on `gram add`: one module depending on another already in the project (must share the same `lang`; the referenced module must be `kind: "library"`) — a cargo path dependency, or a cmake `add_subdirectory` + `target_link_libraries` pair. Cross-language references aren't supported.
+
+Builds land in `build/<project>/<target>/` (plain `gram build`) or `build/<project>_<version>_<target>/` (`--ci`, one per `targets` entry). `gram run` executes an already-built `runtime` module's binary directly — it doesn't trigger a build. `gram init`/`add`/`remove` also (re)generate `.vscode/settings.json` (`rust-analyzer.linkedProjects`) for every cargo module, so rust-analyzer doesn't get confused by a project root that isn't itself a Cargo project.
+
+No C++/Rust interop yet — that's introduced in Wave 1, where CMake + Corrosion get invoked as a build step from `gram build` for a module declaring a C++/Rust mix (`gram`'s own `cmake` module kind is plain C++ scaffolding, unrelated to that).
 
 ## Non-goals (current)
 
