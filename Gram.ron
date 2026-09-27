@@ -18,5 +18,19 @@ BuildConfig(
                 "windows",
             ],
         ),
+        ModuleConfig(
+            name: "GramEngine",
+            lang: "cmake",
+            kind: "runtime",
+            src: "GramEngine/CMakeLists.txt",
+            deps: [
+                "vulkan",
+                "glfw3",
+            ],
+            targets: [
+                "linux",
+                "windows"
+            ],
+        ),
     ],
 )

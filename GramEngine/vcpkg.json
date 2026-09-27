@@ -1,0 +1,8 @@
+{
+    "name": "gramengine",
+    "version": "0.1.0",
+    "dependencies": [
+        "vulkan",
+        "glfw3"
+    ]
+}

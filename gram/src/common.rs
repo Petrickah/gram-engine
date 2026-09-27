@@ -706,9 +706,8 @@ impl ModuleConfig {
         // stale once a module gets vcpkg wired up on top of an already-configured build dir.
         configure.args(["-S", manifest_dir, "-B", build_dir, "--fresh"]);
 
-        if Path::new(manifest_dir).join("vcpkg.json").exists() {
-            // Windows cross-compile + vcpkg triplet selection isn't wired up yet —
-            // only the linux host toolchain is supported here for now.
+        let has_vcpkg = Path::new(manifest_dir).join("vcpkg.json").exists();
+        if has_vcpkg {
             let vcpkg_root = std::env::var("VCPKG_ROOT").map_err(|_| io::Error::new(
                 io::ErrorKind::NotFound,
                 "module declares vcpkg dependencies (vcpkg.json) but VCPKG_ROOT isn't set",
@@ -720,13 +719,26 @@ impl ModuleConfig {
 
         match target {
             "linux" => {},
-            // no toolchain file: this mirrors the plain mingw compiler override
-            // the old compile_cpp used for its windows cross-compile.
             "windows" => {
+                // Cross-compiles the project itself. Without an explicit VCPKG_TARGET_TRIPLET,
+                // vcpkg defaults to the MSVC-based x64-windows triplet for any Windows target —
+                // it ignores CMAKE_C_COMPILER/CMAKE_CXX_COMPILER for that guess — so a vcpkg
+                // module needs to be told explicitly to resolve its dependencies against the
+                // mingw triplet instead (which chainloads scripts/toolchains/mingw.cmake for
+                // vcpkg's own port builds; it doesn't affect the outer project's compiler choice
+                // below, which is set the same way regardless of vcpkg).
+                if has_vcpkg {
+                    configure.arg("-DVCPKG_TARGET_TRIPLET=x64-mingw-static");
+                }
                 configure.args([
                     "-DCMAKE_SYSTEM_NAME=Windows",
                     "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc",
                     "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
+                    // mingw dynamically links libstdc++/libgcc/winpthread by default, so the
+                    // .exe needs their DLLs alongside it. Static-link them instead — same
+                    // standalone-binary goal as +crt-static in .cargo/config.toml for the
+                    // cargo cross-compile path.
+                    "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -static",
                 ]);
             },
             other => return Err(io::Error::new(
