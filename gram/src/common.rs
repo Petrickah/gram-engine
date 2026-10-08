@@ -276,26 +276,37 @@ impl BuildConfig {
         self.write_vscode_settings(&project)
     }
 
+    // Merges into .vscode/settings.json rather than overwriting it, so any settings a
+    // user (or an IDE extension, e.g. CMake Tools) added by hand survive every add/remove.
     fn write_vscode_settings(&self, project: &Directory) -> io::Result<()> {
         let manifests: Vec<&str> = self.modules.iter()
             .filter(|m| m.lang == "cargo")
             .map(|m| m.src.as_str())
             .collect();
 
+        let existing = project.read_source(".vscode/settings.json")?;
+        let mut settings: serde_json::Value = match &existing {
+            Some(contents) => serde_json::from_str(contents).unwrap_or(serde_json::json!({})),
+            None => serde_json::json!({}),
+        };
+        let settings_obj = settings.as_object_mut().expect("settings.json root must be an object");
+
         if manifests.is_empty() {
+            settings_obj.remove("rust-analyzer.linkedProjects");
+        } else {
+            settings_obj.insert(
+                "rust-analyzer.linkedProjects".to_string(),
+                serde_json::Value::Array(manifests.iter().map(|p| serde_json::Value::String(p.to_string())).collect()),
+            );
+        }
+
+        if settings_obj.is_empty() {
             return Ok(());
         }
 
-        let entries = manifests.iter()
-            .map(|path| format!("        \"{path}\""))
-            .collect::<Vec<_>>()
-            .join(",\n");
-
-        let content = format!(
-            "{{\n    \"rust-analyzer.linkedProjects\": [\n{entries}\n    ]\n}}\n"
-        );
-
-        project.write_source(".vscode/settings.json", &content)
+        let pretty = serde_json::to_string_pretty(&settings)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        project.write_source(".vscode/settings.json", &format!("{pretty}\n"))
     }
 }
 
@@ -705,6 +716,9 @@ impl ModuleConfig {
         // effect on a build dir's *first* configure (CMAKE_TOOLCHAIN_FILE among them) go
         // stale once a module gets vcpkg wired up on top of an already-configured build dir.
         configure.args(["-S", manifest_dir, "-B", build_dir, "--fresh"]);
+        // So editors (VS Code's C/C++ extension) can get accurate IntelliSense straight
+        // from gram's own build dir, without needing a separate IDE-driven configure.
+        configure.arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
 
         let has_vcpkg = Path::new(manifest_dir).join("vcpkg.json").exists();
         if has_vcpkg {
@@ -868,5 +882,13 @@ impl Directory {
         }
         let mut file = fs::File::create(full_path)?;
         file.write_all(content.as_bytes())
+    }
+
+    pub fn read_source(&self, relative_path: &str) -> io::Result<Option<String>> {
+        match fs::read_to_string(self.path.join(relative_path)) {
+            Ok(contents) => Ok(Some(contents)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 }

@@ -1,5 +1,6 @@
 {
-    "rust-analyzer.linkedProjects": [
-        "gram/Cargo.toml"
-    ]
+    "rust-analyzer.linkedProjects": ["gram/Cargo.toml"],
+    "cmake.sourceDirectory": "${workspaceFolder}/GramEngine",
+    "cmake.configureOnOpen": false,
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/GramEngine/build-linux/compile_commands.json"
 }
