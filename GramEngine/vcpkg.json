@@ -2,7 +2,9 @@
     "name": "gramengine",
     "version": "0.1.0",
     "dependencies": [
-        "vulkan",
-        "glfw3"
+        { "name": "vulkan", "platform": "windows" },
+        { "name": "vulkan-headers", "platform": "!windows" },
+        "glfw3",
+        "glm"
     ]
 }

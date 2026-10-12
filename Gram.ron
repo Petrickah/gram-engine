@@ -26,10 +26,11 @@ BuildConfig(
             deps: [
                 "vulkan",
                 "glfw3",
+                "glm",
             ],
             targets: [
                 "linux",
-                "windows"
+                "windows",
             ],
         ),
     ],
