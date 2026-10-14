@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <iostream>
 
-std::vector<const char*> Gram::Application::GetRequiredInstanceExtensions()
+std::vector<const char*> Gram::Application::GetRequiredInstanceExtensions(const RendererSpecification& rendererSpec)
 {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -15,6 +15,11 @@ std::vector<const char*> Gram::Application::GetRequiredInstanceExtensions()
     }
 
     requiredExtensions.resize(glfwExtensionCount);
+    if (!rendererSpec.AreExtensionsSupported(requiredExtensions))
+    {
+        std::cout << "GLFW reports no Vulkan support (no required instance extensions)!\n";
+    }
+
     return requiredExtensions;
 }
 

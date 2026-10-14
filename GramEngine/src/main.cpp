@@ -12,7 +12,7 @@ Gram::Application* Gram::CreateApplication(int argc, char** argv)
     
     Gram::RendererSpecification rendererSpec;
     rendererSpec.m_Application     = new Gram::GLFWApplication(appSpec);
-    rendererSpec.m_ExtensionLayers = Application::GetRequiredInstanceExtensions();
+    rendererSpec.m_ExtensionLayers = Application::GetRequiredInstanceExtensions(rendererSpec);
 
     return rendererSpec.m_Application;
 }

@@ -30,7 +30,7 @@ namespace Gram
         virtual ~Application() {};
         virtual void Run() = 0;
         
-        static std::vector<const char*> GetRequiredInstanceExtensions();
+        static std::vector<const char*> GetRequiredInstanceExtensions(const RendererSpecification& rendererSpec);
 
         const ApplicationSpecification& GetAppSpec() const { return m_AppSpec; }
 

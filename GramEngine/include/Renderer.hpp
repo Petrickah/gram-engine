@@ -11,6 +11,8 @@ namespace Gram
         Gram::Application* m_Application = nullptr;
         std::vector<const char*> m_ExtensionLayers;
         std::vector<const char*> m_ValidationLayers;
+
+        bool AreExtensionsSupported(const std::vector<const char*>& extensions) const;
     };
 
     class Renderer {

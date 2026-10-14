@@ -2,6 +2,45 @@
 
 #include <iostream>
 
+bool Gram::RendererSpecification::AreExtensionsSupported(const std::vector<const char*>& extensions) const
+{
+    vk::Result vkResult = vk::Result::eSuccess;
+
+    uint32_t extensionCount = 0;
+    vkResult = vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+
+    if (vkResult != vk::Result::eSuccess)
+    {
+        std::cerr << "[Vulkan] reports no instance extensions: " << vk::to_string(vkResult) << "!\n";
+        return false;
+    }
+
+    std::vector<vk::ExtensionProperties> supported(extensionCount);
+    vkResult = vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, supported.data());
+
+    if (vkResult != vk::Result::eSuccess)
+    {
+        std::cerr << "[Vulkan] couldn't find instance extensions: " << vk::to_string(vkResult) << "!\n";
+        return false;
+    }
+
+    bool allSupported = false;
+    std::cout << "[Vulkan] available extensions:\n";
+
+    for (const vk::ExtensionProperties& ext : supported)
+    {
+        bool found = std::any_of(extensions.begin(), extensions.end(), [ext](const char* name) {
+            return std::strcmp(ext.extensionName.data(), name) == 0;
+        });
+
+        if (found) allSupported = true;
+        if (found) std::cout << "     [X] " << ext.extensionName << '\n';
+        else       std::cout << "     [-] " << ext.extensionName << '\n';
+    }
+
+    return allSupported;
+}
+
 void Gram::VulkanRenderer::Init()
 {
     if (!m_RendererSpec.m_Application)
@@ -20,11 +59,6 @@ void Gram::VulkanRenderer::Init()
         VK_API_VERSION_1_0,            // Vulkan API Version
         nullptr
     );
-
-    if (m_RendererSpec.m_ExtensionLayers.empty())
-    {
-        std::cerr << "GLFW reports no Vulkan support (no required instance extensions)!\n";
-    }
 
     vk::InstanceCreateInfo vkInstanceCreateInfo(
         vk::InstanceCreateFlags(),
