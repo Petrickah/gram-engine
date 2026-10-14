@@ -11,13 +11,9 @@ namespace Gram
     {
         glm::vec2 m_WindowSize = glm::vec2(800, 600);
         std::string m_WindowTitle = "Gram";
-        Renderer* m_Renderer = nullptr;
-        
-        ~ApplicationSpecification()
-        {
-            // Renderer owns objects that depend on the window; tear it down first.
-            if (m_Renderer) delete m_Renderer;
-        }
+
+        std::vector<const char*> GetRequiredInstanceExtensions(const RendererSpecification& rendererSpec, uint32_t extensionCount = 0, const char** extensions = nullptr, bool displayDebug = false);
+        std::vector<const char*> GetRequiredValidationLayers(const RendererSpecification& rendererSpec, uint32_t validationCount = 0, const char** validations = nullptr, bool displayDebug = false);
     };
     
     class Application
@@ -27,14 +23,17 @@ namespace Gram
         : m_AppSpec(appSpec) 
         {};
         
-        virtual ~Application() {};
+        // Derived classes delete the renderer in their own destructor, before the window goes away.
+        virtual ~Application() { delete m_Renderer; };
         virtual void Run() = 0;
-        
-        static std::vector<const char*> GetRequiredInstanceExtensions(const RendererSpecification& rendererSpec);
+
+        // Takes ownership of the renderer.
+        void SetRenderer(Renderer* renderer) { m_Renderer = renderer; }
 
         const ApplicationSpecification& GetAppSpec() const { return m_AppSpec; }
 
     protected:
         ApplicationSpecification m_AppSpec;
+        Renderer* m_Renderer = nullptr;
     };
 }

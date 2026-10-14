@@ -3,24 +3,44 @@
 #include <cstdlib>
 #include <iostream>
 
-std::vector<const char*> Gram::Application::GetRequiredInstanceExtensions(const RendererSpecification& rendererSpec)
+std::vector<const char*> Gram::ApplicationSpecification::GetRequiredInstanceExtensions(const RendererSpecification& rendererSpec, uint32_t extensionCount, const char** extensions, bool displayDebug)
 {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
     std::vector<const char*> requiredExtensions;
-    for (int i = 0; i < glfwExtensionCount; i++)
+    if (glfwExtensions)
     {
-        requiredExtensions.push_back(glfwExtensions[i]);
+        requiredExtensions.assign(glfwExtensions, glfwExtensions + glfwExtensionCount);
     }
 
-    requiredExtensions.resize(glfwExtensionCount);
-    if (!rendererSpec.AreExtensionsSupported(requiredExtensions))
+    if (extensions)
     {
-        std::cout << "GLFW reports no Vulkan support (no required instance extensions)!\n";
+        requiredExtensions.insert(requiredExtensions.end(), extensions, extensions + extensionCount);
+    }
+
+    if (!rendererSpec.AreExtensionsSupported(requiredExtensions, displayDebug))
+    {
+        std::cout << "[GLFW] no required instance extensions!\n";
     }
 
     return requiredExtensions;
+}
+
+std::vector<const char*> Gram::ApplicationSpecification::GetRequiredValidationLayers(const RendererSpecification& rendererSpec, uint32_t validationCount, const char** validations, bool displayDebug)
+{
+    std::vector<const char*> requiredValidations;
+    if (validations)
+    {
+        requiredValidations.assign(validations, validations + validationCount);
+    }
+
+    if (!rendererSpec.AreValidationsSupported(requiredValidations, displayDebug))
+    {
+        std::cout << "[GLFW] no validation layers!\n";
+    }
+
+    return requiredValidations;
 }
 
 Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &appSpec) : Gram::Application(appSpec)
@@ -49,13 +69,14 @@ Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &app
         std::cerr << "failed to create GLFW window!\n";
         std::exit(EXIT_FAILURE);
     }
-
-    // Window and GLFW are up: the renderer can now query extensions etc.
-    if (appSpec.m_Renderer) appSpec.m_Renderer->Init();
 }
 
 Gram::GLFWApplication::~GLFWApplication()
 {
+    // Renderer owns Vulkan objects that depend on the window/GLFW; tear it down first.
+    delete m_Renderer;
+    m_Renderer = nullptr;
+
     glfwDestroyWindow(m_GLFWwindow);
     glfwTerminate();
 }
