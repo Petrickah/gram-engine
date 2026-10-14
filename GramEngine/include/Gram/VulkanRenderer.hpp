@@ -8,9 +8,13 @@
 namespace Gram {
     class VulkanRenderer: public Renderer {
     public:
-        VulkanRenderer() = default;
+        VulkanRenderer(const RendererSpecification& rendererSpec)
+            : Renderer(rendererSpec)
+        {};
+
         virtual ~VulkanRenderer() override;
-        virtual void Init(uint32_t extensionsCount = 0, const char** extensions = nullptr) override;
+        virtual void Init() override;
+
     private:
         vk::Instance m_VkInstance;
     };

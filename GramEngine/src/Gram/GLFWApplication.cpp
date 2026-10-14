@@ -3,6 +3,21 @@
 #include <cstdlib>
 #include <iostream>
 
+std::vector<const char*> Gram::Application::GetRequiredInstanceExtensions()
+{
+    uint32_t glfwExtensionCount = 0;
+    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+    std::vector<const char*> requiredExtensions;
+    for (int i = 0; i < glfwExtensionCount; i++)
+    {
+        requiredExtensions.push_back(glfwExtensions[i]);
+    }
+
+    requiredExtensions.resize(glfwExtensionCount);
+    return requiredExtensions;
+}
+
 Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &appSpec) : Gram::Application(appSpec)
 {
     glfwSetErrorCallback([](int code, const char* msg) { std::cerr << "GLFW error " << code << ": " << msg << "\n"; });
@@ -31,9 +46,7 @@ Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &app
     }
 
     // Window and GLFW are up: the renderer can now query extensions etc.
-    uint32_t glfwExtensionsCount = 0;
-    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
-    if (appSpec.m_Renderer) appSpec.m_Renderer->Init(glfwExtensionsCount, glfwExtensions);
+    if (appSpec.m_Renderer) appSpec.m_Renderer->Init();
 }
 
 Gram::GLFWApplication::~GLFWApplication()

@@ -1,20 +1,27 @@
 #pragma once
 
-namespace Gram {
+#include <vector>
+
+namespace Gram
+{
     class Application;
+
+    struct RendererSpecification
+    {
+        Gram::Application* m_Application = nullptr;
+        std::vector<const char*> m_ExtensionLayers;
+        std::vector<const char*> m_ValidationLayers;
+    };
 
     class Renderer {
     public:
-        Renderer() : m_Application(nullptr) {}
+        Renderer(const RendererSpecification& rendererSpec) : m_RendererSpec(rendererSpec) {}
         virtual ~Renderer() {};
 
         // Called by the Application once it is fully constructed (window + GLFW up).
-        virtual void Init(uint32_t extensionsCount = 0, const char** extensions = nullptr) = 0;
-
-        void SetApplication(const Application* app = nullptr) { m_Application = app; }
-        const Application* GetApplication() const { return m_Application; }
+        virtual void Init() = 0;
     
-    private:
-        const Application* m_Application;
+    protected:
+        const RendererSpecification& m_RendererSpec;
     };
 }

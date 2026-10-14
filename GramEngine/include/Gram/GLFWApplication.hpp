@@ -8,8 +8,10 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-namespace Gram {
-    class GLFWApplication : public Application {
+namespace Gram
+{
+    class GLFWApplication : public Application
+    {
     public:
         GLFWApplication(const Gram::ApplicationSpecification& appSpec);
     
