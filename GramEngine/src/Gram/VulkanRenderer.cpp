@@ -1,8 +1,8 @@
-#include "VulkanRenderer.hpp"
+#include "Gram/VulkanRenderer.hpp"
 
 #include <iostream>
 
-void Gram::VulkanRenderer::Init() {
+void Gram::VulkanRenderer::Init(uint32_t extensionsCount, const char** extensions) {
     const Application* app = GetApplication();
     if (!app) {
         std::cerr << "VulkanRenderer::Init called without an Application!\n";
@@ -18,11 +18,9 @@ void Gram::VulkanRenderer::Init() {
         nullptr
     );
 
-    uint32_t extensionsCount = 0;
-    const char** extensions = app->GetExtensions(extensionsCount);
-    if (!extensions) {
+    if (!extensions)
+    {
         std::cerr << "GLFW reports no Vulkan support (no required instance extensions)!\n";
-        return;
     }
 
     vk::InstanceCreateInfo vkInstanceCreateInfo(
@@ -36,11 +34,13 @@ void Gram::VulkanRenderer::Init() {
     );
 
     vk::Result vkResult = vk::createInstance(&vkInstanceCreateInfo, nullptr, &m_VkInstance);
-    if (vkResult != vk::Result::eSuccess) {
+    if (vkResult != vk::Result::eSuccess)
+    {
         std::cerr << "failed to create instance: " << vk::to_string(vkResult) << "\n";
     }
 }
 
-Gram::VulkanRenderer::~VulkanRenderer() {
+Gram::VulkanRenderer::~VulkanRenderer()
+{
     if (m_VkInstance) m_VkInstance.destroy();
 }

@@ -15,6 +15,6 @@ find_package(glm CONFIG REQUIRED)
 # gram:dep:glm end
 # --- end gram dependencies ---
 
-add_executable(GramEngine src/main.cpp src/GLFWApplication.cpp src/VulkanRenderer.cpp)
+add_executable(GramEngine src/main.cpp src/Gram/GLFWApplication.cpp src/Gram/VulkanRenderer.cpp)
 target_include_directories(GramEngine PRIVATE include)
 target_link_libraries(GramEngine PRIVATE Vulkan::Vulkan glm::glm glfw)

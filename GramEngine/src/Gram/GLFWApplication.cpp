@@ -1,10 +1,9 @@
-#include "GLFWApplication.hpp"
+#include "Gram/GLFWApplication.hpp"
 
 #include <cstdlib>
 #include <iostream>
 
-Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &appSpec, Renderer* renderer)
-    : Gram::Application(appSpec, renderer)
+Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &appSpec) : Gram::Application(appSpec)
 {
     glfwSetErrorCallback([](int code, const char* msg) { std::cerr << "GLFW error " << code << ": " << msg << "\n"; });
 
@@ -23,28 +22,30 @@ Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &app
         nullptr,
         nullptr
     );
-    if (!m_GLFWwindow) {
-        std::cerr << "failed to create GLFW window!\n";
+
+    if (!m_GLFWwindow)
+    {
         glfwTerminate();
+        std::cerr << "failed to create GLFW window!\n";
         std::exit(EXIT_FAILURE);
     }
 
     // Window and GLFW are up: the renderer can now query extensions etc.
-    if (m_Renderer) m_Renderer->Init();
+    uint32_t glfwExtensionsCount = 0;
+    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
+    if (appSpec.m_Renderer) appSpec.m_Renderer->Init(glfwExtensionsCount, glfwExtensions);
 }
 
 Gram::GLFWApplication::~GLFWApplication()
 {
-    // Renderer owns Vulkan objects that depend on the window/GLFW; tear it down first.
-    delete m_Renderer;
-    m_Renderer = nullptr;
-
     glfwDestroyWindow(m_GLFWwindow);
     glfwTerminate();
 }
 
-void Gram::GLFWApplication::Run() {
-    while (!glfwWindowShouldClose(m_GLFWwindow)) {
+void Gram::GLFWApplication::Run()
+{
+    while (!glfwWindowShouldClose(m_GLFWwindow))
+    {
         glfwPollEvents();
     }
 }

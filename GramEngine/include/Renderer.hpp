@@ -9,7 +9,7 @@ namespace Gram {
         virtual ~Renderer() {};
 
         // Called by the Application once it is fully constructed (window + GLFW up).
-        virtual void Init() = 0;
+        virtual void Init(uint32_t extensionsCount = 0, const char** extensions = nullptr) = 0;
 
         void SetApplication(const Application* app = nullptr) { m_Application = app; }
         const Application* GetApplication() const { return m_Application; }
