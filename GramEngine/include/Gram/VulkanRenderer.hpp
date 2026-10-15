@@ -32,7 +32,7 @@ namespace Gram
 
         bool PickPhysicalDevice();
         bool RatePhysicalDeviceSuitability(int32_t& suitabilityScore, const vk::PhysicalDevice& deviceInstance);
-        bool FindQueueFamilies(const vk::PhysicalDevice& deviceInstance, QueueFamilyIndices& indices);
+        bool FindQueueFamilies(const vk::PhysicalDevice& deviceInstance, QueueFamilyIndices& indices, bool showDebug = false);
         bool CreateLogicalDevice();
         bool CreateSurfaceKHR();
         bool DestroySurfaceKHR();

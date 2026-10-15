@@ -329,18 +329,13 @@ bool Gram::VulkanRenderer::PickPhysicalDevice()
                           ? "   - [X] physical device: "
                           : "   - [-] physical device: ")
                       << scoredDevice.second.getProperties().deviceName << "\n";
-        }
-
-        QueueFamilyIndices indices;
-        if (FindQueueFamilies(scoredDevice.second, indices))
-        {
-            if (scoredDevice.second == m_VkPhysicalDevice)
-            {
-                m_VkQueueFamilyIndices = indices;
-            }
+            
+            QueueFamilyIndices indices;
+            FindQueueFamilies(scoredDevice.second, indices, m_RendererSpec.m_DisplayDebug);
         }
     }
-
+    
+    FindQueueFamilies(m_VkPhysicalDevice, m_VkQueueFamilyIndices);
     return m_VkPhysicalDevice != VK_NULL_HANDLE;
 }
 
@@ -348,6 +343,7 @@ bool Gram::VulkanRenderer::RatePhysicalDeviceSuitability(int32_t &suitabilitySco
 {
     suitabilityScore = 0;
 
+    QueueFamilyIndices indices;
     const vk::PhysicalDeviceProperties& deviceProperties = deviceInstance.getProperties();
     const vk::PhysicalDeviceFeatures& deviceFeatures = deviceInstance.getFeatures();
 
@@ -368,6 +364,11 @@ bool Gram::VulkanRenderer::RatePhysicalDeviceSuitability(int32_t &suitabilitySco
     }
 
     suitabilityScore += deviceProperties.limits.maxImageDimension2D;
+
+    if (!FindQueueFamilies(deviceInstance, indices))
+    {
+        return false;
+    }
     
     if (!deviceFeatures.geometryShader)
     {
@@ -377,13 +378,13 @@ bool Gram::VulkanRenderer::RatePhysicalDeviceSuitability(int32_t &suitabilitySco
     return true;
 }
 
-bool Gram::VulkanRenderer::FindQueueFamilies(const vk::PhysicalDevice &deviceInstance, QueueFamilyIndices& indices)
+bool Gram::VulkanRenderer::FindQueueFamilies(const vk::PhysicalDevice &deviceInstance, QueueFamilyIndices& indices, bool showDebug)
 {
     indices.m_QueuePriority = 1.0f;
     indices.m_QueueFamiliesIndices["m_PresentFamily"] = std::nullopt;
     indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = std::nullopt;
 
-    if (m_RendererSpec.m_DisplayDebug)
+    if (showDebug)
     {
         std::cout << "     [Vulkan] queue families: \n";
     }
@@ -397,12 +398,12 @@ bool Gram::VulkanRenderer::FindQueueFamilies(const vk::PhysicalDevice &deviceIns
             {
                 indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = index;
 
-                if (m_RendererSpec.m_DisplayDebug)
+                if (showDebug)
                 {
                     std::cout << "        - [X] m_GraphicsFamily: " << index << "\n";
                 }
             }
-            else if (m_RendererSpec.m_DisplayDebug)
+            else if (showDebug)
             {
                 std::cout << "        - [-] m_GraphicsFamily: " << index << "\n";
             }
@@ -422,7 +423,8 @@ bool Gram::VulkanRenderer::FindQueueFamilies(const vk::PhysicalDevice &deviceIns
             if (presentSupport)
             {
                 indices.m_QueueFamiliesIndices["m_PresentFamily"] = index;
-                if (m_RendererSpec.m_DisplayDebug)
+
+                if (showDebug)
                 {
                     std::cout << "        - [X] m_PresentFamily: " << index << "\n";
                 }
