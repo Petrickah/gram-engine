@@ -1,6 +1,8 @@
 #include "Gram/VulkanRenderer.hpp"
+#include "Gram/GLFWApplication.hpp"
 
 #include <iostream>
+#include <set>
 #include <map>
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       messageSeverity,
@@ -10,6 +12,31 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
 {
     std::cout << "[Vulkan] validation layer: " << pCallbackData->pMessage << std::endl;
     return VK_FALSE;
+}
+
+bool Gram::QueueFamilyIndices::TryGetDeviceQueue(vk::Queue& deviceQueue, const vk::Device &device, const std::string &queueFamily)
+{
+    const std::map<std::string, std::optional<uint32_t>>::iterator& it = m_QueueFamiliesIndices.find(queueFamily);
+    if (it != m_QueueFamiliesIndices.end())
+    {
+        deviceQueue = device.getQueue(it->second.value(), 0);
+        return true;
+    }
+
+    return false;
+}
+
+bool Gram::QueueFamilyIndices::IsComplete()
+{
+    for (std::map<std::string, std::optional<uint32_t>>::iterator it = m_QueueFamiliesIndices.begin(); it != m_QueueFamiliesIndices.end(); ++it)
+    {
+        if (!it->second.has_value())
+        {
+            return false;
+        }
+    }
+
+    return !m_QueueFamiliesIndices.empty();
 }
 
 bool Gram::RendererSpecification::AreExtensionsSupported(const std::vector<const char*>& extensions, bool displayDebug) const
@@ -128,7 +155,9 @@ bool Gram::RendererSpecification::AreValidationsSupported(const std::vector<cons
 
 Gram::VulkanRenderer::~VulkanRenderer()
 {
-    DestroyDebugUtilsMessengerExt();
+    if (m_VkDevice) m_VkDevice.destroy();
+    if (m_VkDebugMessenger) DestroyDebugUtilsMessengerExt();
+    if (m_VkSurface) DestroySurfaceKHR();
     if (m_VkInstance) m_VkInstance.destroy();
 }
 
@@ -185,10 +214,25 @@ Gram::VulkanRenderer::VulkanRenderer(const RendererSpecification& rendererSpec)
     // The messenger needs a live instance, so it can only be created after createInstance.
     if (useValidation) CreateDebugUtilsMessengerEXT();
 
+    if (!CreateSurfaceKHR())
+    {
+        std::cerr << "[Vulkan] couldn't create a surface!" << "\n";
+        m_VkSurface = VK_NULL_HANDLE;
+        return;
+    }
+
     if (!PickPhysicalDevice())
     {
         std::cerr << "[Vulkan] couldn't select a physical device!" << "\n";
         m_VkPhysicalDevice = VK_NULL_HANDLE;
+        return;
+    }
+
+    if (!CreateLogicalDevice())
+    {
+        std::cerr << "[Vulkan] couldn't create a logical device!" << "\n";
+        m_VkDevice = VK_NULL_HANDLE;
+        return;
     }
 }
 
@@ -221,7 +265,7 @@ void Gram::VulkanRenderer::CreateDebugUtilsMessengerEXT()
 
 void Gram::VulkanRenderer::DestroyDebugUtilsMessengerExt()
 {
-    if (m_VkDebugMessenger == VK_NULL_HANDLE) return;
+    // if (m_VkDebugMessenger == VK_NULL_HANDLE) return;
 
     if (auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(m_VkInstance, "vkDestroyDebugUtilsMessengerEXT"))
     {
@@ -283,8 +327,17 @@ bool Gram::VulkanRenderer::PickPhysicalDevice()
         {
             std::cout << ((scoredDevice.second == m_VkPhysicalDevice)
                           ? "   - [X] physical device: "
-                          : "   - [ ] physical device: ")
+                          : "   - [-] physical device: ")
                       << scoredDevice.second.getProperties().deviceName << "\n";
+        }
+
+        QueueFamilyIndices indices;
+        if (FindQueueFamilies(scoredDevice.second, indices))
+        {
+            if (scoredDevice.second == m_VkPhysicalDevice)
+            {
+                m_VkQueueFamilyIndices = indices;
+            }
         }
     }
 
@@ -315,11 +368,142 @@ bool Gram::VulkanRenderer::RatePhysicalDeviceSuitability(int32_t &suitabilitySco
     }
 
     suitabilityScore += deviceProperties.limits.maxImageDimension2D;
-
+    
     if (!deviceFeatures.geometryShader)
     {
         return false;
     }
 
+    return true;
+}
+
+bool Gram::VulkanRenderer::FindQueueFamilies(const vk::PhysicalDevice &deviceInstance, QueueFamilyIndices& indices)
+{
+    indices.m_QueuePriority = 1.0f;
+    indices.m_QueueFamiliesIndices["m_PresentFamily"] = std::nullopt;
+    indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = std::nullopt;
+
+    if (m_RendererSpec.m_DisplayDebug)
+    {
+        std::cout << "     [Vulkan] queue families: \n";
+    }
+
+    uint32_t index = 0;
+    for (const vk::QueueFamilyProperties& queueFamily: deviceInstance.getQueueFamilyProperties())
+    {
+        if (!indices.m_QueueFamiliesIndices["m_GraphicsFamily"].has_value())
+        {
+            if (queueFamily.queueFlags & vk::QueueFlagBits::eGraphics)
+            {
+                indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = index;
+
+                if (m_RendererSpec.m_DisplayDebug)
+                {
+                    std::cout << "        - [X] m_GraphicsFamily: " << index << "\n";
+                }
+            }
+            else if (m_RendererSpec.m_DisplayDebug)
+            {
+                std::cout << "        - [-] m_GraphicsFamily: " << index << "\n";
+            }
+        }
+
+        if (!indices.m_QueueFamiliesIndices["m_PresentFamily"].has_value())
+        {
+            vk::Bool32 presentSupport = false;
+            vk::Result vkResult = deviceInstance.getSurfaceSupportKHR(index, m_VkSurface, &presentSupport);
+    
+            if (vkResult != vk::Result::eSuccess)
+            {
+                std::cerr << "        - [-] m_PresentFamily: " << vk::to_string(vkResult) << "\n";
+                presentSupport = false;
+            }
+    
+            if (presentSupport)
+            {
+                indices.m_QueueFamiliesIndices["m_PresentFamily"] = index;
+                if (m_RendererSpec.m_DisplayDebug)
+                {
+                    std::cout << "        - [X] m_PresentFamily: " << index << "\n";
+                }
+            }
+        }
+
+        if (indices.IsComplete())
+        {
+            return true;
+        }
+
+        index++;
+    }
+
+    return false;
+}
+
+bool Gram::VulkanRenderer::CreateSurfaceKHR()
+{
+    m_VkSurface = VK_NULL_HANDLE;
+    GLFWApplication* application = dynamic_cast<GLFWApplication*>(m_RendererSpec.m_Application);
+
+    if (application == nullptr)
+    {
+        std::cerr << "[Vulkan] this is not a GLFWApplication!\n";
+        return false;
+    }
+
+    if (glfwCreateWindowSurface(m_VkInstance, application->GetWindow(), nullptr, &m_VkSurface) != VK_SUCCESS)
+    {
+        std::cerr << "[Vulkan] couldn't create a surface from GLFW!\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool Gram::VulkanRenderer::DestroySurfaceKHR()
+{
+    vkDestroySurfaceKHR(m_VkInstance, m_VkSurface, nullptr);
+    return true;
+}
+
+bool Gram::VulkanRenderer::CreateLogicalDevice()
+{
+    m_VkDevice = VK_NULL_HANDLE;
+    m_VkQueueFamilyIndices.m_QueueCreateInfos.clear();
+
+    std::set<uint32_t> uniqueFamilies;
+    for (std::map<std::string, std::optional<uint32_t>>::iterator it = m_VkQueueFamilyIndices.m_QueueFamiliesIndices.begin(); it != m_VkQueueFamilyIndices.m_QueueFamiliesIndices.end(); ++it)
+    {
+        uniqueFamilies.insert(it->second.value());
+    }
+
+    for (uint32_t family: uniqueFamilies)
+    {
+        m_VkQueueFamilyIndices.m_QueueCreateInfos.push_back(vk::DeviceQueueCreateInfo(
+            vk::DeviceQueueCreateFlags(), family, 1,
+            &m_VkQueueFamilyIndices.m_QueuePriority,
+            nullptr
+        ));
+    }
+
+    vk::DeviceCreateInfo deviceCreateInfo(
+        vk::DeviceCreateFlags(),
+        static_cast<uint32_t>(m_VkQueueFamilyIndices.m_QueueCreateInfos.size()),
+        m_VkQueueFamilyIndices.m_QueueCreateInfos.data(),
+        0,       // Layers Count
+        nullptr, // Layers Names
+        0,       // Extensions Count
+        nullptr, // Extensions Names
+        &m_VkQueueFamilyIndices.m_DeviceFeatures,
+        nullptr
+    );
+
+    vk::Result vkResult = m_VkPhysicalDevice.createDevice(&deviceCreateInfo, nullptr, &m_VkDevice);
+    if (vkResult != vk::Result::eSuccess)
+    {
+        std::cerr << "[Vulkan] failed to create logical device: " << vk::to_string(static_cast<vk::Result>(vkResult)) << "\n";
+        return false;
+    }
+    
     return true;
 }

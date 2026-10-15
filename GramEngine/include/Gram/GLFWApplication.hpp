@@ -18,6 +18,8 @@ namespace Gram
         virtual ~GLFWApplication() override;
         virtual void Run() override;
 
+        GLFWwindow* GetWindow() const { return m_GLFWwindow; }
+
     private:
         GLFWwindow* m_GLFWwindow;
     };
