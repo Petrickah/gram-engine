@@ -1,6 +1,7 @@
 #include "Gram/VulkanRenderer.hpp"
 
 #include <iostream>
+#include <map>
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       messageSeverity,
                                                       vk::DebugUtilsMessageTypeFlagsEXT              messageTypes,
@@ -103,7 +104,7 @@ bool Gram::RendererSpecification::AreValidationsSupported(const std::vector<cons
                 return std::strcmp(layer.layerName.data(), name) == 0;
             });
 
-            std::cout << (requested ? "     [X] " : "     [-] ") << layer.layerName << '\n';
+            std::cout << (requested ? "   - [X] " : "   - [-] ") << layer.layerName << '\n';
         }
     }
 
@@ -123,6 +124,12 @@ bool Gram::RendererSpecification::AreValidationsSupported(const std::vector<cons
     }
 
     return allSupported;
+}
+
+Gram::VulkanRenderer::~VulkanRenderer()
+{
+    DestroyDebugUtilsMessengerExt();
+    if (m_VkInstance) m_VkInstance.destroy();
 }
 
 Gram::VulkanRenderer::VulkanRenderer(const RendererSpecification& rendererSpec)
@@ -177,6 +184,12 @@ Gram::VulkanRenderer::VulkanRenderer(const RendererSpecification& rendererSpec)
 
     // The messenger needs a live instance, so it can only be created after createInstance.
     if (useValidation) CreateDebugUtilsMessengerEXT();
+
+    if (!PickPhysicalDevice())
+    {
+        std::cerr << "[Vulkan] couldn't select a physical device!" << "\n";
+        m_VkPhysicalDevice = VK_NULL_HANDLE;
+    }
 }
 
 void Gram::VulkanRenderer::PopulateDebugMessengerCreateInfo()
@@ -218,8 +231,95 @@ void Gram::VulkanRenderer::DestroyDebugUtilsMessengerExt()
     m_VkDebugMessenger = VK_NULL_HANDLE;
 }
 
-Gram::VulkanRenderer::~VulkanRenderer()
+bool Gram::VulkanRenderer::PickPhysicalDevice()
 {
-    DestroyDebugUtilsMessengerExt();
-    if (m_VkInstance) m_VkInstance.destroy();
+    uint32_t deviceCount = 0;
+    VkResult vkResult = vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, nullptr);
+    if (vkResult != VkResult::VK_SUCCESS)
+    {
+        std::cerr << "[Vulkan] no eligible physical devices found: " << vk::to_string(static_cast<vk::Result>(vkResult)) << "\n";
+        m_VkPhysicalDevice = VK_NULL_HANDLE;
+        return false;
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkResult = vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, devices.data());
+    if (vkResult != VkResult::VK_SUCCESS)
+    {
+        std::cerr << "[Vulkan] couldn't find physical devices: " << vk::to_string(static_cast<vk::Result>(vkResult)) << "\n";
+        m_VkPhysicalDevice = VK_NULL_HANDLE;
+        return false;
+    }
+
+    if (m_RendererSpec.m_DisplayDebug)
+    {
+        std::cout << "[Vulkan] physical devices: " << "\n";
+    }
+
+    int32_t suitabilityScore = 0;
+    std::multimap<int32_t, vk::PhysicalDevice> scoredDevices;
+
+    for (const VkPhysicalDevice& device: devices)
+    {
+        const vk::PhysicalDevice& deviceInstance = vk::PhysicalDevice(device);
+
+        if (RatePhysicalDeviceSuitability(suitabilityScore, deviceInstance))
+        {
+            scoredDevices.insert(std::make_pair(suitabilityScore, deviceInstance));
+        }
+    }
+
+    if (scoredDevices.empty())
+    {
+        std::cerr << "[Vulkan] no suitable physical device!\n";
+        m_VkPhysicalDevice = VK_NULL_HANDLE;
+        return false;
+    }
+    
+    m_VkPhysicalDevice = scoredDevices.lower_bound(scoredDevices.rbegin()->first)->second;
+    for (const std::pair<const int32_t, vk::PhysicalDevice>& scoredDevice: scoredDevices)
+    {
+        if (m_RendererSpec.m_DisplayDebug)
+        {
+            std::cout << ((scoredDevice.second == m_VkPhysicalDevice)
+                          ? "   - [X] physical device: "
+                          : "   - [ ] physical device: ")
+                      << scoredDevice.second.getProperties().deviceName << "\n";
+        }
+    }
+
+    return m_VkPhysicalDevice != VK_NULL_HANDLE;
+}
+
+bool Gram::VulkanRenderer::RatePhysicalDeviceSuitability(int32_t &suitabilityScore, const vk::PhysicalDevice &deviceInstance)
+{
+    suitabilityScore = 0;
+
+    const vk::PhysicalDeviceProperties& deviceProperties = deviceInstance.getProperties();
+    const vk::PhysicalDeviceFeatures& deviceFeatures = deviceInstance.getFeatures();
+
+    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu)
+    {
+        suitabilityScore += 100000;
+    }
+
+    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu 
+        || deviceProperties.deviceType == vk::PhysicalDeviceType::eVirtualGpu)
+    {
+        suitabilityScore -= 50;
+    }
+
+    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eCpu)
+    {
+        suitabilityScore -= 500;
+    }
+
+    suitabilityScore += deviceProperties.limits.maxImageDimension2D;
+
+    if (!deviceFeatures.geometryShader)
+    {
+        return false;
+    }
+
+    return true;
 }
