@@ -1,51 +1,32 @@
 #pragma once
 
-#include <map>
-#include <optional>
+#include "Renderer.hpp"
+#include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanInstance.hpp"
+#include "Gram/Renderer/VulkanDevice.hpp"
+#include "Gram/Renderer/VulkanSurface.hpp"
 
-#include "vulkan/vulkan.hpp"
+GRAM_NAMESPACE_BEGIN
 
-#include "../Renderer.hpp"
-#include "../Application.hpp"
-
-namespace Gram
+struct VulkanRendererSpecification: public RendererSpecification
 {
-    struct QueueFamilyIndices
-    {
-        float m_QueuePriority;
-        vk::PhysicalDeviceFeatures m_DeviceFeatures;
-        std::vector<vk::DeviceQueueCreateInfo> m_QueueCreateInfos;
-        std::map<std::string, std::optional<uint32_t>> m_QueueFamiliesIndices;
+    virtual bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const override;
+    virtual bool AreExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const override;
+    virtual bool AreValidationsSupported(const std::vector<std::string>& validations, bool displayDebug = false) const override;
+};
 
-        bool TryGetDeviceQueue(vk::Queue& deviceQueue, const vk::Device& device, const std::string& queueFamily);
-        bool IsComplete();
-    };
+class VulkanRenderer: public Renderer {
+public:
+    VulkanRenderer(const RendererSpecification* rendererSpec)
+        : m_VulkanInstance(rendererSpec)
+        , m_VulkanSurface(rendererSpec, m_VulkanInstance.GetInstance())
+        , m_VulkanDevice(rendererSpec, m_VulkanInstance.GetInstance(), m_VulkanSurface.GetSurface())
+    { }
 
-    class VulkanRenderer: public Renderer {
-    public:
-        VulkanRenderer(const RendererSpecification& rendererSpec);
-        virtual ~VulkanRenderer() override;
-        
-        void PopulateDebugMessengerCreateInfo();
-        void CreateDebugUtilsMessengerEXT();
-        void DestroyDebugUtilsMessengerExt();
+private:
+    VulkanInstance m_VulkanInstance;
+    VulkanSurface m_VulkanSurface;
+    VulkanDevice m_VulkanDevice;
+};
 
-        bool PickPhysicalDevice();
-        bool RatePhysicalDeviceSuitability(int32_t& suitabilityScore, const vk::PhysicalDevice& deviceInstance);
-        bool FindQueueFamilies(const vk::PhysicalDevice& deviceInstance, QueueFamilyIndices& indices, bool showDebug = false);
-        bool CreateLogicalDevice();
-        bool CreateSurfaceKHR();
-        bool DestroySurfaceKHR();
-
-    private:
-        vk::Instance m_VkInstance;
-        vk::Device m_VkDevice;
-        vk::PhysicalDevice m_VkPhysicalDevice;
-        vk::DebugUtilsMessengerCreateInfoEXT m_VkDebugMessengerCreateInfo;
-        
-        VkSurfaceKHR m_VkSurface = VK_NULL_HANDLE;
-        VkDebugUtilsMessengerEXT m_VkDebugMessenger = VK_NULL_HANDLE;
-
-        QueueFamilyIndices m_VkQueueFamilyIndices;
-    };
-}
+GRAM_NAMESPACE_END

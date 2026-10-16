@@ -11,25 +11,30 @@ Gram::Application* Gram::CreateApplication(int argc, char** argv)
     appSpec.m_WindowTitle = "Gram Application with Vulkan";
 
     std::vector<const char*> extensionsLayers = {
-        "VK_EXT_debug_utils"
+        "VK_EXT_debug_utils",
+    };
+
+    std::vector<const char*> deviceExtensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
     
     std::vector<const char*> validationLayers = {
         "VK_LAYER_KHRONOS_validation"
     };
     
-    Gram::RendererSpecification rendererSpec;
+    Gram::VulkanRendererSpecification rendererSpec;
 
     // Enable custom debug messages, currently used to see which extensions and validations are available
     rendererSpec.m_DisplayDebug     = true;
 
     // The window (and GLFW) must exist before the renderer can ask for instance extensions.
     rendererSpec.m_Application      = new Gram::GLFWApplication(appSpec);
-    rendererSpec.m_ExtensionLayers  = appSpec.GetRequiredInstanceExtensions(rendererSpec, extensionsLayers.size(), extensionsLayers.data(), rendererSpec.m_DisplayDebug);
-    rendererSpec.m_ValidationLayers = appSpec.GetRequiredValidationLayers(rendererSpec, validationLayers.size(), validationLayers.data(), rendererSpec.m_DisplayDebug);
+    rendererSpec.m_DeviceExtensions = appSpec.GetRequiredDeviceExtensions(&rendererSpec, deviceExtensions.size(), deviceExtensions.data(), rendererSpec.m_DisplayDebug);
+    rendererSpec.m_ExtensionLayers  = appSpec.GetRequiredInstanceExtensions(&rendererSpec, extensionsLayers.size(), extensionsLayers.data(), rendererSpec.m_DisplayDebug);
+    rendererSpec.m_ValidationLayers = appSpec.GetRequiredValidationLayers(&rendererSpec, validationLayers.size(), validationLayers.data(), rendererSpec.m_DisplayDebug);
     
     // The application owns the renderer from here on.
-    rendererSpec.m_Application->SetRenderer(new Gram::VulkanRenderer(rendererSpec));
+    rendererSpec.m_Application->SetRenderer(new Gram::VulkanRenderer(&rendererSpec));
 
     return rendererSpec.m_Application;
 }

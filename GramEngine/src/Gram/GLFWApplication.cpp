@@ -2,13 +2,27 @@
 
 #include <cstdlib>
 #include <iostream>
+#include "Application.hpp"
 
-std::vector<const char*> Gram::ApplicationSpecification::GetRequiredInstanceExtensions(const RendererSpecification& rendererSpec, uint32_t extensionCount, const char** extensions, bool displayDebug)
+GRAM_NAMESPACE_BEGIN
+
+std::vector<std::string> ApplicationSpecification::GetRequiredDeviceExtensions(const RendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
+{
+    std::vector<std::string> requiredExtensions;
+    if (extensions)
+    {
+        requiredExtensions.insert(requiredExtensions.end(), extensions, extensions + extensionCount);
+    }
+
+    return requiredExtensions;
+}
+
+std::vector<std::string> ApplicationSpecification::GetRequiredInstanceExtensions(const RendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
 {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-    std::vector<const char*> requiredExtensions;
+    std::vector<std::string> requiredExtensions;
     if (glfwExtensions)
     {
         requiredExtensions.assign(glfwExtensions, glfwExtensions + glfwExtensionCount);
@@ -19,7 +33,7 @@ std::vector<const char*> Gram::ApplicationSpecification::GetRequiredInstanceExte
         requiredExtensions.insert(requiredExtensions.end(), extensions, extensions + extensionCount);
     }
 
-    if (!rendererSpec.AreExtensionsSupported(requiredExtensions, displayDebug))
+    if (!rendererSpec->AreExtensionsSupported(requiredExtensions, displayDebug))
     {
         std::cout << "[GLFW] no required instance extensions!\n";
     }
@@ -27,15 +41,15 @@ std::vector<const char*> Gram::ApplicationSpecification::GetRequiredInstanceExte
     return requiredExtensions;
 }
 
-std::vector<const char*> Gram::ApplicationSpecification::GetRequiredValidationLayers(const RendererSpecification& rendererSpec, uint32_t validationCount, const char** validations, bool displayDebug)
+std::vector<std::string> ApplicationSpecification::GetRequiredValidationLayers(const RendererSpecification* rendererSpec, uint32_t validationCount, const char** validations, bool displayDebug)
 {
-    std::vector<const char*> requiredValidations;
+    std::vector<std::string> requiredValidations;
     if (validations)
     {
         requiredValidations.assign(validations, validations + validationCount);
     }
 
-    if (!rendererSpec.AreValidationsSupported(requiredValidations, displayDebug))
+    if (!rendererSpec->AreValidationsSupported(requiredValidations, displayDebug))
     {
         std::cout << "[GLFW] no validation layers!\n";
     }
@@ -43,7 +57,7 @@ std::vector<const char*> Gram::ApplicationSpecification::GetRequiredValidationLa
     return requiredValidations;
 }
 
-Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &appSpec) : Gram::Application(appSpec)
+GLFWApplication::GLFWApplication(const ApplicationSpecification &appSpec) : Application(appSpec)
 {
     glfwSetErrorCallback([](int code, const char* msg) { std::cerr << "GLFW error " << code << ": " << msg << "\n"; });
 
@@ -71,7 +85,7 @@ Gram::GLFWApplication::GLFWApplication(const Gram::ApplicationSpecification &app
     }
 }
 
-Gram::GLFWApplication::~GLFWApplication()
+GLFWApplication::~GLFWApplication()
 {
     // Renderer owns Vulkan objects that depend on the window/GLFW; tear it down first.
     delete m_Renderer;
@@ -81,10 +95,12 @@ Gram::GLFWApplication::~GLFWApplication()
     glfwTerminate();
 }
 
-void Gram::GLFWApplication::Run()
+void GLFWApplication::Run()
 {
     while (!glfwWindowShouldClose(m_GLFWwindow))
     {
         glfwPollEvents();
     }
 }
+
+GRAM_NAMESPACE_END

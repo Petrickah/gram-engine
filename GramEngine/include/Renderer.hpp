@@ -1,28 +1,49 @@
 #pragma once
 
-#include <vector>
+#include "Common.hpp"
 
-namespace Gram
+GRAM_NAMESPACE_BEGIN
+
+class Application;
+
+struct RendererSpecification
 {
-    class Application;
+    bool m_DisplayDebug = false;
+    Application* m_Application = nullptr;
+    std::vector<std::string> m_ExtensionLayers;
+    std::vector<std::string> m_DeviceExtensions;
+    std::vector<std::string> m_ValidationLayers;
 
-    struct RendererSpecification
+    virtual bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const = 0;
+    virtual bool AreExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const = 0;
+    virtual bool AreValidationsSupported(const std::vector<std::string>& validations, bool displayDebug = false) const = 0;
+
+    // C-string views into the std::string members above (what Vulkan's create infos want).
+    // They stay valid only while the members are unchanged, and the returned vector must be
+    // kept alive for as long as its .data() is in use: never call .data() on the temporary.
+    std::vector<const char*> GetExtensionLayers() const { return ToCStrings(m_ExtensionLayers); }
+    std::vector<const char*> GetDeviceExtensions() const { return ToCStrings(m_DeviceExtensions); }
+    std::vector<const char*> GetValidationLayers() const { return ToCStrings(m_ValidationLayers); }
+
+private:
+    static std::vector<const char*> ToCStrings(const std::vector<std::string>& strings)
     {
-        bool m_DisplayDebug = false;
-        Gram::Application* m_Application = nullptr;
-        std::vector<const char*> m_ExtensionLayers;
-        std::vector<const char*> m_ValidationLayers;
+        std::vector<const char*> cStrings;
+        cStrings.reserve(strings.size());
+        for (const std::string& string: strings)
+        {
+            cStrings.push_back(string.c_str());
+        }
 
-        bool AreExtensionsSupported(const std::vector<const char*>& extensions, bool displayDebug = false) const;
-        bool AreValidationsSupported(const std::vector<const char*>& validations, bool displayDebug = false) const;
-    };
+        return cStrings;
+    }
 
-    class Renderer {
-    public:
-        Renderer(const RendererSpecification& rendererSpec) : m_RendererSpec(rendererSpec) {}
-        virtual ~Renderer() {};
+};
 
-    protected:
-        RendererSpecification m_RendererSpec;
-    };
-}
+class Renderer {
+public:
+    Renderer() = default;
+    virtual ~Renderer() {};
+};
+
+GRAM_NAMESPACE_END

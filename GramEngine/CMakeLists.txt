@@ -15,6 +15,20 @@ find_package(glm CONFIG REQUIRED)
 # gram:dep:glm end
 # --- end gram dependencies ---
 
-add_executable(GramEngine src/main.cpp src/Gram/GLFWApplication.cpp src/Gram/VulkanRenderer.cpp)
+add_library(GramGLFW STATIC
+    src/Gram/GLFWApplication.cpp
+)
+target_include_directories(GramGLFW PUBLIC include)
+target_link_libraries(GramGLFW PUBLIC glfw)
+
+add_library(GramRenderer STATIC
+    src/Gram/Renderer/VulkanDevice.cpp
+    src/Gram/Renderer/VulkanInstance.cpp
+    src/Gram/Renderer/VulkanSurface.cpp
+)
+target_include_directories(GramRenderer PUBLIC include)
+target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm)
+
+add_executable(GramEngine src/main.cpp)
 target_include_directories(GramEngine PRIVATE include)
-target_link_libraries(GramEngine PRIVATE Vulkan::Vulkan glm::glm glfw)
+target_link_libraries(GramEngine PRIVATE GramGLFW GramRenderer)
