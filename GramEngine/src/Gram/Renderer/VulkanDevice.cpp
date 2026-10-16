@@ -36,7 +36,6 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
         std::cout << "     [Vulkan] device extensions: \n";
     }
     
-    bool anySupported = false;
     for (const std::string& available : extensions)
     {
         bool found = std::any_of(m_DeviceExtensions.begin(), m_DeviceExtensions.end(),
@@ -48,11 +47,13 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
                                 : "        - [-] device extension: ") 
                       << available << "\n";
         }
-
-        anySupported = anySupported || found;
     }
 
-    return anySupported;
+    // Every requested extension must be offered by the device, not just one of them.
+    return std::all_of(m_DeviceExtensions.begin(), m_DeviceExtensions.end(),
+        [&extensions](const std::string& requested) {
+            return std::find(extensions.begin(), extensions.end(), requested) != extensions.end();
+        });
 }
 
 VulkanDevice::VulkanDevice(const RendererSpecification* rendererSpec, const vk::Instance& instance, const VkSurfaceKHR& surface)
@@ -319,7 +320,13 @@ bool VulkanDevice::CreateLogicalDevice(const RendererSpecification* rendererSpec
 
     // Only ask for extensions if the device actually offers all of them;
     const bool useExtensions = !deviceExtensions.empty()
-                            && rendererSpec->AreDeviceExtensionsSupported(rendererSpec->m_DeviceExtensions);
+                            && rendererSpec->AreDeviceExtensionsSupported(m_DeviceExtensions);
+
+    if (!useExtensions)
+    {
+        std::cerr << "[Vulkan] no device extensions are active!\n";
+        return false;
+    }
 
     vk::DeviceCreateInfo deviceCreateInfo(
         vk::DeviceCreateFlags(),
