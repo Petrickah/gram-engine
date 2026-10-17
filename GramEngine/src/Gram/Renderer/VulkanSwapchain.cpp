@@ -6,6 +6,14 @@
 
 GRAM_NAMESPACE_BEGIN
 
+VulkanSwapchain::~VulkanSwapchain()
+{
+    vk::Device device = m_Device;
+    for (vk::ImageView view : m_SwapchainImageViews) device.destroyImageView(view);
+    
+    if (m_Swapchain) device.destroySwapchainKHR(m_Swapchain);
+}
+
 VulkanSwapchain::VulkanSwapchain(const VulkanRendererSpecification* rendererSpec, QueueFamilyIndices& indices, vk::Device device, vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, bool extensionsSupported)
     : m_Device(device)
     , m_PhysicalDevice(physicalDevice)
@@ -25,33 +33,82 @@ VulkanSwapchain::VulkanSwapchain(const VulkanRendererSpecification* rendererSpec
         return;
     }
 
-    vk::SurfaceFormatKHR surfaceFormat;
-    if (!m_SupportDetails.ChooseSwapchainSurfaceFormat(surfaceFormat, rendererSpec->m_DisplayDebug))
+    if (!m_SupportDetails.ChooseSwapchainSurfaceFormat(m_SurfaceFormat, rendererSpec->m_DisplayDebug))
     {
         std::cerr << "   - [Vulkan] no swapchain surface format to choose!\n";
         return;
     }
 
-    vk::PresentModeKHR presentMode = vk::PresentModeKHR::eFifo;
-    if (!m_SupportDetails.ChooseSwapchainPresentMode(presentMode, rendererSpec->m_DisplayDebug))
+    if (!m_SupportDetails.ChooseSwapchainPresentMode(m_PresentMode, rendererSpec->m_DisplayDebug))
     {
         std::cerr << "   - [Vulkan] no swapchain surface present mode to choose!\n";
         return;
     }
 
-    vk::Extent2D extent;
-    if (!m_SupportDetails.ChooseSwapchainExtent(extent, rendererSpec, rendererSpec->m_DisplayDebug))
+    if (!m_SupportDetails.ChooseSwapchainExtent(m_Extent2D, rendererSpec, rendererSpec->m_DisplayDebug))
     {
-        std::cerr << "   - [Vulkan] no swapchain surface extend mode to choose!\n";
+        std::cerr << "   - [Vulkan] no swapchain surface extent to choose!\n";
         return;
     }
 
-    uint32_t imageCount = 0;
-    if (!m_SupportDetails.ChooseSwapchainImageCount(imageCount, rendererSpec->m_DisplayDebug))
+    if (!m_SupportDetails.ChooseSwapchainImageCount(m_ImageCount, rendererSpec->m_DisplayDebug))
     {
         std::cerr << "   - [Vulkan] no swapchain surface image count to choose!\n";
         return;
     }
+
+    if (CreateSwapchain(m_SwapchainImages, indices, m_ImageCount, m_SurfaceFormat, m_Extent2D, m_PresentMode))
+    {
+        vk::ImageView imageView;
+        for (const vk::Image& image: m_SwapchainImages)
+        {
+            if (!CreateSwapchainImageView(imageView, image, m_SurfaceFormat))
+            {
+                break; // IsValid() reports the mismatch; the views created so far are freed by the destructor.
+            }
+
+            m_SwapchainImageViews.push_back(imageView);
+        }
+    }
+}
+
+bool VulkanSwapchain::CreateSwapchainImageView(vk::ImageView& imageView, const vk::Image& image, const vk::SurfaceFormatKHR& surfaceFormat)
+{
+    vk::ImageViewCreateInfo vkImageViewCreateInfo(
+        vk::ImageViewCreateFlags(),
+        image,                               // Image
+        vk::ImageViewType::e2D,              // Image View Type
+        surfaceFormat.format,                // Image Format
+        vk::ComponentMapping(                // Image Component Mapping
+            vk::ComponentSwizzle::eIdentity, // Component RED
+            vk::ComponentSwizzle::eIdentity, // Component GREEN
+            vk::ComponentSwizzle::eIdentity, // Component BLUE
+            vk::ComponentSwizzle::eIdentity  // Component ALPHA
+            ),
+        vk::ImageSubresourceRange(           // Image Subresource Range
+            vk::ImageAspectFlagBits::eColor, // Image Aspect
+            0,                               // Image Base Mip Level
+            1,                               // Image Level Count
+            0,                               // Image Base Array Layer
+            1                                // Image Layer Count
+            )
+    );
+
+    vk::Device vkDevice = m_Device;
+    vk::Result vkResult = vkDevice.createImageView(&vkImageViewCreateInfo, nullptr, &imageView);
+    if (vkResult != vk::Result::eSuccess)
+    {
+        std::cerr << "   - [Vulkan] couldn't create the surface image views: " << vk::to_string(vkResult) << "\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, QueueFamilyIndices& indices, uint32_t requestedImageCount, const vk::SurfaceFormatKHR& surfaceFormat, const vk::Extent2D& extent, const vk::PresentModeKHR& presentMode)
+{
+    vk::Result vkResult = vk::Result::eSuccess;
+    vk::Device vkDevice = m_Device;
 
     // Images are shared between queue families only when graphics and present are different
     // families; otherwise exclusive ownership is faster and needs no index list. A concurrent
@@ -66,7 +123,7 @@ VulkanSwapchain::VulkanSwapchain(const VulkanRendererSpecification* rendererSpec
     vk::SwapchainCreateInfoKHR swapchainCreateInfo(
         vk::SwapchainCreateFlagsKHR(),                                           // Flags
         m_Surface,                                                               // Surface
-        imageCount,                                                              // Image Count
+        requestedImageCount,                                                     // Image Count
         surfaceFormat.format,                                                    // Image Format
         surfaceFormat.colorSpace,                                                // Image Color Space
         extent,                                                                  // Image Extent
@@ -82,23 +139,30 @@ VulkanSwapchain::VulkanSwapchain(const VulkanRendererSpecification* rendererSpec
         VK_NULL_HANDLE                                                           // Old Swapchain
     );
 
-    vk::Result vkResult = device.createSwapchainKHR(&swapchainCreateInfo, nullptr, &m_Swapchain);
+    vkResult = vkDevice.createSwapchainKHR(&swapchainCreateInfo, nullptr, &m_Swapchain);
     if (vkResult != vk::Result::eSuccess)
     {
-        std::cerr << "   - [Vulkan] couldn't create the surface swapchain!" << vk::to_string(vkResult) << "\n";
-        return;
+        std::cerr << "   - [Vulkan] couldn't create the surface swapchain: " << vk::to_string(vkResult) << "\n";
+        return false;
     }
 
-    if (!TryGetSwapchainImages(m_SwapchainImages))
+    uint32_t imageCount = 0;
+    vkResult = vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, nullptr);
+    if (vkResult != vk::Result::eSuccess)
     {
-        std::cerr << "   - [Vulkan] couldn't retrieve the surface swapchain images!\n";
-        return;
+        std::cerr << "   - [Vulkan] swapchain surface images not found: " << vk::to_string(vkResult) << "\n";
+        return false;
     }
-}
+    
+    swapchainImages.resize(imageCount);
+    vkResult = vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, swapchainImages.data());
+    if (vkResult != vk::Result::eSuccess)
+    {
+        std::cerr << "   - [Vulkan] swapchain surface images not found: " << vk::to_string(vkResult) << "\n";
+        return false;
+    }
 
-VulkanSwapchain::~VulkanSwapchain()
-{
-    if (m_Swapchain) vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+    return true;
 }
 
 bool VulkanSwapchain::QuerySwapchainSupport(const vk::PhysicalDevice &device, SwapChainSupportDetails &supportDetails, bool extensionsSupported)
@@ -143,30 +207,6 @@ bool VulkanSwapchain::QuerySwapchainSupport(const vk::PhysicalDevice &device, Sw
     }
 
     return extensionsSupported && !supportDetails.m_Formats.empty() && !supportDetails.m_PresentModes.empty();
-}
-
-bool VulkanSwapchain::TryGetSwapchainImages(std::vector<vk::Image> &swapchainImages)
-{
-    uint32_t imageCount = 0;
-    vk::Result vkResult = vk::Result::eSuccess;
-    vk::Device device   = static_cast<vk::Device>(m_Device);
-
-    vkResult = device.getSwapchainImagesKHR(m_Swapchain, &imageCount, nullptr);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] swapchain surface images not found: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
-
-    swapchainImages.resize(imageCount);
-    vkResult = device.getSwapchainImagesKHR(m_Swapchain, &imageCount, swapchainImages.data());
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] swapchain surface images not found: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
-
-    return true;
 }
 
 bool SwapChainSupportDetails::ChooseSwapchainSurfaceFormat(vk::SurfaceFormatKHR &surfaceFormat, bool showDebug)

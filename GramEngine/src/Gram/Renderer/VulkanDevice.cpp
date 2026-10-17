@@ -70,28 +70,30 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
         });
 }
 
-VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)
-    : m_VkInstance(static_cast<VkInstance>(instance))
-    , m_VkSurface(static_cast<VkSurfaceKHR>(surface))
+VulkanDevice::~VulkanDevice()
 {
-    if (rendererSpec && !PickPhysicalDevice(rendererSpec))
+    if (m_VkDevice) m_VkDevice.destroy();
+}
+
+VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)
+    : m_VkInstance(instance)
+    , m_VkSurface(surface)
+{
+    if (!rendererSpec || !m_VkInstance || !m_VkSurface) return;
+
+    if (!PickPhysicalDevice(rendererSpec))
     {
         std::cerr << "[Vulkan] couldn't select a physical device!" << "\n";
         m_VkPhysicalDevice = VK_NULL_HANDLE;
         return;
     }
 
-    if (rendererSpec && !CreateLogicalDevice(rendererSpec))
+    if (!CreateLogicalDevice(rendererSpec))
     {
         std::cerr << "[Vulkan] couldn't create a logical device!" << "\n";
         m_VkDevice = VK_NULL_HANDLE;
         return;
     }
-}
-
-VulkanDevice::~VulkanDevice()
-{
-    if (m_VkDevice) m_VkDevice.destroy();
 }
 
 bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendererSpec)

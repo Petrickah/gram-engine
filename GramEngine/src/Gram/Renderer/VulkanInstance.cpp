@@ -128,9 +128,15 @@ bool VulkanRendererSpecification::AreValidationsSupported(const std::vector<std:
     return allSupported;
 }
 
+VulkanInstance::~VulkanInstance()
+{
+    if (m_VkDebugMessenger) DestroyDebugUtilsMessengerExt();
+    if (m_VkInstance) m_VkInstance.destroy();
+}
+
 VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
 {
-    if (rendererSpec && !rendererSpec->m_Application)
+    if (!rendererSpec || !rendererSpec->m_Application)
     {
         std::cerr << "[Vulkan] created without an Application!\n";
         return;
@@ -187,12 +193,6 @@ VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
 
     // The messenger needs a live instance, so it can only be created after createInstance.
     if (useValidation) CreateDebugUtilsMessengerEXT();
-}
-
-VulkanInstance::~VulkanInstance()
-{
-    if (m_VkDebugMessenger) DestroyDebugUtilsMessengerExt();
-    if (m_VkInstance) m_VkInstance.destroy();
 }
 
 void VulkanInstance::PopulateDebugMessengerCreateInfo()

@@ -4,7 +4,6 @@
 #include "Renderer.hpp"
 
 #include <optional>
-
 #include <vulkan/vulkan.hpp>
 
 GRAM_NAMESPACE_BEGIN

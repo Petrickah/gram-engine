@@ -7,13 +7,13 @@ GRAM_NAMESPACE_BEGIN
 VulkanSurface::VulkanSurface(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance)
     : m_VkInstance(static_cast<VkInstance>(instance))
 {
-    if (rendererSpec && CreateSurfaceKHR(rendererSpec))
+    if (!rendererSpec || !m_VkInstance) return;
+    
+    if (!CreateSurfaceKHR(rendererSpec))
     {
-        return;
+        std::cerr << "[Vulkan] couldn't create a surface!" << "\n";
+        m_VkSurface = VK_NULL_HANDLE;
     }
-
-    std::cerr << "[Vulkan] couldn't create a surface!" << "\n";
-    m_VkSurface = VK_NULL_HANDLE;
 }
 
 VulkanSurface::~VulkanSurface()
