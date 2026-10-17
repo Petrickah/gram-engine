@@ -128,7 +128,7 @@ bool VulkanRendererSpecification::AreValidationsSupported(const std::vector<std:
     return allSupported;
 }
 
-VulkanInstance::VulkanInstance(const RendererSpecification* rendererSpec)
+VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
 {
     if (rendererSpec && !rendererSpec->m_Application)
     {

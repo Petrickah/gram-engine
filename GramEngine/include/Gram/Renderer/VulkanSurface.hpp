@@ -7,14 +7,16 @@ GRAM_NAMESPACE_BEGIN
 class VulkanSurface
 {
 public:
-    VulkanSurface(const RendererSpecification* rendererSpec, const vk::Instance& instance);
+    VulkanSurface(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance);
     ~VulkanSurface();
 
-    bool CreateSurfaceKHR(const RendererSpecification* rendererSpec);
-    bool DestroySurfaceKHR();
-
+public:
     VkSurfaceKHR& GetSurface() { return m_VkSurface; }
     const VkSurfaceKHR& GetSurface() const { return m_VkSurface; }
+
+private:
+    bool CreateSurfaceKHR(const VulkanRendererSpecification* rendererSpec);
+    bool DestroySurfaceKHR();
 
 private:
     VkInstance m_VkInstance;

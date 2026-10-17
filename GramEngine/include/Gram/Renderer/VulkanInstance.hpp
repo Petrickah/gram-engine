@@ -7,12 +7,14 @@ GRAM_NAMESPACE_BEGIN
 class VulkanInstance
 {
 public:
-    VulkanInstance(const RendererSpecification* rendererSpec);
+    VulkanInstance(const VulkanRendererSpecification* rendererSpec);
     ~VulkanInstance();
 
+public:
     vk::Instance& GetInstance() { return m_VkInstance; }
     const vk::Instance& GetInstance() const { return m_VkInstance; }
 
+private:
     void PopulateDebugMessengerCreateInfo();
     void CreateDebugUtilsMessengerEXT();
     void DestroyDebugUtilsMessengerExt();

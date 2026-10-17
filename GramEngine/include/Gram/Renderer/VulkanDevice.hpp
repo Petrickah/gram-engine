@@ -8,6 +8,7 @@ struct QueueFamilyIndices
 {
     std::map<std::string, std::optional<uint32_t>> m_QueueFamiliesIndices;
 
+    bool TryGetDeviceIndices(std::vector<uint32_t>& indices);
     bool TryGetDeviceQueue(vk::Queue& deviceQueue, const vk::Device& device, const std::string& queueFamily);
     bool IsComplete();
 };
@@ -15,18 +16,32 @@ struct QueueFamilyIndices
 class VulkanDevice
 {
 public:
-    VulkanDevice(const RendererSpecification* rendererSpec, const vk::Instance& instance, const VkSurfaceKHR& surface);
+    VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface);
     ~VulkanDevice();
 
-    bool PickPhysicalDevice(const RendererSpecification* rendererSpec);
-    bool RatePhysicalDeviceSuitability(const RendererSpecification* rendererSpec, int32_t& suitabilityScore, const vk::PhysicalDevice& deviceInstance);
-    bool FindQueueFamilies(const RendererSpecification* rendererSpec, const vk::PhysicalDevice& deviceInstance, QueueFamilyIndices& indices, bool showDebug = false);
-    bool FindDeviceExtensions(const RendererSpecification* rendererSpec, const vk::PhysicalDevice& deviceInstance, std::vector<std::string>& extensions, bool showDebug = false);
-    bool CreateLogicalDevice(const RendererSpecification* rendererSpec);
+public:
+    bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec)
+    {
+        // Only ask for extensions if the device actually offers all of them;
+        return m_QueueFamilyIndices.IsComplete() && !rendererSpec->m_DeviceExtensions.empty() && rendererSpec->AreDeviceExtensionsSupported(m_DeviceExtensions);
+    }
+
+    QueueFamilyIndices& GetQueueFamilyIndices() { return m_QueueFamilyIndices; }
+    const QueueFamilyIndices& GetQueueFamilyIndices() const { return m_QueueFamilyIndices; }
+
+    VkDevice GetLogicalDevice() const  { return static_cast<VkDevice>(m_VkDevice); }
+    VkPhysicalDevice GetPhysicalDevice() const { return static_cast<VkPhysicalDevice>(m_VkPhysicalDevice); }
 
 private:
-    VkInstance m_VkInstance;
-    VkSurfaceKHR m_VkSurface;
+    bool PickPhysicalDevice(const VulkanRendererSpecification* rendererSpec);
+    bool RatePhysicalDeviceSuitability(const VulkanRendererSpecification* rendererSpec, int32_t& suitabilityScore, const vk::PhysicalDevice& deviceInstance);
+    bool FindQueueFamilies(const VulkanRendererSpecification* rendererSpec, const vk::PhysicalDevice& deviceInstance, QueueFamilyIndices& indices, bool showDebug = false);
+    bool FindDeviceExtensions(const VulkanRendererSpecification* rendererSpec, const vk::PhysicalDevice& deviceInstance, std::vector<std::string>& extensions, bool showDebug = false);
+    bool CreateLogicalDevice(const VulkanRendererSpecification* rendererSpec);
+
+private:
+    vk::Instance m_VkInstance;
+    vk::SurfaceKHR m_VkSurface;
 
     std::vector<std::string> m_DeviceExtensions;
     std::vector<vk::DeviceQueueCreateInfo> m_QueueCreateInfos;

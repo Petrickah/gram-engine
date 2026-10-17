@@ -25,6 +25,7 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanDevice.cpp
     src/Gram/Renderer/VulkanInstance.cpp
     src/Gram/Renderer/VulkanSurface.cpp
+    src/Gram/Renderer/VulkanSwapchain.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
 target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm)

@@ -4,7 +4,22 @@
 
 GRAM_NAMESPACE_BEGIN
 
-bool QueueFamilyIndices::TryGetDeviceQueue(vk::Queue& deviceQueue, const vk::Device &device, const std::string &queueFamily)
+bool QueueFamilyIndices::TryGetDeviceIndices(std::vector<uint32_t> &indices)
+{
+    for (std::map<std::string, std::optional<uint32_t>>::iterator it = m_QueueFamiliesIndices.begin(); it != m_QueueFamiliesIndices.end(); ++it)
+    {
+        if (!it->second.has_value())
+        {
+            return false;
+        }
+
+        indices.push_back(it->second.value());
+    }
+
+    return !indices.empty();
+}
+
+bool QueueFamilyIndices::TryGetDeviceQueue(vk::Queue &deviceQueue, const vk::Device &device, const std::string &queueFamily)
 {
     const std::map<std::string, std::optional<uint32_t>>::iterator& it = m_QueueFamiliesIndices.find(queueFamily);
     if (it != m_QueueFamiliesIndices.end())
@@ -41,10 +56,9 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
         bool found = std::any_of(m_DeviceExtensions.begin(), m_DeviceExtensions.end(),
             [available](const std::string& name) { return name == available; });
 
-        if (displayDebug)
+        if (displayDebug && found)
         {
-            std::cout << (found ? "        - [X] device extension: "
-                                : "        - [-] device extension: ") 
+            std::cout << "        - [X] device extension: "
                       << available << "\n";
         }
     }
@@ -56,7 +70,7 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
         });
 }
 
-VulkanDevice::VulkanDevice(const RendererSpecification* rendererSpec, const vk::Instance& instance, const VkSurfaceKHR& surface)
+VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)
     : m_VkInstance(static_cast<VkInstance>(instance))
     , m_VkSurface(static_cast<VkSurfaceKHR>(surface))
 {
@@ -80,7 +94,7 @@ VulkanDevice::~VulkanDevice()
     if (m_VkDevice) m_VkDevice.destroy();
 }
 
-bool VulkanDevice::PickPhysicalDevice(const RendererSpecification* rendererSpec)
+bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendererSpec)
 {
     uint32_t deviceCount = 0;
     VkResult vkResult = vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, nullptr);
@@ -151,7 +165,7 @@ bool VulkanDevice::PickPhysicalDevice(const RendererSpecification* rendererSpec)
     return m_VkPhysicalDevice != VK_NULL_HANDLE;
 }
 
-bool VulkanDevice::RatePhysicalDeviceSuitability(const RendererSpecification* rendererSpec, int32_t &suitabilityScore, const vk::PhysicalDevice &deviceInstance)
+bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecification* rendererSpec, int32_t &suitabilityScore, const vk::PhysicalDevice &deviceInstance)
 {
     suitabilityScore = 0;
 
@@ -196,7 +210,7 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const RendererSpecification* re
     return true;
 }
 
-bool VulkanDevice::FindQueueFamilies(const RendererSpecification* /*rendererSpec*/, const vk::PhysicalDevice &deviceInstance, QueueFamilyIndices& indices, bool showDebug)
+bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*rendererSpec*/, const vk::PhysicalDevice &deviceInstance, QueueFamilyIndices& indices, bool showDebug)
 {
     indices.m_QueueFamiliesIndices["m_PresentFamily"] = std::nullopt;
     indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = std::nullopt;
@@ -259,7 +273,7 @@ bool VulkanDevice::FindQueueFamilies(const RendererSpecification* /*rendererSpec
     return false;
 }
 
-bool VulkanDevice::FindDeviceExtensions(const RendererSpecification* rendererSpec, const vk::PhysicalDevice &deviceInstance, std::vector<std::string> &extensions, bool showDebug)
+bool VulkanDevice::FindDeviceExtensions(const VulkanRendererSpecification* rendererSpec, const vk::PhysicalDevice &deviceInstance, std::vector<std::string> &extensions, bool showDebug)
 {
     uint32_t extensionCount = 0;
     vk::Result vkResult = vk::Result::eSuccess;
@@ -293,7 +307,7 @@ bool VulkanDevice::FindDeviceExtensions(const RendererSpecification* rendererSpe
     return true;
 }
 
-bool VulkanDevice::CreateLogicalDevice(const RendererSpecification* rendererSpec)
+bool VulkanDevice::CreateLogicalDevice(const VulkanRendererSpecification* rendererSpec)
 {
     m_VkDevice = VK_NULL_HANDLE;
     m_QueueCreateInfos.clear();
@@ -315,26 +329,21 @@ bool VulkanDevice::CreateLogicalDevice(const RendererSpecification* rendererSpec
         ));
     }
 
-    // The create info only stores pointers, so these vectors must outlive createDevice.
-    const std::vector<const char*> deviceExtensions = rendererSpec->GetDeviceExtensions();
-
-    // Only ask for extensions if the device actually offers all of them;
-    const bool useExtensions = !deviceExtensions.empty()
-                            && rendererSpec->AreDeviceExtensionsSupported(m_DeviceExtensions);
-
-    if (!useExtensions)
+    if (!AreExtensionsSupported(rendererSpec))
     {
         std::cerr << "[Vulkan] no device extensions are active!\n";
         return false;
     }
 
+    // The create info only stores pointers, so these vectors must outlive createDevice.
+    const std::vector<const char*> deviceExtensions = rendererSpec->GetDeviceExtensions();
+    
     vk::DeviceCreateInfo deviceCreateInfo(
         vk::DeviceCreateFlags(),
         static_cast<uint32_t>(m_QueueCreateInfos.size()),
         m_QueueCreateInfos.data(),
         0, nullptr, // Validation Layers
-        useExtensions ? static_cast<uint32_t>(deviceExtensions.size()) : 0,  // Extensions Count
-        useExtensions ? deviceExtensions.data() : nullptr,                   // Extensions Names
+        static_cast<uint32_t>(deviceExtensions.size()), deviceExtensions.data(), // Extension Layers
         &m_DeviceFeatures, nullptr
     );
 

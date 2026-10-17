@@ -5,28 +5,44 @@
 #include "Gram/Renderer/VulkanInstance.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
+#include "Gram/Renderer/VulkanSwapchain.hpp"
 
 GRAM_NAMESPACE_BEGIN
-
-struct VulkanRendererSpecification: public RendererSpecification
-{
-    virtual bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const override;
-    virtual bool AreExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const override;
-    virtual bool AreValidationsSupported(const std::vector<std::string>& validations, bool displayDebug = false) const override;
-};
 
 class VulkanRenderer: public Renderer {
 public:
     VulkanRenderer(const RendererSpecification* rendererSpec)
-        : m_VulkanInstance(rendererSpec)
-        , m_VulkanSurface(rendererSpec, m_VulkanInstance.GetInstance())
-        , m_VulkanDevice(rendererSpec, m_VulkanInstance.GetInstance(), m_VulkanSurface.GetSurface())
+        : m_VulkanRendererSpec(
+            dynamic_cast<const VulkanRendererSpecification*>(rendererSpec)
+        )
+        , m_VulkanInstance(
+            m_VulkanRendererSpec
+        )
+        , m_VulkanSurface(
+            m_VulkanRendererSpec,
+            static_cast<vk::Instance>(m_VulkanInstance.GetInstance())
+        )
+        , m_VulkanDevice(
+            m_VulkanRendererSpec,
+            static_cast<vk::Instance>(m_VulkanInstance.GetInstance()),
+            static_cast<vk::SurfaceKHR>(m_VulkanSurface.GetSurface())
+        )
+        , m_VulkanSwapchain(
+            m_VulkanRendererSpec,
+            m_VulkanDevice.GetQueueFamilyIndices(),
+            static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()),
+            static_cast<vk::PhysicalDevice>(m_VulkanDevice.GetPhysicalDevice()),
+            static_cast<vk::SurfaceKHR>(m_VulkanSurface.GetSurface()),
+            m_VulkanDevice.AreExtensionsSupported(m_VulkanRendererSpec)
+        )
     { }
 
 private:
+    const VulkanRendererSpecification* m_VulkanRendererSpec;
     VulkanInstance m_VulkanInstance;
     VulkanSurface m_VulkanSurface;
     VulkanDevice m_VulkanDevice;
+    VulkanSwapchain m_VulkanSwapchain;
 };
 
 GRAM_NAMESPACE_END

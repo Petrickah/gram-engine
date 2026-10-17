@@ -4,7 +4,7 @@
 
 GRAM_NAMESPACE_BEGIN
 
-VulkanSurface::VulkanSurface(const RendererSpecification* rendererSpec, const vk::Instance& instance)
+VulkanSurface::VulkanSurface(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance)
     : m_VkInstance(static_cast<VkInstance>(instance))
 {
     if (rendererSpec && CreateSurfaceKHR(rendererSpec))
@@ -21,7 +21,7 @@ VulkanSurface::~VulkanSurface()
     if (m_VkSurface) DestroySurfaceKHR();
 }
 
-bool VulkanSurface::CreateSurfaceKHR(const RendererSpecification* rendererSpec)
+bool VulkanSurface::CreateSurfaceKHR(const VulkanRendererSpecification* rendererSpec)
 {
     m_VkSurface = VK_NULL_HANDLE;
     GLFWApplication* application = rendererSpec ? dynamic_cast<GLFWApplication*>(rendererSpec->m_Application) : nullptr;
