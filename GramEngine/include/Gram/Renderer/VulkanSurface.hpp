@@ -11,15 +11,14 @@ public:
     ~VulkanSurface();
 
 public:
-    VkSurfaceKHR& GetSurface() { return m_VkSurface; }
-    const VkSurfaceKHR& GetSurface() const { return m_VkSurface; }
+    VkSurfaceKHR GetSurface() { return m_VkSurface; }
 
 private:
     bool CreateSurfaceKHR(const VulkanRendererSpecification* rendererSpec);
     bool DestroySurfaceKHR();
 
 private:
-    VkInstance m_VkInstance;
+    VkInstance m_VkInstance = VK_NULL_HANDLE;
     VkSurfaceKHR m_VkSurface = VK_NULL_HANDLE;
 };
 
