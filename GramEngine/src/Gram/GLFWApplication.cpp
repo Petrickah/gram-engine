@@ -59,6 +59,10 @@ std::vector<std::string> ApplicationSpecification::GetRequiredValidationLayers(c
 
 GLFWApplication::GLFWApplication(const ApplicationSpecification &appSpec) : Application(appSpec)
 {
+#ifdef GRAM_VULKAN_RENDERER
+    glfwInitVulkanLoader(vkGetInstanceProcAddr);
+#endif // GRAM_VULKAN_RENDERER
+
     glfwSetErrorCallback([](int code, const char* msg) { std::cerr << "GLFW error " << code << ": " << msg << "\n"; });
 
     if (!glfwInit()) {

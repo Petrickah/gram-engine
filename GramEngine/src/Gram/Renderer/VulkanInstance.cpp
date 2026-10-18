@@ -149,7 +149,7 @@ VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
         VK_MAKE_VERSION(1, 0, 0),      // Application Version
         "Gram Engine",                 // Engine Title
         VK_MAKE_VERSION(1, 0, 0),      // Engine Version
-        VK_API_VERSION_1_0,            // Vulkan API Version
+        VK_API_VERSION_1_1,            // Vulkan API Version
         nullptr
     );
 
@@ -174,8 +174,13 @@ VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
         instancePNext = &m_VkDebugMessengerCreateInfo;
     }
 
+    
     vk::InstanceCreateInfo vkInstanceCreateInfo(
+#ifdef GRAM_PLATFORM_APPLE
+        vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
+#else
         vk::InstanceCreateFlags(),
+#endif // #ifdef GRAM_PLATFORM_APPLE
         &vkApplicationInfo, // ApplicationInfo
         useValidation ? static_cast<uint32_t>(validationLayers.size()) : 0, // Layers Count
         useValidation ? validationLayers.data() : nullptr,                  // Layers Names

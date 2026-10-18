@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(GramEngine)
 
+# Apple clang still defaults to C++14 (GCC defaults to gnu++17), so std::optional & co.
+# need the standard pinned explicitly.
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 include(FetchContent)
 
 # --- gram dependencies (managed, do not edit by hand) ---

@@ -51,15 +51,36 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
         std::cout << "     [Vulkan] device extensions: \n";
     }
     
-    for (const std::string& available : extensions)
+    if (displayDebug)
     {
-        bool found = std::any_of(m_DeviceExtensions.begin(), m_DeviceExtensions.end(),
-            [available](const std::string& name) { return name == available; });
-
-        if (displayDebug && found)
+        for (const std::string& available : extensions)
         {
-            std::cout << "        - [X] device extension: "
-                      << available << "\n";
+            bool requested = std::any_of(m_DeviceExtensions.begin(), m_DeviceExtensions.end(),
+                [&available](const std::string& name) { return name == available; });
+            
+#ifndef GRAM_PLATFORM_APPLE
+            const char* marker = requested
+                               ? "        - [X]"
+                               : "        - [-]"
+                               ;
+#else
+            const char* marker = requested
+                               ? "        - [X]" : (available == Gram::vkPortabilitySubsetExtension)
+                               ? "        - [+]"
+                               : "        - [-]"
+                               ;
+#endif // #ifndef GRAM_PLATFORM_APPLE
+
+            std::cout << marker << " " << available << "\n";
+        }
+
+        // Requested extensions the device doesn't offer at all wouldn't show up above.
+        for (const std::string& requested : m_DeviceExtensions)
+        {
+            if (std::find(extensions.begin(), extensions.end(), requested) == extensions.end())
+            {
+                std::cerr << "        - [!] missing requested device extension: " << requested << "\n";
+            }
         }
     }
 
@@ -116,18 +137,34 @@ bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendere
         return false;
     }
 
-    if (rendererSpec && rendererSpec->m_DisplayDebug)
+    const bool displayDebug = rendererSpec && rendererSpec->m_DisplayDebug;
+    if (displayDebug)
     {
         std::cout << "[Vulkan] physical devices: " << "\n";
     }
 
     int32_t suitabilityScore = 0;
-    std::vector<const char*> extensions;
     std::multimap<int32_t, vk::PhysicalDevice> scoredDevices;
 
     for (const VkPhysicalDevice& device: devices)
     {
-        const vk::PhysicalDevice& deviceInstance = vk::PhysicalDevice(device);
+        const vk::PhysicalDevice deviceInstance(device);
+
+        // Listed before rating, so devices that end up rejected are visible too.
+        if (displayDebug)
+        {
+            const vk::PhysicalDeviceProperties properties = deviceInstance.getProperties();
+            std::cout << "   - physical device: "
+                      << properties.deviceName << "  "
+                      << properties.deviceID   << "  "
+                      << properties.vendorID   << "\n";
+
+            QueueFamilyIndices indices;
+            FindQueueFamilies(rendererSpec, deviceInstance, indices, true);
+
+            std::vector<std::string> extensions;
+            FindDeviceExtensions(rendererSpec, deviceInstance, extensions, true);
+        }
 
         if (rendererSpec && RatePhysicalDeviceSuitability(rendererSpec, suitabilityScore, deviceInstance))
         {
@@ -143,22 +180,14 @@ bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendere
     }
     
     m_VkPhysicalDevice = scoredDevices.lower_bound(scoredDevices.rbegin()->first)->second;
-    for (const std::pair<const int32_t, vk::PhysicalDevice>& scoredDevice: scoredDevices)
+    if (displayDebug)
     {
-        if (rendererSpec && rendererSpec->m_DisplayDebug)
+        std::cout << "[Vulkan] suitable physical devices:\n";
+        for (const std::pair<const int32_t, vk::PhysicalDevice>& scoredDevice: scoredDevices)
         {
-            std::cout << ((scoredDevice.second == m_VkPhysicalDevice)
-                          ? "   - [X] physical device: "
-                          : "   - [-] physical device: ")
-                      << scoredDevice.second.getProperties().deviceName << "  "
-                      << scoredDevice.second.getProperties().deviceID   << "  "
-                      << scoredDevice.second.getProperties().vendorID   << "\n";
-            
-            QueueFamilyIndices indices;
-            FindQueueFamilies(rendererSpec, scoredDevice.second, indices, rendererSpec->m_DisplayDebug);
-
-            std::vector<std::string> extensions;
-            FindDeviceExtensions(rendererSpec, scoredDevice.second, extensions, rendererSpec->m_DisplayDebug);
+            std::cout << ((scoredDevice.second == m_VkPhysicalDevice) ? "   - [X] " : "   - [-] ")
+                      << scoredDevice.second.getProperties().deviceName
+                      << "  (score " << scoredDevice.first << ")\n";
         }
     }
     
@@ -194,20 +223,38 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecificati
 
     suitabilityScore += deviceProperties.limits.maxImageDimension2D;
 
+    const bool displayDebug = rendererSpec && rendererSpec->m_DisplayDebug;
+    const char* deviceName = deviceProperties.deviceName.data();
+
     if (rendererSpec && !FindDeviceExtensions(rendererSpec, deviceInstance, extensions))
     {
+        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": missing requested device extensions\n";
         return false;
     }
 
     if (rendererSpec && !FindQueueFamilies(rendererSpec, deviceInstance, indices))
     {
+        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": no graphics + present queue families\n";
         return false;
     }
+
+#ifdef GRAM_PLATFORM_APPLE
+    // Two Metal-backed drivers can expose the same GPU (MoltenVK and KosmicKrisp) with identical
+    // properties; reject KosmicKrisp in favour of MoltenVK, the one offering the portability subset.
+    if (std::find(extensions.begin(), extensions.end(), Gram::vkPortabilitySubsetExtension) == extensions.end())
+    {
+        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": no portability subset extension\n";
+        return false;
+    }
+#endif
     
+#ifdef GRAM_GEOMETRY_SHADERS
     if (!deviceFeatures.geometryShader)
     {
+        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": no geometryShader feature\n";
         return false;
     }
+#endif // GRAM_GEOMETRY_SHADERS
 
     return true;
 }
@@ -279,14 +326,14 @@ bool VulkanDevice::FindDeviceExtensions(const VulkanRendererSpecification* rende
 {
     uint32_t extensionCount = 0;
     vk::Result vkResult = vk::Result::eSuccess;
-
+    
     vkResult = deviceInstance.enumerateDeviceExtensionProperties(nullptr, &extensionCount, nullptr);
     if (vkResult != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] no device extensions reported for this device: " << vk::to_string(vkResult) << "\n";
         return false;
     }
-
+    
     std::vector<vk::ExtensionProperties> availableExtensions(extensionCount);
     vkResult = deviceInstance.enumerateDeviceExtensionProperties(nullptr, &extensionCount, availableExtensions.data());
     if (vkResult != vk::Result::eSuccess)
@@ -331,15 +378,28 @@ bool VulkanDevice::CreateLogicalDevice(const VulkanRendererSpecification* render
         ));
     }
 
+    // The create info only stores pointers, so these vectors must outlive createDevice.
+    std::vector<const char*> deviceExtensions = rendererSpec->GetDeviceExtensions();
+
+#ifdef GRAM_PLATFORM_APPLE
+    // Spec: a device that offers VK_KHR_portability_subset (MoltenVK) must have it enabled.
+    // Conformant drivers don't offer it, so it can't be a hard requirement in main.
+    if (std::find(m_DeviceExtensions.begin(), m_DeviceExtensions.end(), Gram::vkPortabilitySubsetExtension) != m_DeviceExtensions.end())
+    {
+        deviceExtensions.push_back(Gram::vkPortabilitySubsetExtension);
+    }
+#endif // #ifdef GRAM_PLATFORM_APPLE
+
     if (!AreExtensionsSupported(rendererSpec))
     {
         std::cerr << "[Vulkan] no device extensions are active!\n";
         return false;
     }
 
-    // The create info only stores pointers, so these vectors must outlive createDevice.
-    const std::vector<const char*> deviceExtensions = rendererSpec->GetDeviceExtensions();
-    
+#ifdef GRAM_GEOMETRY_SHADERS
+    m_DeviceFeatures.geometryShader = VK_TRUE;
+#endif
+
     vk::DeviceCreateInfo deviceCreateInfo(
         vk::DeviceCreateFlags(),
         static_cast<uint32_t>(m_QueueCreateInfos.size()),

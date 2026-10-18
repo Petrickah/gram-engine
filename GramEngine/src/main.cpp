@@ -11,15 +11,18 @@ Gram::Application* Gram::CreateApplication(int argc, char** argv)
     appSpec.m_WindowTitle = "Gram Application with Vulkan";
 
     std::vector<const char*> extensionsLayers = {
+#ifdef GRAM_PLATFORM_APPLE
+        "VK_KHR_portability_enumeration",
+#endif // #ifdef GRAM_PLATFORM_APPLE
         "VK_EXT_debug_utils",
     };
 
     std::vector<const char*> deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
     
     std::vector<const char*> validationLayers = {
-        "VK_LAYER_KHRONOS_validation"
+        "VK_LAYER_KHRONOS_validation",
     };
     
     Gram::VulkanRendererSpecification rendererSpec;

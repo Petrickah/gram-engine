@@ -8,6 +8,11 @@
 
 GRAM_NAMESPACE_BEGIN
 
+#ifdef GRAM_PLATFORM_APPLE
+// Offered only by non-conformant drivers (MoltenVK); must be enabled whenever it's offered.
+inline constexpr const char* vkPortabilitySubsetExtension = "VK_KHR_portability_subset";
+#endif // #ifdef GRAM_PLATFORM_APPLE
+
 struct VulkanRendererSpecification: public RendererSpecification
 {
     virtual bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const override;
