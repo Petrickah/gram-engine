@@ -800,7 +800,22 @@ impl ModuleConfig {
 
         let (prefix, ext) = self.artifact_naming(target);
         let from = Path::new(build_dir).join(format!("{prefix}{}{ext}", self.name));
-        std::fs::copy(from, out).map(|_| ())
+        std::fs::copy(from, out)?;
+
+        // Compiled shaders (SPIR-V) are runtime assets the executable loads from disk, so they
+        // travel with it. Stopgap until shaders get their own module kind with N artifacts.
+        let shaders = Path::new(build_dir).join("shaders");
+        if shaders.is_dir() {
+            let dest = Path::new(out).parent().unwrap_or_else(|| Path::new(".")).join("shaders");
+            fs::create_dir_all(&dest)?;
+            for entry in fs::read_dir(&shaders)? {
+                let entry = entry?;
+                if entry.file_type()?.is_file() {
+                    fs::copy(entry.path(), dest.join(entry.file_name()))?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn save_cmake(&self, project: &Directory) -> Result<(), std::io::Error> {
