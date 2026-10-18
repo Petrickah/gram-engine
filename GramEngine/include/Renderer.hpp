@@ -9,6 +9,7 @@ class Application;
 struct RendererSpecification
 {
     bool m_DisplayDebug = false;
+    std::filesystem::path m_ProjectWorkspace = "";
     Application* m_Application = nullptr;
     std::vector<std::string> m_ExtensionLayers;
     std::vector<std::string> m_DeviceExtensions;

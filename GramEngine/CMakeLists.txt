@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(GramEngine)
 
-# Apple clang still defaults to C++14 (GCC defaults to gnu++17), so std::optional & co.
-# need the standard pinned explicitly.
-set(CMAKE_CXX_STANDARD 17)
+# Pinned explicitly: Apple clang still defaults to C++14. C++20 for designated initializers
+# (vk::...CreateInfo{ .field = ... }), the style the Khronos Vulkan tutorial uses.
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# vulkan-hpp structs only become aggregates (so designated initializers work) without their
+# constructors. Must be identical in every translation unit that includes vulkan.hpp, hence global.
+add_compile_definitions(VULKAN_HPP_NO_CONSTRUCTORS)
 
 include(FetchContent)
 
@@ -31,6 +35,7 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanInstance.cpp
     src/Gram/Renderer/VulkanSurface.cpp
     src/Gram/Renderer/VulkanSwapchain.cpp
+    src/Gram/Renderer/VulkanPipeline.cpp
     src/Gram/Renderer/VulkanShader.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
@@ -39,3 +44,43 @@ target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm)
 add_executable(GramEngine src/main.cpp)
 target_include_directories(GramEngine PRIVATE include)
 target_link_libraries(GramEngine PRIVATE GramGLFW GramRenderer)
+
+# --- shaders ---
+# HLSL -> SPIR-V at build time with the Vulkan SDK's dxc (the SDK ships it on Windows, Linux
+# and macOS; vcpkg's directx-dxc port has no macOS support). SPIR-V is platform-independent, so
+# the host's dxc is the right one even when cross-compiling for Windows. Output lands in
+# <build dir>/shaders/, which gram copies next to the built executable.
+# Stopgap until gram grows a dedicated shader module kind.
+# Plain find_program instead of FindVulkan's dxc component: that one also requires the dxcompiler
+# library for the *target* platform, which a mingw cross-build doesn't have (and doesn't need).
+# NO_CMAKE_FIND_ROOT_PATH keeps the search on the host when cross-compiling.
+find_program(GRAM_DXC_EXECUTABLE dxc
+    HINTS $ENV{VULKAN_SDK}/bin $ENV{VULKAN_SDK}/Bin
+    NO_CMAKE_FIND_ROOT_PATH
+    REQUIRED
+)
+
+set(GRAM_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
+set(GRAM_SHADER_OUTPUTS)
+
+# One .hlsl file holds both stages (VSMain/PSMain), so it compiles to <name>.vert.spv and <name>.frag.spv.
+function(gram_add_hlsl_shader name)
+    set(source ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${name}.hlsl)
+    set(vert ${GRAM_SHADER_DIR}/${name}.vert.spv)
+    set(frag ${GRAM_SHADER_DIR}/${name}.frag.spv)
+    add_custom_command(
+        OUTPUT ${vert} ${frag}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${GRAM_SHADER_DIR}
+        COMMAND ${GRAM_DXC_EXECUTABLE} -spirv -T vs_6_0 -E VSMain ${source} -Fo ${vert}
+        COMMAND ${GRAM_DXC_EXECUTABLE} -spirv -T ps_6_0 -E PSMain ${source} -Fo ${frag}
+        DEPENDS ${source}
+        COMMENT "Compiling shader ${name}.hlsl to SPIR-V"
+        VERBATIM
+    )
+    set(GRAM_SHADER_OUTPUTS ${GRAM_SHADER_OUTPUTS} ${vert} ${frag} PARENT_SCOPE)
+endfunction()
+
+gram_add_hlsl_shader(Default)
+
+add_custom_target(GramShaders DEPENDS ${GRAM_SHADER_OUTPUTS})
+add_dependencies(GramEngine GramShaders)

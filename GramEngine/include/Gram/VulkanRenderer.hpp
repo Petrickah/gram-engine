@@ -2,8 +2,9 @@
 
 #include "Renderer.hpp"
 #include "Gram/Renderer/Common.hpp"
-#include "Gram/Renderer/VulkanInstance.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
+#include "Gram/Renderer/VulkanInstance.hpp"
+#include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
@@ -35,6 +36,12 @@ public:
             static_cast<vk::SurfaceKHR>(m_VulkanSurface.GetSurface()),
             m_VulkanDevice.AreExtensionsSupported(m_VulkanRendererSpec)
         )
+        , m_VulkanPipeline(
+            m_VulkanRendererSpec,
+            static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()),
+            m_VulkanSwapchain.GetExtent2D(),
+            m_VulkanSwapchain.GetSurfaceFormat()
+        )
     { }
 
 private:
@@ -43,6 +50,7 @@ private:
     VulkanSurface m_VulkanSurface;
     VulkanDevice m_VulkanDevice;
     VulkanSwapchain m_VulkanSwapchain;
+    VulkanPipeline m_VulkanPipeline;
 };
 
 GRAM_NAMESPACE_END

@@ -144,14 +144,13 @@ VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
 
     const ApplicationSpecification& appSpec = rendererSpec->m_Application->GetAppSpec();
 
-    vk::ApplicationInfo vkApplicationInfo(
-        appSpec.m_WindowTitle.c_str(), // Application Title
-        VK_MAKE_VERSION(1, 0, 0),      // Application Version
-        "Gram Engine",                 // Engine Title
-        VK_MAKE_VERSION(1, 0, 0),      // Engine Version
-        VK_API_VERSION_1_1,            // Vulkan API Version
-        nullptr
-    );
+    vk::ApplicationInfo vkApplicationInfo {
+        .pApplicationName   = appSpec.m_WindowTitle.c_str(),
+        .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+        .pEngineName        = "Gram Engine",
+        .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
+        .apiVersion         = VK_API_VERSION_1_3
+    };
 
     // The create info only stores pointers, so these vectors must outlive createInstance.
     const std::vector<const char*> validationLayers = rendererSpec->GetValidationLayers();
@@ -175,19 +174,17 @@ VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
     }
 
     
-    vk::InstanceCreateInfo vkInstanceCreateInfo(
+    vk::InstanceCreateInfo vkInstanceCreateInfo {
+        .pNext                   = instancePNext,
 #ifdef GRAM_PLATFORM_APPLE
-        vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
-#else
-        vk::InstanceCreateFlags(),
+        .flags                   = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
 #endif // #ifdef GRAM_PLATFORM_APPLE
-        &vkApplicationInfo, // ApplicationInfo
-        useValidation ? static_cast<uint32_t>(validationLayers.size()) : 0, // Layers Count
-        useValidation ? validationLayers.data() : nullptr,                  // Layers Names
-        useExtensions ? static_cast<uint32_t>(extensionLayers.size()) : 0,  // Extensions Count
-        useExtensions ? extensionLayers.data() : nullptr,                   // Extensions Names
-        instancePNext
-    );
+        .pApplicationInfo        = &vkApplicationInfo,
+        .enabledLayerCount       = useValidation ? static_cast<uint32_t>(validationLayers.size()) : 0,
+        .ppEnabledLayerNames     = useValidation ? validationLayers.data() : nullptr,
+        .enabledExtensionCount   = useExtensions ? static_cast<uint32_t>(extensionLayers.size()) : 0,
+        .ppEnabledExtensionNames = useExtensions ? extensionLayers.data() : nullptr
+    };
 
     vk::Result vkResult = vk::createInstance(&vkInstanceCreateInfo, nullptr, &m_VkInstance);
     if (vkResult != vk::Result::eSuccess)
@@ -202,11 +199,11 @@ VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
 
 void VulkanInstance::PopulateDebugMessengerCreateInfo()
 {
-    m_VkDebugMessengerCreateInfo = vk::DebugUtilsMessengerCreateInfoEXT(
-        vk::DebugUtilsMessengerCreateFlagsEXT(),
-        vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
-        vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-        debugCallback);
+    m_VkDebugMessengerCreateInfo = vk::DebugUtilsMessengerCreateInfoEXT {
+        .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
+        .messageType     = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
+        .pfnUserCallback = debugCallback
+    };
 }
 
 void VulkanInstance::CreateDebugUtilsMessengerEXT()

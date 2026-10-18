@@ -230,6 +230,12 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecificati
         return false;
     }
 
+    if (deviceProperties.apiVersion < VK_API_VERSION_1_3)
+    {
+        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": Vulkan 1.3 not supported\n";
+        return false;
+    }
+
 #ifdef GRAM_PLATFORM_APPLE
     // Two Metal-backed drivers can expose the same GPU (MoltenVK and KosmicKrisp) with identical
     // properties; reject KosmicKrisp in favour of MoltenVK, the one offering the portability subset.
@@ -363,11 +369,11 @@ bool VulkanDevice::CreateLogicalDevice(const VulkanRendererSpecification* render
     float queuePriority = 1.0f;
     for (uint32_t family: uniqueFamilies)
     {
-        m_QueueCreateInfos.push_back(vk::DeviceQueueCreateInfo(
-            vk::DeviceQueueCreateFlags(),
-            family, 1, &queuePriority,
-            nullptr
-        ));
+        m_QueueCreateInfos.push_back(vk::DeviceQueueCreateInfo {
+            .queueFamilyIndex = family,
+            .queueCount       = 1,
+            .pQueuePriorities = &queuePriority
+        });
     }
 
     // The create info only stores pointers, so these vectors must outlive createDevice.
@@ -392,14 +398,24 @@ bool VulkanDevice::CreateLogicalDevice(const VulkanRendererSpecification* render
     m_DeviceFeatures.geometryShader = VK_TRUE;
 #endif
 
-    vk::DeviceCreateInfo deviceCreateInfo(
-        vk::DeviceCreateFlags(),
-        static_cast<uint32_t>(m_QueueCreateInfos.size()),
-        m_QueueCreateInfos.data(),
-        0, nullptr, // Validation Layers
-        static_cast<uint32_t>(deviceExtensions.size()), deviceExtensions.data(), // Extension Layers
-        &m_DeviceFeatures, nullptr
-    );
+    vk::PhysicalDeviceVulkan13Features features13 {
+        .synchronization2 = vk::True,
+        .dynamicRendering = vk::True
+    };
+
+    vk::PhysicalDeviceFeatures2 features2 {
+        .pNext    = &features13,
+        .features = m_DeviceFeatures   // geometryShader & co. move in here
+    };
+
+    // pEnabledFeatures stays null: the spec forbids it alongside a VkPhysicalDeviceFeatures2 in pNext.
+    vk::DeviceCreateInfo deviceCreateInfo {
+        .pNext                   = &features2,
+        .queueCreateInfoCount    = static_cast<uint32_t>(m_QueueCreateInfos.size()),
+        .pQueueCreateInfos       = m_QueueCreateInfos.data(),
+        .enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size()),
+        .ppEnabledExtensionNames = deviceExtensions.data()
+    };
 
     vk::Result vkResult = m_VkPhysicalDevice.createDevice(&deviceCreateInfo, nullptr, &m_VkDevice);
     if (vkResult != vk::Result::eSuccess)

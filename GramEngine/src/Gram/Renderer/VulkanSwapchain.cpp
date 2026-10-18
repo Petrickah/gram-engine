@@ -74,25 +74,24 @@ VulkanSwapchain::VulkanSwapchain(const VulkanRendererSpecification* rendererSpec
 
 bool VulkanSwapchain::CreateSwapchainImageView(vk::ImageView& imageView, const vk::Image& image, const vk::SurfaceFormatKHR& surfaceFormat)
 {
-    vk::ImageViewCreateInfo vkImageViewCreateInfo(
-        vk::ImageViewCreateFlags(),
-        image,                               // Image
-        vk::ImageViewType::e2D,              // Image View Type
-        surfaceFormat.format,                // Image Format
-        vk::ComponentMapping(                // Image Component Mapping
-            vk::ComponentSwizzle::eIdentity, // Component RED
-            vk::ComponentSwizzle::eIdentity, // Component GREEN
-            vk::ComponentSwizzle::eIdentity, // Component BLUE
-            vk::ComponentSwizzle::eIdentity  // Component ALPHA
-            ),
-        vk::ImageSubresourceRange(           // Image Subresource Range
-            vk::ImageAspectFlagBits::eColor, // Image Aspect
-            0,                               // Image Base Mip Level
-            1,                               // Image Level Count
-            0,                               // Image Base Array Layer
-            1                                // Image Layer Count
-            )
-    );
+    vk::ImageViewCreateInfo vkImageViewCreateInfo {
+        .image            = image,
+        .viewType         = vk::ImageViewType::e2D,
+        .format           = surfaceFormat.format,
+        .components       = {
+            .r = vk::ComponentSwizzle::eIdentity,
+            .g = vk::ComponentSwizzle::eIdentity,
+            .b = vk::ComponentSwizzle::eIdentity,
+            .a = vk::ComponentSwizzle::eIdentity
+        },
+        .subresourceRange = {
+            .aspectMask     = vk::ImageAspectFlagBits::eColor,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1
+        }
+    };
 
     vk::Device vkDevice = m_Device;
     vk::Result vkResult = vkDevice.createImageView(&vkImageViewCreateInfo, nullptr, &imageView);
@@ -120,24 +119,23 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, Q
     const bool concurrent = uniqueIndices.size() > 1;
     queueFamilyIndices.assign(uniqueIndices.begin(), uniqueIndices.end());
 
-    vk::SwapchainCreateInfoKHR swapchainCreateInfo(
-        vk::SwapchainCreateFlagsKHR(),                                           // Flags
-        m_Surface,                                                               // Surface
-        requestedImageCount,                                                     // Image Count
-        surfaceFormat.format,                                                    // Image Format
-        surfaceFormat.colorSpace,                                                // Image Color Space
-        extent,                                                                  // Image Extent
-        1,                                                                       // Image Array Layers
-        vk::ImageUsageFlagBits::eColorAttachment,                                // Image Usage
-        concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive, // Image Sharing Mode
-        concurrent ? static_cast<uint32_t>(queueFamilyIndices.size()) : 0,       // Queue Family Index Count
-        concurrent ? queueFamilyIndices.data() : nullptr,                        // Queue Family Indices
-        m_SupportDetails.m_Capabilities.currentTransform,                        // Pre Transform Type
-        vk::CompositeAlphaFlagBitsKHR::eOpaque,                                  // Composite Alpha Type
-        presentMode,                                                             // Present Mode
-        VK_TRUE,                                                                 // Is Clipped
-        VK_NULL_HANDLE                                                           // Old Swapchain
-    );
+    vk::SwapchainCreateInfoKHR swapchainCreateInfo {
+        .surface               = m_Surface,
+        .minImageCount         = requestedImageCount,
+        .imageFormat           = surfaceFormat.format,
+        .imageColorSpace       = surfaceFormat.colorSpace,
+        .imageExtent           = extent,
+        .imageArrayLayers      = 1,
+        .imageUsage            = vk::ImageUsageFlagBits::eColorAttachment,
+        .imageSharingMode      = concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
+        .queueFamilyIndexCount = concurrent ? static_cast<uint32_t>(queueFamilyIndices.size()) : 0,
+        .pQueueFamilyIndices   = concurrent ? queueFamilyIndices.data() : nullptr,
+        .preTransform          = m_SupportDetails.m_Capabilities.currentTransform,
+        .compositeAlpha        = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+        .presentMode           = presentMode,
+        .clipped               = vk::True,
+        .oldSwapchain          = nullptr
+    };
 
     vkResult = vkDevice.createSwapchainKHR(&swapchainCreateInfo, nullptr, &m_Swapchain);
     if (vkResult != vk::Result::eSuccess)

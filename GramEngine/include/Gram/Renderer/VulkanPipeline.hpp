@@ -1,0 +1,41 @@
+#pragma once
+
+#include "Renderer.hpp"
+#include "Gram/Renderer/VulkanShader.hpp"
+
+GRAM_NAMESPACE_BEGIN
+
+class VulkanPipeline
+{
+public:
+    VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D& extent, const vk::SurfaceFormatKHR& surfaceFormat);
+    ~VulkanPipeline();
+    
+private:
+    bool FindShaderModule(vk::ShaderModule& shaderModule, const Gram::VulkanShader &shader);
+
+private:
+    vk::Device m_Device;
+    vk::Rect2D m_Scissor;
+    vk::Viewport m_Viewport;
+    
+    std::vector<VulkanShader> m_VulkanShaders;
+    std::vector<vk::ShaderModule> m_ShaderModules;
+    std::vector<vk::DynamicState> m_DynamicStates;
+
+    vk::Pipeline m_Pipeline = VK_NULL_HANDLE;
+    vk::PipelineCache m_PipelineCache = VK_NULL_HANDLE;
+    vk::PipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
+
+    vk::PipelineDynamicStateCreateInfo m_DynamicStateCreateInfo;
+    vk::PipelineViewportStateCreateInfo m_ViewportStateCreateInfo;
+    vk::PipelineColorBlendAttachmentState m_ColorBlendAttachmentState;
+    vk::PipelineColorBlendStateCreateInfo m_ColorBlendStateCreateInfo;
+    vk::PipelineMultisampleStateCreateInfo m_MultisampleStateCreateInfo;
+    vk::PipelineVertexInputStateCreateInfo m_VertexInputStateCreateInfo;
+    vk::PipelineInputAssemblyStateCreateInfo m_InputAssemblyStateCreateInfo;
+    vk::PipelineRasterizationStateCreateInfo m_RasterizationStateCreateInfo;
+    std::vector<vk::PipelineShaderStageCreateInfo> m_ShaderStageCreateInfos;
+};
+
+GRAM_NAMESPACE_END
