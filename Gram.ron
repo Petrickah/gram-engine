@@ -16,6 +16,7 @@ BuildConfig(
             targets: [
                 "linux",
                 "windows",
+                "macos",
             ],
         ),
         ModuleConfig(
@@ -31,6 +32,7 @@ BuildConfig(
             targets: [
                 "linux",
                 "windows",
+                "macos",
             ],
         ),
     ],

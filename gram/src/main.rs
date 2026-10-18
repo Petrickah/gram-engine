@@ -29,7 +29,7 @@ enum Commands {
         /// Should new module be Git tracked
         #[arg(long)]
         git: bool,
-        /// Targets the initial module supports, comma-separated: "linux", "windows" (more later). Omit to default to just the host OS.
+        /// Targets the initial module supports, comma-separated: "linux", "windows", "macos". Omit to default to just the host OS.
         #[arg(short, long, value_delimiter = ',')]
         target: Vec<String>,
     },
@@ -41,7 +41,7 @@ enum Commands {
         /// Produce artifacts in the CI-standard layout instead of the local one.
         #[arg(long)]
         ci: bool,
-        /// Cross-build for a single target ("linux"/"windows") instead of the host OS. Can't be combined with --ci, which already builds every target declared in targets.
+        /// Cross-build for a single target ("linux"/"windows"/"macos") instead of the host OS — only the host OS itself or "windows" (via mingw) can be built. Can't be combined with --ci, which already builds every target declared in targets.
         #[arg(short, long, default_value = "")]
         target: String,
     },
@@ -74,7 +74,7 @@ enum Commands {
         /// Resolve the dependency via a vcpkg manifest (vcpkg.json) instead of FetchContent. Only valid for a cmake module; can't be combined with --url/--tag.
         #[arg(long)]
         vcpkg: bool,
-        /// Targets --module supports, comma-separated: "linux", "windows" (more later). If --module is being created, sets its initial target list (omit to default to just the host OS); if --module already exists, appends any of these not already declared.
+        /// Targets --module supports, comma-separated: "linux", "windows", "macos". If --module is being created, sets its initial target list (omit to default to just the host OS); if --module already exists, appends any of these not already declared.
         #[arg(short, long, value_delimiter = ',')]
         target: Vec<String>,
         /// Treat the dependency name as another module in this same project instead of an external one: a cargo path dependency, or (cmake) add_subdirectory + target_link_libraries. Both modules must already exist, be the same language, and the referenced one must be a "library". Can't be combined with --url/--tag/--vcpkg.
@@ -105,7 +105,7 @@ enum Commands {
         /// Path for the project we want to run
         #[arg(short, long, default_value = "")]
         path: String,
-        /// Build target to run ("linux"/"windows"). Omit to use the host OS.
+        /// Build target to run ("linux"/"windows"/"macos"). Omit to use the host OS.
         #[arg(short, long, default_value = "")]
         target: String,
         /// Arguments passed through to the running binary. Put `--` before them, e.g. `gram run -- --help`.

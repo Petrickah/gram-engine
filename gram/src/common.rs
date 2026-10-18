@@ -19,8 +19,29 @@ fn default_kind() -> String {
     String::from("runtime")
 }
 
-// macos planned later (Wave 2, MoltenVK) — not wired up yet.
-const SUPPORTED_TARGETS: [&str; 2] = ["linux", "windows"];
+const SUPPORTED_TARGETS: [&str; 3] = ["linux", "windows", "macos"];
+
+/// Whether `target` can be built from the host gram is running on: natively for the
+/// host's own OS, or Windows from anywhere via the mingw cross toolchain. There's no
+/// cross toolchain between linux and macos (either direction), so those only build natively.
+fn buildable_on_host(target: &str) -> bool {
+    target == std::env::consts::OS || target == "windows"
+}
+
+/// The `--target` triple cargo needs for `target`, or None for a native host build
+/// (plain `cargo build`, output in target/debug). Only Windows is cross-compiled.
+fn cargo_cross_triple(target: &str) -> io::Result<Option<&'static str>> {
+    if target == std::env::consts::OS {
+        return Ok(None);
+    }
+    match target {
+        "windows" => Ok(Some("x86_64-pc-windows-gnu")),
+        other => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("can't build target {other} from a {} host", std::env::consts::OS),
+        )),
+    }
+}
 
 fn validate_targets(targets: &[String]) -> io::Result<()> {
     for target in targets {
@@ -581,6 +602,13 @@ impl ModuleConfig {
         match ci {
             true => {
                 for target in &self.targets {
+                    if !buildable_on_host(target) {
+                        eprintln!(
+                            "warning: skipping module {name} target \"{target}\" — can't be built from a {} host",
+                            std::env::consts::OS
+                        );
+                        continue;
+                    }
                     self.build_target(project, ci, target)?;
                 }
                 Ok(())
@@ -592,6 +620,12 @@ impl ModuleConfig {
                         "warning: module {name} does not declare \"{target}\" as a supported target (declared: {:?})",
                         self.targets
                     );
+                }
+                if !buildable_on_host(target) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("can't build target {target} from a {} host", std::env::consts::OS),
+                    ));
                 }
                 self.build_target(project, ci, target)
             },
@@ -649,11 +683,12 @@ impl ModuleConfig {
     }
 
     /// (filename prefix, extension) for this module's build artifact on `target`.
-    /// A cmake "library" module produces a shared library (lib*.so / *.dll)
+    /// A cmake "library" module produces a shared library (lib*.so / lib*.dylib / *.dll)
     /// instead of the default executable naming.
     fn artifact_naming(&self, target: &str) -> (&'static str, &'static str) {
         match (self.lang.as_str(), self.kind.as_str(), target) {
             ("cmake", "library", "windows") => ("", ".dll"),
+            ("cmake", "library", "macos") => ("lib", ".dylib"),
             ("cmake", "library", _) => ("lib", ".so"),
             (_, _, "windows") => ("", ".exe"),
             _ => ("", ""),
@@ -670,13 +705,8 @@ impl ModuleConfig {
             // No [lib] crate-type management yet (defaults to rlib) — there's no
             // standalone binary to place under build/, just compile it. Revisit once
             // something (Corrosion, Wave 1) needs a specific crate-type artifact here.
-            match target {
-                "linux" => {},
-                "windows" => { command.args(["--target", "x86_64-pc-windows-gnu"]); },
-                other => return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("unsupported target: {other}"),
-                )),
+            if let Some(triple) = cargo_cross_triple(target)? {
+                command.args(["--target", triple]);
             }
             let status = command.status()?;
             return match status.success() {
@@ -685,21 +715,18 @@ impl ModuleConfig {
             };
         }
 
-        let from = match target {
-            "linux" => manifest_dir.join("target/debug").join(&name),
-            "windows" => {
-                command.args(["--target", "x86_64-pc-windows-gnu"]);
-                manifest_dir.join("target/x86_64-pc-windows-gnu/debug").join(format!("{name}.exe"))
+        let (_, ext) = self.artifact_naming(target);
+        let from = match cargo_cross_triple(target)? {
+            None => manifest_dir.join("target/debug").join(format!("{name}{ext}")),
+            Some(triple) => {
+                command.args(["--target", triple]);
+                manifest_dir.join(format!("target/{triple}/debug")).join(format!("{name}{ext}"))
             },
-            other => return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("unsupported target: {other}"),
-            )),
         };
 
         let status = command.status()?;
         match status.success() {
-            true => std::fs::rename(from, out),
+            true => std::fs::copy(from, out).map(|_| ()),
             false => Err(io::Error::new(io::ErrorKind::Other, "cargo build failed"))
         }
     }
@@ -732,7 +759,8 @@ impl ModuleConfig {
         }
 
         match target {
-            "linux" => {},
+            // Native host build — cmake/vcpkg pick the host compiler and triplet on their own.
+            _ if target == std::env::consts::OS => {},
             "windows" => {
                 // Cross-compiles the project itself. Without an explicit VCPKG_TARGET_TRIPLET,
                 // vcpkg defaults to the MSVC-based x64-windows triplet for any Windows target —
@@ -772,7 +800,7 @@ impl ModuleConfig {
 
         let (prefix, ext) = self.artifact_naming(target);
         let from = Path::new(build_dir).join(format!("{prefix}{}{ext}", self.name));
-        std::fs::rename(from, out)
+        std::fs::copy(from, out).map(|_| ())
     }
 
     fn save_cmake(&self, project: &Directory) -> Result<(), std::io::Error> {
@@ -788,7 +816,7 @@ impl ModuleConfig {
         };
 
         let cmakelists = format!(
-            "cmake_minimum_required(VERSION 3.20)\nproject({name})\n\ninclude(FetchContent)\n\n{DEPS_BEGIN}\n{DEPS_END}\n\n{target}"
+            "cmake_minimum_required(VERSION 3.20)\nproject({name})\n\nset(CMAKE_CXX_STANDARD 17)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)\n\ninclude(FetchContent)\n\n{DEPS_BEGIN}\n{DEPS_END}\n\n{target}"
         );
         project.write_source(&self.src, &cmakelists)?;
 
