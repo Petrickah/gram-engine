@@ -205,23 +205,15 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecificati
     const vk::PhysicalDeviceProperties& deviceProperties = deviceInstance.getProperties();
     const vk::PhysicalDeviceFeatures& deviceFeatures = deviceInstance.getFeatures();
 
-    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu)
+    switch (deviceProperties.deviceType)
     {
-        suitabilityScore += 100000;
+        case vk::PhysicalDeviceType::eDiscreteGpu:   suitabilityScore += 300000; break;
+        case vk::PhysicalDeviceType::eIntegratedGpu: suitabilityScore += 200000; break;
+        case vk::PhysicalDeviceType::eVirtualGpu:    suitabilityScore += 100000; break;
+        default: break; // eCpu / eOther: only the image limit counts, always last
     }
-
-    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu 
-        || deviceProperties.deviceType == vk::PhysicalDeviceType::eVirtualGpu)
-    {
-        suitabilityScore -= 50;
-    }
-
-    if (deviceProperties.deviceType == vk::PhysicalDeviceType::eCpu)
-    {
-        suitabilityScore -= 500;
-    }
-
-    suitabilityScore += deviceProperties.limits.maxImageDimension2D;
+    
+    suitabilityScore += deviceProperties.limits.maxImageDimension2D; // tie-break within a tier
 
     const bool displayDebug = rendererSpec && rendererSpec->m_DisplayDebug;
     const char* deviceName = deviceProperties.deviceName.data();
