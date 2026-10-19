@@ -12,7 +12,7 @@ public:
 public:
     bool IsValid() const { return static_cast<bool>(m_ShaderModule); }
 
-    const vk::ShaderModule& GetShaderModule() const { return *m_ShaderModule; }
+    VkShaderModule GetShaderModule() const { return static_cast<VkShaderModule>(*m_ShaderModule); }
     
 private:
     bool ReadShaderFile(std::vector<char>& buffer, const std::filesystem::path& workspace, const std::string &filename);

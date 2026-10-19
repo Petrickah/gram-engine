@@ -101,10 +101,12 @@ GLFWApplication::~GLFWApplication()
 
 void GLFWApplication::Run()
 {
-    while (!glfwWindowShouldClose(m_GLFWwindow))
+    while (!glfwWindowShouldClose(m_GLFWwindow) && m_Renderer->DrawFrame())
     {
         glfwPollEvents();
     }
+
+    m_Renderer->Finish();
 }
 
 GRAM_NAMESPACE_END

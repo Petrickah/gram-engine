@@ -4,11 +4,13 @@
 
 GRAM_NAMESPACE_BEGIN
 
+class VulkanFrame;
+
 struct QueueFamilyIndices
 {
     std::map<std::string, std::optional<uint32_t>> m_QueueFamiliesIndices;
 
-    bool TryGetDeviceIndices(std::vector<uint32_t>& indices);
+    bool TryGetDeviceIndices(std::vector<uint32_t>& indices) const;
     bool TryGetDeviceQueue(vk::Queue& deviceQueue, const vk::Device& device, const std::string& queueFamily);
     bool IsComplete();
 };
@@ -20,6 +22,7 @@ public:
     ~VulkanDevice();
 
 public:
+    bool Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
     bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec)
     {
         // Only ask for extensions if the device actually offers all of them;

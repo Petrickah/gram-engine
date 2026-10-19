@@ -1,0 +1,41 @@
+#pragma once
+
+#include "Common.hpp"
+#include "Gram/Renderer/VulkanDevice.hpp"
+
+GRAM_NAMESPACE_BEGIN
+
+class QueueFamilyIndices;
+
+class VulkanFrame: private UniqueObject
+{
+public:
+    VulkanFrame(const VulkanRendererSpecification* rendererSpec, const QueueFamilyIndices& indices, const vk::Device& device);
+    ~VulkanFrame();
+
+public:
+    const vk::CommandBuffer& GetCommandBuffer() const { return m_CommandBuffer; }
+
+public:
+    bool StartFrame(const uint32_t imageIndex, const std::vector<vk::Image> &images, const std::vector<vk::ImageView>& imageViews, const vk::Extent2D& extent);
+    bool EndFrame(const uint32_t imageIndex, const std::vector<vk::Image> &images);
+    bool RenderFrame(const vk::Pipeline& graphicsPipeline, const vk::Extent2D& extent);
+
+private:
+    void TransitionImageLayout(
+        const uint32_t                imageIndex,
+        const std::vector<vk::Image>& images,
+        const vk::ImageLayout         old_layout,
+        const vk::ImageLayout         new_layout,
+        const vk::AccessFlags2        src_access_mask,
+        const vk::AccessFlags2        dst_access_mask,
+        const vk::PipelineStageFlags2 src_stage_mask,
+        const vk::PipelineStageFlags2 dst_stage_mask);
+
+private:
+    vk::Device m_Device;
+    vk::CommandPool m_CommandPool;
+    vk::CommandBuffer m_CommandBuffer;
+};
+
+GRAM_NAMESPACE_END

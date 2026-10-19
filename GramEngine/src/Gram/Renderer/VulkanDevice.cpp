@@ -4,9 +4,9 @@
 
 GRAM_NAMESPACE_BEGIN
 
-bool QueueFamilyIndices::TryGetDeviceIndices(std::vector<uint32_t> &indices)
+bool QueueFamilyIndices::TryGetDeviceIndices(std::vector<uint32_t> &indices) const
 {
-    for (std::map<std::string, std::optional<uint32_t>>::iterator it = m_QueueFamiliesIndices.begin(); it != m_QueueFamiliesIndices.end(); ++it)
+    for (std::map<std::string, std::optional<uint32_t>>::const_iterator it = m_QueueFamiliesIndices.begin(); it != m_QueueFamiliesIndices.end(); ++it)
     {
         if (!it->second.has_value())
         {
@@ -94,6 +94,33 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
 VulkanDevice::~VulkanDevice()
 {
     if (m_VkDevice) m_VkDevice.destroy();
+}
+
+bool VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
+{
+    vk::Queue  graphicsQueue;
+    vk::Result result = vk::Result::eSuccess;
+    if (!m_QueueFamilyIndices.TryGetDeviceQueue(graphicsQueue, m_VkDevice, "m_GraphicsFamily"))
+    {
+        std::cerr << "[Vulkan] couldn't retrieve the graphics family queue!\n";
+        return false;
+    }
+    
+    result = graphicsQueue.submit(1, &submitInfo, drawFence);
+    if (result != vk::Result::eSuccess)
+    {
+        std::cerr << "[Vulkan] graphics request failed to submit: " << vk::to_string(result) << "!\n";
+        return false;
+    }
+
+    result = graphicsQueue.presentKHR(presentInfo);
+    if (result != vk::Result::eSuccess)
+    {
+        std::cerr << "[Vulkan] graphics presentation failed: " << vk::to_string(result) << "!\n";
+        return false;
+    }
+
+    return true;
 }
 
 VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)

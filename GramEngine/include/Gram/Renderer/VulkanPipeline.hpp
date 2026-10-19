@@ -11,6 +11,9 @@ public:
     VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D& extent, const vk::SurfaceFormatKHR& surfaceFormat);
     ~VulkanPipeline();
 
+public:
+    VkPipeline GetPipeline() const { return static_cast<VkPipeline>(m_Pipeline); }
+
 private:
     vk::Device m_Device;
     vk::Rect2D m_Scissor;

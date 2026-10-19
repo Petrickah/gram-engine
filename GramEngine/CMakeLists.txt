@@ -41,6 +41,7 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanSwapchain.cpp
     src/Gram/Renderer/VulkanPipeline.cpp
     src/Gram/Renderer/VulkanShader.cpp
+    src/Gram/Renderer/VulkanFrame.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
 target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm)

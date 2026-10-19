@@ -28,10 +28,13 @@ public:
     // m_ImageCount is only what we asked for; the driver may create more, so compare against the real images.
     bool IsValid() const { return m_Swapchain && !m_SwapchainImages.empty() && m_SwapchainImages.size() == m_SwapchainImageViews.size(); }
 
+    uint32_t GetImageCount() const { return static_cast<uint32_t>(m_SwapchainImages.size()); }
+
     const vk::Extent2D& GetExtent2D() const { return m_Extent2D; }
     const vk::SwapchainKHR& GetSwapchain() const { return m_Swapchain; }
     const vk::PresentModeKHR& GetPresentMode() const  { return m_PresentMode; }
     const vk::SurfaceFormatKHR& GetSurfaceFormat() const { return m_SurfaceFormat; }
+    const std::vector<vk::Image>& GetSwapchainImages() const { return m_SwapchainImages; }
     const std::vector<vk::ImageView>& GetSwapchainImageViews() const { return m_SwapchainImageViews; }
     
 private:

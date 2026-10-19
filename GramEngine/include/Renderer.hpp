@@ -41,10 +41,15 @@ private:
 
 };
 
-class Renderer {
+class Renderer
+{
 public:
     Renderer() = default;
     virtual ~Renderer() {};
+
+public:
+    virtual bool DrawFrame() = 0;
+    virtual bool Finish() = 0;
 };
 
 GRAM_NAMESPACE_END

@@ -11,7 +11,7 @@ public:
     ~VulkanInstance();
 
 public:
-    VkInstance GetInstance() { return static_cast<VkInstance>(m_VkInstance); }
+    VkInstance GetInstance() const { return static_cast<VkInstance>(m_VkInstance); }
 
 private:
     void PopulateDebugMessengerCreateInfo();
