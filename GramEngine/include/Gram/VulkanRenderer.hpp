@@ -62,23 +62,8 @@ public:
             return;
         }
         
-        for (int index = 0; index < m_VulkanSwapchain.GetImageCount(); index++)
+        if (!CreateRenderFinishedSemaphores())
         {
-            vk::Semaphore renderFinishedSemaphore;
-            vk::SemaphoreCreateInfo renderFinishedSemaphoreCreateInfo { };
-            result = device.createSemaphore(&renderFinishedSemaphoreCreateInfo, nullptr, &renderFinishedSemaphore);
-            
-            if (result != vk::Result::eSuccess)
-            {
-                break;
-            }
-
-            m_RenderFinishedSemaphores.push_back(renderFinishedSemaphore);
-        }
-        
-        if (m_RenderFinishedSemaphores.size() != m_VulkanSwapchain.GetImageCount())
-        {
-            std::cerr << "[Vulkan] render finish semaphore creation failed: "<< vk::to_string(result) << "!\n";
             return;
         }
 
@@ -94,6 +79,12 @@ public:
 public:
     bool DrawFrame() override;
     bool Finish() override;
+    void OnResize() override { m_SwapchainStale = true; }
+
+private:
+    bool CreateRenderFinishedSemaphores();
+    void DestroyRenderFinishedSemaphores();
+    bool RecreateSwapchain();
 
 private:
     const VulkanRendererSpecification* m_VulkanRendererSpec;
@@ -109,23 +100,71 @@ private:
     vk::Semaphore m_PresentCompleteSemaphore = nullptr;
     std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
     bool m_HasFrameStarted = false;
+    bool m_SwapchainStale = false;
 };
 
 inline VulkanRenderer::~VulkanRenderer()
 {
     vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
 
-    for (size_t index = 0; index < m_RenderFinishedSemaphores.size(); index++)
-    {
-        device.destroySemaphore(m_RenderFinishedSemaphores[index]);
-    }
+    DestroyRenderFinishedSemaphores();
 
     if (m_PresentCompleteSemaphore) device.destroySemaphore(m_PresentCompleteSemaphore);
     if (m_DrawFence) device.destroyFence(m_DrawFence);
 }
 
+inline void VulkanRenderer::DestroyRenderFinishedSemaphores()
+{
+    vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
+    for (vk::Semaphore semaphore : m_RenderFinishedSemaphores)
+    {
+        device.destroySemaphore(semaphore);
+    }
+
+    m_RenderFinishedSemaphores.clear();
+}
+
+inline bool VulkanRenderer::CreateRenderFinishedSemaphores()
+{
+    vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
+
+    DestroyRenderFinishedSemaphores();
+    for (uint32_t index = 0; index < m_VulkanSwapchain.GetImageCount(); index++)
+    {
+        vk::Semaphore renderFinishedSemaphore;
+        vk::SemaphoreCreateInfo renderFinishedSemaphoreCreateInfo { };
+        vk::Result result = device.createSemaphore(&renderFinishedSemaphoreCreateInfo, nullptr, &renderFinishedSemaphore);
+        if (result != vk::Result::eSuccess)
+        {
+            std::cerr << "[Vulkan] render finish semaphore creation failed: "<< vk::to_string(result) << "!\n";
+            return false;
+        }
+
+        m_RenderFinishedSemaphores.push_back(renderFinishedSemaphore);
+    }
+
+    return true;
+}
+
+inline bool VulkanRenderer::RecreateSwapchain()
+{
+    if (!m_VulkanSwapchain.Recreate()) return false;
+
+    // One per swapchain image, so the count can change; the old ones may also have been left
+    // signaled by a present that failed. The device is idle after Recreate(), so they are free.
+    if (!CreateRenderFinishedSemaphores()) return false;
+
+    m_SwapchainStale = false;
+    return true;
+}
+
 inline bool VulkanRenderer::DrawFrame()
 {
+    // Resized, or an earlier acquire/present reported the swapchain out of date. A false here
+    // is not fatal: it is a minimized window (or a build error already logged), so skip the
+    // frame and retry on the next one.
+    if (m_SwapchainStale && !RecreateSwapchain()) return true;
+
     vk::Result             result                   = vk::Result::eSuccess;
     vk::PipelineStageFlags waitDestinationStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
     vk::Pipeline           graphicsPipeline         = static_cast<vk::Pipeline>(m_VulkanPipeline.GetPipeline());
@@ -143,7 +182,20 @@ inline bool VulkanRenderer::DrawFrame()
 
     uint32_t imageIndex = 0;
     result = device.acquireNextImageKHR(swapChain, UINT64_MAX, m_PresentCompleteSemaphore, nullptr, &imageIndex);
-    if (result != vk::Result::eSuccess)
+    if (result == vk::Result::eErrorOutOfDateKHR)
+    {
+        // Nothing was acquired (the semaphore isn't signaled and the fence is still signaled),
+        // so just rebuild and try again next frame.
+        m_SwapchainStale = true;
+        return true;
+    }
+
+    // Suboptimal still hands over a usable image; draw this frame, rebuild after presenting.
+    if (result == vk::Result::eSuboptimalKHR)
+    {
+        m_SwapchainStale = true;
+    }
+    else if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] acquire image from swapchain failed: " << vk::to_string(result) << "\n";
         return false;
@@ -183,7 +235,20 @@ inline bool VulkanRenderer::DrawFrame()
                 .pResults             = nullptr       // Optional
             };
 
-            return m_VulkanDevice.Submit(m_DrawFence, imageIndex, swapChainImages, submitInfo, presentInfo);
+            result = m_VulkanDevice.Submit(m_DrawFence, imageIndex, swapChainImages, submitInfo, presentInfo);
+            if (result == vk::Result::eSuboptimalKHR || result == vk::Result::eErrorOutOfDateKHR)
+            {
+                m_SwapchainStale = true;
+                return true;
+            }
+
+            if (result != vk::Result::eSuccess)
+            {
+                std::cerr << "[Vulkan] graphics presentation failed: " << vk::to_string(result) << "!\n";
+                return false;
+            }
+
+            return true;
         }
     }
 

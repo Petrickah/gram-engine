@@ -71,7 +71,7 @@ GLFWApplication::GLFWApplication(const ApplicationSpecification &appSpec) : Appl
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     m_GLFWwindow = glfwCreateWindow(
         appSpec.m_WindowSize.x,         // Window Width
@@ -87,6 +87,13 @@ GLFWApplication::GLFWApplication(const ApplicationSpecification &appSpec) : Appl
         std::cerr << "failed to create GLFW window!\n";
         std::exit(EXIT_FAILURE);
     }
+
+    // Some platforms never report an out-of-date swapchain on resize, so tell the renderer directly.
+    glfwSetWindowUserPointer(m_GLFWwindow, this);
+    glfwSetFramebufferSizeCallback(m_GLFWwindow, [](GLFWwindow* window, int, int) {
+        auto* application = static_cast<GLFWApplication*>(glfwGetWindowUserPointer(window));
+        if (application && application->m_Renderer) application->m_Renderer->OnResize();
+    });
 }
 
 GLFWApplication::~GLFWApplication()
@@ -101,9 +108,20 @@ GLFWApplication::~GLFWApplication()
 
 void GLFWApplication::Run()
 {
-    while (!glfwWindowShouldClose(m_GLFWwindow) && m_Renderer->DrawFrame())
+    while (!glfwWindowShouldClose(m_GLFWwindow))
     {
         glfwPollEvents();
+
+        // Minimized: nothing to draw on, sleep until the next window event instead of spinning.
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(m_GLFWwindow, &width, &height);
+        if (width == 0 || height == 0)
+        {
+            glfwWaitEvents();
+            continue;
+        }
+
+        if (!m_Renderer->DrawFrame()) break;
     }
 
     m_Renderer->Finish();

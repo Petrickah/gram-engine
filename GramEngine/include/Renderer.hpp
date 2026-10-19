@@ -50,6 +50,9 @@ public:
 public:
     virtual bool DrawFrame() = 0;
     virtual bool Finish() = 0;
+
+    // The window's framebuffer changed size (including to or from zero when minimized).
+    virtual void OnResize() {}
 };
 
 GRAM_NAMESPACE_END

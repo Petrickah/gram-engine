@@ -96,31 +96,28 @@ VulkanDevice::~VulkanDevice()
     if (m_VkDevice) m_VkDevice.destroy();
 }
 
-bool VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
+vk::Result VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
 {
     vk::Queue  graphicsQueue;
     vk::Result result = vk::Result::eSuccess;
     if (!m_QueueFamilyIndices.TryGetDeviceQueue(graphicsQueue, m_VkDevice, "m_GraphicsFamily"))
     {
         std::cerr << "[Vulkan] couldn't retrieve the graphics family queue!\n";
-        return false;
+        return vk::Result::eErrorInitializationFailed;
     }
     
     result = graphicsQueue.submit(1, &submitInfo, drawFence);
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] graphics request failed to submit: " << vk::to_string(result) << "!\n";
-        return false;
+        return result;
     }
 
-    result = graphicsQueue.presentKHR(presentInfo);
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] graphics presentation failed: " << vk::to_string(result) << "!\n";
-        return false;
-    }
-
-    return true;
+    // The C call on purpose: vk::Queue::presentKHR asserts on anything but success/suboptimal
+    // under VULKAN_HPP_NO_EXCEPTIONS, and eErrorOutOfDateKHR is a normal outcome on resize
+    // or minimize that the caller recovers from by recreating the swapchain.
+    const VkPresentInfoKHR& rawPresentInfo = presentInfo;
+    return static_cast<vk::Result>(vkQueuePresentKHR(static_cast<VkQueue>(graphicsQueue), &rawPresentInfo));
 }
 
 VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)

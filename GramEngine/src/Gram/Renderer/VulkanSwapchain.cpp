@@ -15,61 +15,96 @@ VulkanSwapchain::~VulkanSwapchain()
 }
 
 VulkanSwapchain::VulkanSwapchain(const VulkanRendererSpecification* rendererSpec, QueueFamilyIndices& indices, vk::Device device, vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, bool extensionsSupported)
-    : m_Device(device)
+    : m_RendererSpec(rendererSpec)
+    , m_Indices(&indices)
+    , m_ExtensionsSupported(extensionsSupported)
+    , m_Device(device)
     , m_PhysicalDevice(physicalDevice)
     , m_Surface(surface)
 {
     // Every step below reads the specification and talks to the device, so bail out early.
     if (!rendererSpec || !m_Device || !m_PhysicalDevice) return;
 
-    if (rendererSpec->m_DisplayDebug)
+    Build(rendererSpec->m_DisplayDebug);
+}
+
+bool VulkanSwapchain::Recreate()
+{
+    if (!m_RendererSpec || !m_Device || !m_PhysicalDevice) return false;
+
+    // The old images and views may still be in flight.
+    vk::Device device = m_Device;
+    if (device.waitIdle() != vk::Result::eSuccess) return false;
+
+    return Build(false);
+}
+
+bool VulkanSwapchain::Build(bool showDebug)
+{
+    if (showDebug)
     {
         std::cout << "[Vulkan] swapchain configuration: \n";
     }
 
-    if (!QuerySwapchainSupport(m_PhysicalDevice, m_SupportDetails, extensionsSupported))
+    // Capabilities (notably currentExtent) change with the window, so they are queried on every build.
+    if (!QuerySwapchainSupport(m_PhysicalDevice, m_SupportDetails, m_ExtensionsSupported))
     {
         std::cerr << "   - [Vulkan] no swapchain support for the chosen device: " << vk::PhysicalDevice(m_PhysicalDevice).getProperties().deviceName << "\n";
-        return;
+        return false;
     }
 
-    if (!m_SupportDetails.ChooseSwapchainSurfaceFormat(m_SurfaceFormat, rendererSpec->m_DisplayDebug))
-    {
-        std::cerr << "   - [Vulkan] no swapchain surface format to choose!\n";
-        return;
-    }
-
-    if (!m_SupportDetails.ChooseSwapchainPresentMode(m_PresentMode, rendererSpec->m_DisplayDebug))
-    {
-        std::cerr << "   - [Vulkan] no swapchain surface present mode to choose!\n";
-        return;
-    }
-
-    if (!m_SupportDetails.ChooseSwapchainExtent(m_Extent2D, rendererSpec, rendererSpec->m_DisplayDebug))
+    vk::Extent2D extent;
+    if (!m_SupportDetails.ChooseSwapchainExtent(extent, m_RendererSpec, showDebug))
     {
         std::cerr << "   - [Vulkan] no swapchain surface extent to choose!\n";
-        return;
+        return false;
     }
 
-    if (!m_SupportDetails.ChooseSwapchainImageCount(m_ImageCount, rendererSpec->m_DisplayDebug))
+    // A minimized window reports a 0x0 surface, which can't back a swapchain. Not an error:
+    // the caller just retries once the window has a size again.
+    if (extent.width == 0 || extent.height == 0) return false;
+
+    if (!m_SupportDetails.ChooseSwapchainSurfaceFormat(m_SurfaceFormat, showDebug))
+    {
+        std::cerr << "   - [Vulkan] no swapchain surface format to choose!\n";
+        return false;
+    }
+
+    if (!m_SupportDetails.ChooseSwapchainPresentMode(m_PresentMode, showDebug))
+    {
+        std::cerr << "   - [Vulkan] no swapchain surface present mode to choose!\n";
+        return false;
+    }
+
+    if (!m_SupportDetails.ChooseSwapchainImageCount(m_ImageCount, showDebug))
     {
         std::cerr << "   - [Vulkan] no swapchain surface image count to choose!\n";
-        return;
+        return false;
     }
 
-    if (CreateSwapchain(m_SwapchainImages, indices, m_ImageCount, m_SurfaceFormat, m_Extent2D, m_PresentMode))
+    vk::Device device = m_Device;
+    for (vk::ImageView view : m_SwapchainImageViews) device.destroyImageView(view);
+    m_SwapchainImageViews.clear();
+    m_SwapchainImages.clear();
+
+    m_Extent2D = extent;
+    if (!CreateSwapchain(m_SwapchainImages, *m_Indices, m_ImageCount, m_SurfaceFormat, m_Extent2D, m_PresentMode))
+    {
+        return false;
+    }
+
+    for (const vk::Image& image: m_SwapchainImages)
     {
         vk::ImageView imageView;
-        for (const vk::Image& image: m_SwapchainImages)
+        if (!CreateSwapchainImageView(imageView, image, m_SurfaceFormat))
         {
-            if (!CreateSwapchainImageView(imageView, image, m_SurfaceFormat))
-            {
-                break; // IsValid() reports the mismatch; the views created so far are freed by the destructor.
-            }
-
-            m_SwapchainImageViews.push_back(imageView);
+            return false; // IsValid() reports the mismatch; the views created so far are freed by the destructor.
         }
+
+        m_SwapchainImageViews.push_back(imageView);
     }
+
+    return true;
 }
 
 bool VulkanSwapchain::CreateSwapchainImageView(vk::ImageView& imageView, const vk::Image& image, const vk::SurfaceFormatKHR& surfaceFormat)
@@ -134,15 +169,20 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, Q
         .compositeAlpha        = vk::CompositeAlphaFlagBitsKHR::eOpaque,
         .presentMode           = presentMode,
         .clipped               = vk::True,
-        .oldSwapchain          = nullptr
+        .oldSwapchain          = m_Swapchain
     };
 
-    vkResult = vkDevice.createSwapchainKHR(&swapchainCreateInfo, nullptr, &m_Swapchain);
+    vk::SwapchainKHR newSwapchain;
+    vkResult = vkDevice.createSwapchainKHR(&swapchainCreateInfo, nullptr, &newSwapchain);
     if (vkResult != vk::Result::eSuccess)
     {
         std::cerr << "   - [Vulkan] couldn't create the surface swapchain: " << vk::to_string(vkResult) << "\n";
         return false;
     }
+
+    // The old swapchain is retired by the create call above; its resources can go now.
+    if (m_Swapchain) vkDevice.destroySwapchainKHR(m_Swapchain);
+    m_Swapchain = newSwapchain;
 
     uint32_t imageCount = 0;
     vkResult = vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, nullptr);
