@@ -1,6 +1,8 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 
+#include <utility>
+
 GRAM_NAMESPACE_BEGIN
 
 VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D& extent, const vk::SurfaceFormatKHR& surfaceFormat)
@@ -52,30 +54,22 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
 {
     if (!rendererSpec || !device) return;
 
-    m_VulkanShaders.reserve(2);
-    m_VulkanShaders.emplace_back(rendererSpec, "shaders/Default.vert.spv", device);
-    m_VulkanShaders.emplace_back(rendererSpec, "shaders/Default.frag.spv", device);
-    if (!m_VulkanShaders[0].IsValid() || !m_VulkanShaders[1].IsValid()) return;
+    // Only needed until createGraphicsPipelines below; destroyed at the end of the constructor.
+    const VulkanShader vertShader(rendererSpec, "shaders/Default.vert.spv", device);
+    const VulkanShader fragShader(rendererSpec, "shaders/Default.frag.spv", device);
+    if (!vertShader.IsValid() || !fragShader.IsValid()) return;
     
-    vk::ShaderModule vertexShaderModule;
-    if (FindShaderModule(vertexShaderModule, m_VulkanShaders[0]))
-    {
-        m_ShaderStageCreateInfos.push_back(vk::PipelineShaderStageCreateInfo {
-            .stage  = vk::ShaderStageFlagBits::eVertex,
-            .module = vertexShaderModule,
-            .pName  = "VSMain"
-        });
-    }
-
-    vk::ShaderModule fragmentShaderModule;
-    if (FindShaderModule(fragmentShaderModule, m_VulkanShaders[1]))
-    {
-        m_ShaderStageCreateInfos.push_back(vk::PipelineShaderStageCreateInfo {
-            .stage  = vk::ShaderStageFlagBits::eFragment,
-            .module = fragmentShaderModule,
-            .pName  = "PSMain"
-        });
-    }
+    m_ShaderStageCreateInfos.reserve(2);
+    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo {
+        .stage  = vk::ShaderStageFlagBits::eVertex,
+        .module = vertShader.GetShaderModule(),
+        .pName  = "VSMain"
+    });
+    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo {
+        .stage  = vk::ShaderStageFlagBits::eFragment,
+        .module = fragShader.GetShaderModule(),
+        .pName  = "PSMain"
+    });
 
     vk::Result vkResult = vk::Result::eSuccess;
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo
@@ -94,7 +88,7 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
     vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain =
     {
         {
-            .stageCount          = 2,
+            .stageCount          = static_cast<uint32_t>(m_ShaderStageCreateInfos.size()),
             .pStages             = m_ShaderStageCreateInfos.data(),
             .pVertexInputState   = &m_VertexInputStateCreateInfo,
             .pInputAssemblyState = &m_InputAssemblyStateCreateInfo,
@@ -112,20 +106,7 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
         }
     };
 
-    // vk::PipelineCacheCreateInfo pipelineCacheCreateInfo
-    // {
-    //     .initialDataSize = 0,
-    //     .pInitialData    = nullptr,
-    // };
-
-    // vkResult = m_Device.createPipelineCache(&pipelineCacheCreateInfo, nullptr, &m_PipelineCache);
-    // if (vkResult != vk::Result::eSuccess)
-    // {
-    //     std::cerr << "[Vulkan] pipeline cache creation failed: " << vk::to_string(vkResult) << "\n";
-    //     return;
-    // }
-
-    vkResult = m_Device.createGraphicsPipelines(m_PipelineCache, 1, &pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>(), nullptr, &m_Pipeline);
+    vkResult = m_Device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>(), nullptr, &m_Pipeline);
     if (vkResult != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] pipeline creation failed: " << vk::to_string(vkResult) << "\n";
@@ -136,20 +117,7 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
 VulkanPipeline::~VulkanPipeline()
 {
     if (m_Pipeline) m_Device.destroyPipeline(m_Pipeline);
-    if (m_PipelineCache) m_Device.destroyPipelineCache(m_PipelineCache);
     if (m_PipelineLayout) m_Device.destroyPipelineLayout(m_PipelineLayout);
-}
-
-bool VulkanPipeline::FindShaderModule(vk::ShaderModule &shaderModule, const Gram::VulkanShader &shader)
-{
-    if(!shader.IsValid())
-    {
-        std::cerr << "[Vulkan] couldn't retrieve the shader module!\n";
-        return false;
-    }
-
-    shaderModule = shader.GetShaderModule();
-    return true;
 }
 
 GRAM_NAMESPACE_END

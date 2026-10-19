@@ -18,7 +18,7 @@ struct SwapChainSupportDetails
     bool ChooseSwapchainImageCount(uint32_t& imageCount, bool showDebug);
 };
 
-class VulkanSwapchain
+class VulkanSwapchain : private UniqueObject
 {
 public:
     VulkanSwapchain(const VulkanRendererSpecification* rendererSpec, QueueFamilyIndices& indices, vk::Device device, vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, bool extensionsSupported = false);

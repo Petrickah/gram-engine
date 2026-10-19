@@ -10,7 +10,8 @@
 
 GRAM_NAMESPACE_BEGIN
 
-class VulkanRenderer: public Renderer {
+class VulkanRenderer: public Renderer, private UniqueObject
+{
 public:
     VulkanRenderer(const RendererSpecification* rendererSpec)
         : m_VulkanRendererSpec(

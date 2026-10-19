@@ -4,7 +4,7 @@
 
 GRAM_NAMESPACE_BEGIN
 
-class VulkanSurface
+class VulkanSurface: private UniqueObject
 {
 public:
     VulkanSurface(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance);

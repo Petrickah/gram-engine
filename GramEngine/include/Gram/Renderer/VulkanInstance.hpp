@@ -4,7 +4,7 @@
 
 GRAM_NAMESPACE_BEGIN
 
-class VulkanInstance
+class VulkanInstance : private UniqueObject
 {
 public:
     VulkanInstance(const VulkanRendererSpecification* rendererSpec);

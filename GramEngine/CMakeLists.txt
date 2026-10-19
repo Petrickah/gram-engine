@@ -10,6 +10,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # constructors. Must be identical in every translation unit that includes vulkan.hpp, hence global.
 add_compile_definitions(VULKAN_HPP_NO_CONSTRUCTORS)
 
+# Errors are reported through vk::Result instead of vk::SystemError exceptions: the enhanced
+# calls (createShaderModuleUnique & co.) return a vk::ResultValue{ result, value } to check.
+add_compile_definitions(VULKAN_HPP_NO_EXCEPTIONS)
+
 include(FetchContent)
 
 # --- gram dependencies (managed, do not edit by hand) ---

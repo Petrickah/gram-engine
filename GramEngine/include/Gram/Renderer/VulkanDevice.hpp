@@ -13,7 +13,7 @@ struct QueueFamilyIndices
     bool IsComplete();
 };
 
-class VulkanDevice
+class VulkanDevice : private UniqueObject
 {
 public:
     VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface);
