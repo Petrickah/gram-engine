@@ -1,5 +1,6 @@
 #include "Gram/EntryPoint.hpp"
 #include "Gram/GLFWApplication.hpp"
+#include "Gram/Platform.hpp"
 #include "Gram/VulkanRenderer.hpp"
 
 Gram::Application* Gram::CreateApplication(int argc, char** argv)
@@ -30,7 +31,7 @@ Gram::Application* Gram::CreateApplication(int argc, char** argv)
 
     // The window (and GLFW) must exist before the renderer can ask for instance extensions.
     rendererSpec.m_Application      = new Gram::GLFWApplication(appSpec);
-    rendererSpec.m_ProjectWorkspace = std::filesystem::path(argv[0]).parent_path();
+    rendererSpec.m_ProjectWorkspace = Gram::GetExecutableDirectory(argc > 0 ? argv[0] : nullptr);
     rendererSpec.m_DeviceExtensions = appSpec.GetRequiredDeviceExtensions(&rendererSpec, deviceExtensions.size(), deviceExtensions.data(), rendererSpec.m_DisplayDebug);
     rendererSpec.m_ExtensionLayers  = appSpec.GetRequiredInstanceExtensions(&rendererSpec, extensionsLayers.size(), extensionsLayers.data(), rendererSpec.m_DisplayDebug);
     rendererSpec.m_ValidationLayers = appSpec.GetRequiredValidationLayers(&rendererSpec, validationLayers.size(), validationLayers.data(), rendererSpec.m_DisplayDebug);

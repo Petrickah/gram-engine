@@ -28,6 +28,12 @@ find_package(glm CONFIG REQUIRED)
 # gram:dep:glm end
 # --- end gram dependencies ---
 
+add_library(GramPlatform STATIC
+    src/Gram/Platform.cpp
+)
+target_include_directories(GramPlatform PUBLIC include)
+target_link_libraries(GramPlatform PUBLIC glm::glm)
+
 add_library(GramGLFW STATIC
     src/Gram/GLFWApplication.cpp
 )
@@ -48,7 +54,7 @@ target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm)
 
 add_executable(GramEngine src/main.cpp)
 target_include_directories(GramEngine PRIVATE include)
-target_link_libraries(GramEngine PRIVATE GramGLFW GramRenderer)
+target_link_libraries(GramEngine PRIVATE GramGLFW GramRenderer GramPlatform)
 
 # --- shaders ---
 # HLSL -> SPIR-V at build time with the Vulkan SDK's dxc (the SDK ships it on Windows, Linux
