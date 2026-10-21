@@ -13,6 +13,10 @@ GRAM_NAMESPACE_BEGIN
 inline constexpr const char* vkPortabilitySubsetExtension = "VK_KHR_portability_subset";
 #endif // #ifdef GRAM_PLATFORM_APPLE
 
+// The max number of frames that can be rendered at a time;
+// One active render while the other is presented on the screen.
+inline constexpr uint32_t vkMaxFramesInFlight = 2;
+
 struct VulkanRendererSpecification: public RendererSpecification
 {
     virtual bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const override;

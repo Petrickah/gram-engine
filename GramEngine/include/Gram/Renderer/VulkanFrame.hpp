@@ -14,15 +14,16 @@ public:
     ~VulkanFrame();
 
 public:
-    const vk::CommandBuffer& GetCommandBuffer() const { return m_CommandBuffer; }
+    const vk::CommandBuffer& GetCommandBuffer(uint32_t frameIndex) const { return m_CommandBuffers[frameIndex]; }
 
 public:
-    bool StartFrame(const uint32_t imageIndex, const std::vector<vk::Image> &images, const std::vector<vk::ImageView>& imageViews, const vk::Extent2D& extent);
-    bool EndFrame(const uint32_t imageIndex, const std::vector<vk::Image> &images);
-    bool RenderFrame(const vk::Pipeline& graphicsPipeline, const vk::Extent2D& extent);
+    bool StartFrame(const uint32_t frameIndex, const uint32_t imageIndex, const std::vector<vk::Image> &images, const std::vector<vk::ImageView>& imageViews, const vk::Extent2D& extent);
+    bool EndFrame(const uint32_t frameIndex, const uint32_t imageIndex, const std::vector<vk::Image> &images);
+    bool RenderFrame(const uint32_t frameIndex, const vk::Pipeline& graphicsPipeline, const vk::Extent2D& extent);
 
 private:
     void TransitionImageLayout(
+        const uint32_t                frameIndex,
         const uint32_t                imageIndex,
         const std::vector<vk::Image>& images,
         const vk::ImageLayout         old_layout,
@@ -35,7 +36,7 @@ private:
 private:
     vk::Device m_Device;
     vk::CommandPool m_CommandPool;
-    vk::CommandBuffer m_CommandBuffer;
+    std::vector<vk::CommandBuffer> m_CommandBuffers;
 };
 
 GRAM_NAMESPACE_END

@@ -51,27 +51,18 @@ public:
             static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
         )
     {
-        vk::Result result = vk::Result::eSuccess;
-        vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
-        
-        vk::SemaphoreCreateInfo presentCompleteSemaphoreCreateInfo { };
-        result = device.createSemaphore(&presentCompleteSemaphoreCreateInfo, nullptr, &m_PresentCompleteSemaphore);
-        if (result != vk::Result::eSuccess)
-        {
-            std::cerr << "[Vulkan] present complete semaphore creation failed: "<< vk::to_string(result) << "!\n";
-            return;
-        }
-        
         if (!CreateRenderFinishedSemaphores())
         {
             return;
         }
 
-        vk::FenceCreateInfo fenceCreateInfo { .flags = vk::FenceCreateFlagBits::eSignaled };
-        result = device.createFence(&fenceCreateInfo, nullptr, &m_DrawFence);
-        if (result != vk::Result::eSuccess)
+        if (!CreatePresentCompleteSemaphores())
         {
-            std::cerr << "[Vulkan] draw fence creation failed: "<< vk::to_string(result) << "!\n";
+            return;
+        }
+
+        if (!CreateInFlightFences())
+        { 
             return;
         }
     }
@@ -83,7 +74,11 @@ public:
 
 private:
     bool CreateRenderFinishedSemaphores();
+    bool CreatePresentCompleteSemaphores();
+    bool CreateInFlightFences();
     void DestroyRenderFinishedSemaphores();
+    void DestroyPresentCompleteSemaphores();
+    void DestroyInFlightFences();
     bool RecreateSwapchain();
 
 private:
@@ -96,21 +91,19 @@ private:
     VulkanFrame m_VulkanFrame;
 
 private:
-    vk::Fence     m_DrawFence                = nullptr;
-    vk::Semaphore m_PresentCompleteSemaphore = nullptr;
+    std::vector<vk::Fence> m_InFlightDrawFences;
+    std::vector<vk::Semaphore> m_PresentCompleteSemaphores;
     std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
     bool m_HasFrameStarted = false;
-    bool m_SwapchainStale = false;
+    bool m_SwapchainStale  = false;
+    uint32_t m_FrameIndex  = 0;
 };
 
 inline VulkanRenderer::~VulkanRenderer()
 {
-    vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
-
     DestroyRenderFinishedSemaphores();
-
-    if (m_PresentCompleteSemaphore) device.destroySemaphore(m_PresentCompleteSemaphore);
-    if (m_DrawFence) device.destroyFence(m_DrawFence);
+    DestroyPresentCompleteSemaphores();
+    DestroyInFlightFences();
 }
 
 inline void VulkanRenderer::DestroyRenderFinishedSemaphores()
@@ -122,6 +115,28 @@ inline void VulkanRenderer::DestroyRenderFinishedSemaphores()
     }
 
     m_RenderFinishedSemaphores.clear();
+}
+
+inline void VulkanRenderer::DestroyPresentCompleteSemaphores()
+{
+    vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
+    for (vk::Semaphore semaphore : m_PresentCompleteSemaphores)
+    {
+        device.destroySemaphore(semaphore);
+    }
+
+    m_PresentCompleteSemaphores.clear();
+}
+
+inline void VulkanRenderer::DestroyInFlightFences()
+{
+    vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
+    for (vk::Fence fence : m_InFlightDrawFences)
+    {
+        device.destroyFence(fence);
+    }
+
+    m_InFlightDrawFences.clear();
 }
 
 inline bool VulkanRenderer::CreateRenderFinishedSemaphores()
@@ -143,6 +158,61 @@ inline bool VulkanRenderer::CreateRenderFinishedSemaphores()
         m_RenderFinishedSemaphores.push_back(renderFinishedSemaphore);
     }
 
+    return true;
+}
+
+inline bool VulkanRenderer::CreatePresentCompleteSemaphores()
+{
+    vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
+
+    auto createPresentSemaphores = [&device](uint32_t frameIndex, std::vector<vk::Semaphore>& presentSemaphores)
+    {
+        vk::Semaphore presentCompleteSemaphore;
+        vk::SemaphoreCreateInfo presentCompleteSemaphoreCreateInfo { };
+        vk::Result result = device.createSemaphore(&presentCompleteSemaphoreCreateInfo, nullptr, &presentCompleteSemaphore);
+        if (result != vk::Result::eSuccess)
+        {
+            std::cerr << "[Vulkan] render finish semaphore creation failed: "<< vk::to_string(result) << "!\n";
+            return false;
+        }
+
+        presentSemaphores[frameIndex] = presentCompleteSemaphore;
+        return true;
+    };
+
+    m_PresentCompleteSemaphores.resize(Gram::vkMaxFramesInFlight);
+    for (uint32_t frameIndex = 0; frameIndex < Gram::vkMaxFramesInFlight; frameIndex++)
+    {
+        if (!createPresentSemaphores(frameIndex, m_PresentCompleteSemaphores)) return false;
+    }
+
+    return true;
+}
+
+inline bool VulkanRenderer::CreateInFlightFences()
+{
+    vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
+    auto createFlightFences = [&device](uint32_t frameIndex, std::vector<vk::Fence> &flightFences)
+    {
+        vk::Fence inFlightFence;
+        vk::FenceCreateInfo fenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled};
+        vk::Result result = device.createFence(&fenceCreateInfo, nullptr, &inFlightFence);
+        if (result != vk::Result::eSuccess)
+        {
+            std::cerr << "[Vulkan] draw fence creation failed: " << vk::to_string(result) << "!\n";
+            return false;
+        }
+
+        flightFences[frameIndex] = inFlightFence;
+        return true;
+    };
+
+    m_InFlightDrawFences.resize(Gram::vkMaxFramesInFlight);
+    for (uint32_t frameIndex = 0; frameIndex < Gram::vkMaxFramesInFlight; frameIndex++)
+    {
+        if (!createFlightFences(frameIndex, m_InFlightDrawFences))
+            return false;
+    }
     return true;
 }
 
@@ -171,9 +241,9 @@ inline bool VulkanRenderer::DrawFrame()
     vk::Device             device                   = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
     vk::SwapchainKHR       swapChain                = static_cast<vk::SwapchainKHR>(m_VulkanSwapchain.GetSwapchain());
     vk::Extent2D           swapChainExtent          = m_VulkanSwapchain.GetExtent2D();
-    vk::CommandBuffer      commandBuffer            = m_VulkanFrame.GetCommandBuffer();
+    vk::CommandBuffer      commandBuffer            = m_VulkanFrame.GetCommandBuffer(m_FrameIndex);
 
-    result = device.waitForFences(1, &m_DrawFence, vk::True, UINT64_MAX);
+    result = device.waitForFences(1, &m_InFlightDrawFences[m_FrameIndex], vk::True, UINT64_MAX);
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] wait for fence failed: " << vk::to_string(result) << "\n";
@@ -181,7 +251,7 @@ inline bool VulkanRenderer::DrawFrame()
     }
 
     uint32_t imageIndex = 0;
-    result = device.acquireNextImageKHR(swapChain, UINT64_MAX, m_PresentCompleteSemaphore, nullptr, &imageIndex);
+    result = device.acquireNextImageKHR(swapChain, UINT64_MAX, m_PresentCompleteSemaphores[m_FrameIndex], nullptr, &imageIndex);
     if (result == vk::Result::eErrorOutOfDateKHR)
     {
         // Nothing was acquired (the semaphore isn't signaled and the fence is still signaled),
@@ -201,7 +271,7 @@ inline bool VulkanRenderer::DrawFrame()
         return false;
     }
 
-    result = device.resetFences(1, &m_DrawFence);
+    result = device.resetFences(1, &m_InFlightDrawFences[m_FrameIndex]);
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] reset fences failed: " << vk::to_string(result) << "\n";
@@ -210,15 +280,15 @@ inline bool VulkanRenderer::DrawFrame()
 
     const std::vector<vk::Image>&     swapChainImages     = m_VulkanSwapchain.GetSwapchainImages();
     const std::vector<vk::ImageView>& swapChainImageViews = m_VulkanSwapchain.GetSwapchainImageViews();
-    if (m_VulkanFrame.StartFrame(imageIndex, swapChainImages, swapChainImageViews, swapChainExtent))
+    if (m_VulkanFrame.StartFrame(m_FrameIndex, imageIndex, swapChainImages, swapChainImageViews, swapChainExtent))
     {
-        m_VulkanFrame.RenderFrame(graphicsPipeline, swapChainExtent);
+        m_VulkanFrame.RenderFrame(m_FrameIndex, graphicsPipeline, swapChainExtent);
 
-        if (m_VulkanFrame.EndFrame(imageIndex, swapChainImages))
+        if (m_VulkanFrame.EndFrame(m_FrameIndex, imageIndex, swapChainImages))
         {
             vk::SubmitInfo submitInfo {
                 .waitSemaphoreCount   = 1,
-                .pWaitSemaphores      = &m_PresentCompleteSemaphore,
+                .pWaitSemaphores      = &m_PresentCompleteSemaphores[m_FrameIndex],
                 .pWaitDstStageMask    = &waitDestinationStageMask,
                 .commandBufferCount   = 1,
                 .pCommandBuffers      = &commandBuffer,
@@ -235,7 +305,7 @@ inline bool VulkanRenderer::DrawFrame()
                 .pResults             = nullptr       // Optional
             };
 
-            result = m_VulkanDevice.Submit(m_DrawFence, imageIndex, swapChainImages, submitInfo, presentInfo);
+            result = m_VulkanDevice.Submit(m_InFlightDrawFences[m_FrameIndex], imageIndex, swapChainImages, submitInfo, presentInfo);
             if (result == vk::Result::eSuboptimalKHR || result == vk::Result::eErrorOutOfDateKHR)
             {
                 m_SwapchainStale = true;
@@ -248,6 +318,7 @@ inline bool VulkanRenderer::DrawFrame()
                 return false;
             }
 
+            m_FrameIndex = (m_FrameIndex + 1) % Gram::vkMaxFramesInFlight;
             return true;
         }
     }

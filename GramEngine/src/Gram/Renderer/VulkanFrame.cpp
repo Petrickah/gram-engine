@@ -21,13 +21,14 @@ VulkanFrame::VulkanFrame(const VulkanRendererSpecification *rendererSpec, const 
         return;
     }
 
-    vk::CommandBufferAllocateInfo allocInfo; { 
-        allocInfo.commandPool        = m_CommandPool; 
-        allocInfo.level              = vk::CommandBufferLevel::ePrimary; 
-        allocInfo.commandBufferCount = 1;
+    m_CommandBuffers.resize(Gram::vkMaxFramesInFlight);
+    vk::CommandBufferAllocateInfo allocInfo {
+        .commandPool = m_CommandPool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = Gram::vkMaxFramesInFlight
     };
 
-    result = m_Device.allocateCommandBuffers(&allocInfo, &m_CommandBuffer);
+    result = m_Device.allocateCommandBuffers(&allocInfo, m_CommandBuffers.data());
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] command buffer allocation failed: " << vk::to_string(result) << "\n";
@@ -38,9 +39,11 @@ VulkanFrame::VulkanFrame(const VulkanRendererSpecification *rendererSpec, const 
 VulkanFrame::~VulkanFrame()
 {
     if (m_CommandPool) m_Device.destroyCommandPool(m_CommandPool);
+    if (!m_CommandBuffers.empty()) m_CommandBuffers.clear();
 }
 
 void VulkanFrame::TransitionImageLayout(
+    const uint32_t                frameIndex,
     const uint32_t                imageIndex,
     const std::vector<vk::Image>& images,
     const vk::ImageLayout         old_layout,
@@ -74,13 +77,13 @@ void VulkanFrame::TransitionImageLayout(
         .pImageMemoryBarriers    = &barrier
     };
 
-    m_CommandBuffer.pipelineBarrier2(dependency_info);
+    m_CommandBuffers[frameIndex].pipelineBarrier2(dependency_info);
 }
 
-bool VulkanFrame::StartFrame(const uint32_t imageIndex, const std::vector<vk::Image> &images, const std::vector<vk::ImageView> &imageViews, const vk::Extent2D &extent)
+bool VulkanFrame::StartFrame(const uint32_t frameIndex, const uint32_t imageIndex, const std::vector<vk::Image> &images, const std::vector<vk::ImageView> &imageViews, const vk::Extent2D &extent)
 {
     vk::CommandBufferBeginInfo beginInfo{};
-    vk::Result result = m_CommandBuffer.begin(&beginInfo);
+    vk::Result result = m_CommandBuffers[frameIndex].begin(&beginInfo);
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] starting rendering the frame failed: " << vk::to_string(result) << "\n";
@@ -89,6 +92,7 @@ bool VulkanFrame::StartFrame(const uint32_t imageIndex, const std::vector<vk::Im
 
     // Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
     TransitionImageLayout(
+        frameIndex,
         imageIndex,
         images,
         vk::ImageLayout::eUndefined,
@@ -117,27 +121,28 @@ bool VulkanFrame::StartFrame(const uint32_t imageIndex, const std::vector<vk::Im
     };
 
     // Begin rendering
-    m_CommandBuffer.beginRendering(renderingInfo);
+    m_CommandBuffers[frameIndex].beginRendering(renderingInfo);
     return true;
 }
 
-bool VulkanFrame::RenderFrame(const vk::Pipeline& graphicsPipeline, const vk::Extent2D& extent)
+bool VulkanFrame::RenderFrame(const uint32_t frameIndex, const vk::Pipeline& graphicsPipeline, const vk::Extent2D& extent)
 {
-    m_CommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
-    m_CommandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));
-    m_CommandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), extent));
-    m_CommandBuffer.draw(3, 1, 0, 0);
+    m_CommandBuffers[frameIndex].bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline);
+    m_CommandBuffers[frameIndex].setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));
+    m_CommandBuffers[frameIndex].setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), extent));
+    m_CommandBuffers[frameIndex].draw(3, 1, 0, 0);
 
     return true;
 }
 
-bool VulkanFrame::EndFrame(const uint32_t imageIndex, const std::vector<vk::Image> &images)
+bool VulkanFrame::EndFrame(const uint32_t frameIndex, const uint32_t imageIndex, const std::vector<vk::Image> &images)
 {
     // End rendering
-    m_CommandBuffer.endRendering();
+    m_CommandBuffers[frameIndex].endRendering();
 
     // After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR
     TransitionImageLayout(
+        frameIndex,
         imageIndex,
         images,
         vk::ImageLayout::eColorAttachmentOptimal,
@@ -148,7 +153,7 @@ bool VulkanFrame::EndFrame(const uint32_t imageIndex, const std::vector<vk::Imag
         vk::PipelineStageFlagBits2::eBottomOfPipe               // dstStage
     );
 
-    vk::Result result = m_CommandBuffer.end();
+    vk::Result result = m_CommandBuffers[frameIndex].end();
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] finishing rendering the frame failed: " << vk::to_string(result) << "\n";
