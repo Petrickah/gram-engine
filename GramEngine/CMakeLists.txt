@@ -26,8 +26,12 @@ find_package(glfw3 CONFIG REQUIRED)
 # gram:dep:glm begin
 find_package(glm CONFIG REQUIRED)
 # gram:dep:glm end
+# gram:dep:imgui begin
+find_package(imgui CONFIG REQUIRED)
+# gram:dep:imgui end
 # --- end gram dependencies ---
 
+# --- Gram Engine ---
 add_library(GramPlatform STATIC
     src/Gram/Platform.cpp
 )
@@ -48,9 +52,10 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanPipeline.cpp
     src/Gram/Renderer/VulkanShader.cpp
     src/Gram/Renderer/VulkanFrame.cpp
+    src/Gram/Renderer/VulkanImGui.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
-target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm)
+target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui)
 
 add_executable(GramEngine src/main.cpp)
 target_include_directories(GramEngine PRIVATE include)

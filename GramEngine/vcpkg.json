@@ -4,6 +4,7 @@
     "dependencies": [
         { "name": "vulkan", "platform": "windows" },
         { "name": "vulkan-headers", "platform": "!windows" },
+        { "name": "imgui", "features": ["glfw-binding", "vulkan-binding", "docking-experimental"] },
         "glfw3",
         "glm"
     ]

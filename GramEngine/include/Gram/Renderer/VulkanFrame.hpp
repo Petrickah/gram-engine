@@ -14,7 +14,7 @@ public:
     ~VulkanFrame();
 
 public:
-    const vk::CommandBuffer& GetCommandBuffer(uint32_t frameIndex) const { return m_CommandBuffers[frameIndex]; }
+    VkCommandBuffer GetCommandBuffer(uint32_t frameIndex) const { return static_cast<VkCommandBuffer>(m_CommandBuffers[frameIndex]); }
 
 public:
     bool StartFrame(const uint32_t frameIndex, const uint32_t imageIndex, const std::vector<vk::Image> &images, const std::vector<vk::ImageView>& imageViews, const vk::Extent2D& extent);

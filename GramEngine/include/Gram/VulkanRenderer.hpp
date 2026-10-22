@@ -8,6 +8,7 @@
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 #include "Gram/Renderer/VulkanFrame.hpp"
+#include "Gram/Renderer/VulkanImGui.hpp"
 
 GRAM_NAMESPACE_BEGIN
 
@@ -50,6 +51,15 @@ public:
             m_VulkanDevice.GetQueueFamilyIndices(),
             static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
         )
+        , m_VulkanImGui(
+            m_VulkanRendererSpec,
+            static_cast<vk::Instance>(m_VulkanInstance.GetInstance()),
+            static_cast<vk::PhysicalDevice>(m_VulkanDevice.GetPhysicalDevice()),
+            static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()),
+            m_VulkanSwapchain.GetSurfaceFormat(),
+            m_VulkanDevice.GetQueueFamilyIndices(),
+            m_VulkanSwapchain.GetImageCount()
+        )
     {
         if (!CreateRenderFinishedSemaphores())
         {
@@ -89,6 +99,7 @@ private:
     VulkanSwapchain m_VulkanSwapchain;
     VulkanPipeline m_VulkanPipeline;
     VulkanFrame m_VulkanFrame;
+    VulkanImGui m_VulkanImGui;
 
 private:
     std::vector<vk::Fence> m_InFlightDrawFences;
@@ -240,8 +251,8 @@ inline bool VulkanRenderer::DrawFrame()
     vk::Pipeline           graphicsPipeline         = static_cast<vk::Pipeline>(m_VulkanPipeline.GetPipeline());
     vk::Device             device                   = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
     vk::SwapchainKHR       swapChain                = static_cast<vk::SwapchainKHR>(m_VulkanSwapchain.GetSwapchain());
+    vk::CommandBuffer      commandBuffer            = static_cast<vk::CommandBuffer>(m_VulkanFrame.GetCommandBuffer(m_FrameIndex));
     vk::Extent2D           swapChainExtent          = m_VulkanSwapchain.GetExtent2D();
-    vk::CommandBuffer      commandBuffer            = m_VulkanFrame.GetCommandBuffer(m_FrameIndex);
 
     result = device.waitForFences(1, &m_InFlightDrawFences[m_FrameIndex], vk::True, UINT64_MAX);
     if (result != vk::Result::eSuccess)
@@ -283,6 +294,7 @@ inline bool VulkanRenderer::DrawFrame()
     if (m_VulkanFrame.StartFrame(m_FrameIndex, imageIndex, swapChainImages, swapChainImageViews, swapChainExtent))
     {
         m_VulkanFrame.RenderFrame(m_FrameIndex, graphicsPipeline, swapChainExtent);
+        m_VulkanImGui.RenderFrame(commandBuffer);
 
         if (m_VulkanFrame.EndFrame(m_FrameIndex, imageIndex, swapChainImages))
         {
@@ -339,6 +351,7 @@ inline bool VulkanRenderer::Finish()
         return false;
     }
 
+    m_VulkanImGui.Finish();
     return true;
 }
 

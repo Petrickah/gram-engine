@@ -10,7 +10,15 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
                                                       vk::DebugUtilsMessengerCallbackDataEXT const * pCallbackData,
                                                       void *                                         pUserData)
 {
-    std::cout << "[Vulkan] validation layer: " << pCallbackData->pMessage << std::endl;
+    // ImGui's backend (1.92.9b docking) transitions secondary-viewport swapchain
+    // images without acquiring them first; not ours to fix.
+    constexpr std::string_view nonAcquiredSwapchainImageUsed = "UNASSIGNED-non-acquired-swapchain-image-used";
+    if (pCallbackData->pMessageIdName && std::string_view(pCallbackData->pMessageIdName) == nonAcquiredSwapchainImageUsed)
+    {
+        return VK_FALSE;
+    }
+
+    std::cout << "[Vulkan] validation layer (" << pCallbackData->pMessageIdName << "): " << pCallbackData->pMessage << std::endl;
     return VK_FALSE;
 }
 

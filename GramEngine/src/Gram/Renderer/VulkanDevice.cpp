@@ -2,6 +2,8 @@
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/VulkanRenderer.hpp"
 
+#include <imgui.h>
+
 GRAM_NAMESPACE_BEGIN
 
 bool QueueFamilyIndices::TryGetDeviceIndices(std::vector<uint32_t> &indices) const
@@ -98,26 +100,29 @@ VulkanDevice::~VulkanDevice()
 
 vk::Result VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
 {
-    vk::Queue  graphicsQueue;
+    vk::Queue  presentQueue;
     vk::Result result = vk::Result::eSuccess;
-    if (!m_QueueFamilyIndices.TryGetDeviceQueue(graphicsQueue, m_VkDevice, "m_GraphicsFamily"))
+    if (!m_QueueFamilyIndices.TryGetDeviceQueue(presentQueue, m_VkDevice, "m_PresentFamily"))
     {
         std::cerr << "[Vulkan] couldn't retrieve the graphics family queue!\n";
         return vk::Result::eErrorInitializationFailed;
     }
     
-    result = graphicsQueue.submit(1, &submitInfo, drawFence);
+    result = presentQueue.submit(1, &submitInfo, drawFence);
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] graphics request failed to submit: " << vk::to_string(result) << "!\n";
         return result;
     }
 
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+
     // The C call on purpose: vk::Queue::presentKHR asserts on anything but success/suboptimal
     // under VULKAN_HPP_NO_EXCEPTIONS, and eErrorOutOfDateKHR is a normal outcome on resize
     // or minimize that the caller recovers from by recreating the swapchain.
     const VkPresentInfoKHR& rawPresentInfo = presentInfo;
-    return static_cast<vk::Result>(vkQueuePresentKHR(static_cast<VkQueue>(graphicsQueue), &rawPresentInfo));
+    return static_cast<vk::Result>(vkQueuePresentKHR(static_cast<VkQueue>(presentQueue), &rawPresentInfo));
 }
 
 VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)

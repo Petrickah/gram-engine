@@ -28,6 +28,7 @@ BuildConfig(
                 "vulkan",
                 "glfw3",
                 "glm",
+                "imgui",
             ],
             targets: [
                 "linux",
