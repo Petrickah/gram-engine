@@ -12,8 +12,7 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
 {
     // ImGui's backend (1.92.9b docking) transitions secondary-viewport swapchain
     // images without acquiring them first; not ours to fix.
-    constexpr std::string_view nonAcquiredSwapchainImageUsed = "UNASSIGNED-non-acquired-swapchain-image-used";
-    if (pCallbackData->pMessageIdName && std::string_view(pCallbackData->pMessageIdName) == nonAcquiredSwapchainImageUsed)
+    if (pCallbackData->pMessageIdName && std::string_view(pCallbackData->pMessageIdName) == Gram::vkNonAcquiredSwapchainImageUsed)
     {
         return VK_FALSE;
     }

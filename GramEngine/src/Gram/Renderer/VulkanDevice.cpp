@@ -100,15 +100,23 @@ VulkanDevice::~VulkanDevice()
 
 vk::Result VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
 {
+    vk::Queue  graphicsQueue;
     vk::Queue  presentQueue;
     vk::Result result = vk::Result::eSuccess;
+
     if (!m_QueueFamilyIndices.TryGetDeviceQueue(presentQueue, m_VkDevice, "m_PresentFamily"))
+    {
+        std::cerr << "[Vulkan] couldn't retrieve the present family queue!\n";
+        return vk::Result::eErrorInitializationFailed;
+    }
+
+    if (!m_QueueFamilyIndices.TryGetDeviceQueue(graphicsQueue, m_VkDevice, "m_GraphicsFamily"))
     {
         std::cerr << "[Vulkan] couldn't retrieve the graphics family queue!\n";
         return vk::Result::eErrorInitializationFailed;
     }
     
-    result = presentQueue.submit(1, &submitInfo, drawFence);
+    result = graphicsQueue.submit(1, &submitInfo, drawFence);
     if (result != vk::Result::eSuccess)
     {
         std::cerr << "[Vulkan] graphics request failed to submit: " << vk::to_string(result) << "!\n";

@@ -17,6 +17,10 @@ inline constexpr const char* vkPortabilitySubsetExtension = "VK_KHR_portability_
 // One active render while the other is presented on the screen.
 inline constexpr uint32_t vkMaxFramesInFlight = 2;
 
+// ImGui's backend (1.92.9b docking) transitions secondary-viewport swapchain
+// images without acquiring them first; not ours to fix.
+inline constexpr const char* vkNonAcquiredSwapchainImageUsed = "UNASSIGNED-non-acquired-swapchain-image-used";
+
 struct VulkanRendererSpecification: public RendererSpecification
 {
     virtual bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const override;

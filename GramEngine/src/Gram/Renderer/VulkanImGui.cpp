@@ -58,7 +58,7 @@ VulkanImGui::VulkanImGui(
                                ;
     
     vk::Queue graphicsQueue;
-    if (!queueFamilyIndices.TryGetDeviceQueue(graphicsQueue, device, "m_GraphicsFamily"))
+    if (!queueFamilyIndices.IsComplete() || !queueFamilyIndices.TryGetDeviceQueue(graphicsQueue, device, "m_GraphicsFamily"))
     {
         return;
     }
@@ -69,6 +69,7 @@ VulkanImGui::VulkanImGui(
         .Instance            = static_cast<VkInstance>(instance),
         .PhysicalDevice      = static_cast<VkPhysicalDevice>(physicalDevice),
         .Device              = static_cast<VkDevice>(device),
+        .QueueFamily         = queueFamilyIndices.m_QueueFamiliesIndices["m_GraphicsFamily"].value(),
         .Queue               = static_cast<VkQueue>(graphicsQueue),
         .DescriptorPool      = static_cast<VkDescriptorPool>(*m_ImGuiPool),
         .MinImageCount       = imageCount,
