@@ -1,6 +1,7 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 #include <utility>
 
 GRAM_NAMESPACE_BEGIN
@@ -71,19 +72,13 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
         .pName  = "PSMain"
     });
 
-    vk::Result vkResult = vk::Result::eSuccess;
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo
     {
         .setLayoutCount         = 0,
         .pushConstantRangeCount = 0
     };
 
-    vkResult = device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_PipelineLayout);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] pipeline layout creation failed: " << vk::to_string(vkResult) << "\n";
-        return;
-    }
+    GramVulkanCheckVoid(device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_PipelineLayout), "pipeline layout creation failed");
 
     vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain =
     {
@@ -106,12 +101,7 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
         }
     };
 
-    vkResult = m_Device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>(), nullptr, &m_Pipeline);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] pipeline creation failed: " << vk::to_string(vkResult) << "\n";
-        return;
-    }
+    GramVulkanCheckVoid(m_Device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>(), nullptr, &m_Pipeline), "pipeline creation failed");
 }
 
 VulkanPipeline::~VulkanPipeline()
@@ -121,4 +111,4 @@ VulkanPipeline::~VulkanPipeline()
 }
 
 GRAM_NAMESPACE_END
-
+#endif // #ifdef GRAM_VULKAN_RENDERER

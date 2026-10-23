@@ -1,12 +1,12 @@
 #include "Gram/GLFWApplication.hpp"
 
 #include <cstdlib>
-#include <iostream>
 #include "Application.hpp"
 
 GRAM_NAMESPACE_BEGIN
 
-std::vector<std::string> ApplicationSpecification::GetRequiredDeviceExtensions(const RendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
+#ifdef GRAM_VULKAN_RENDERER
+std::vector<std::string> GLFWApplicationSpecification::GetRequiredDeviceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
 {
     std::vector<std::string> requiredExtensions;
     if (extensions)
@@ -17,7 +17,7 @@ std::vector<std::string> ApplicationSpecification::GetRequiredDeviceExtensions(c
     return requiredExtensions;
 }
 
-std::vector<std::string> ApplicationSpecification::GetRequiredInstanceExtensions(const RendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
+std::vector<std::string> GLFWApplicationSpecification::GetRequiredInstanceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
 {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -35,13 +35,13 @@ std::vector<std::string> ApplicationSpecification::GetRequiredInstanceExtensions
 
     if (!rendererSpec->AreExtensionsSupported(requiredExtensions, displayDebug))
     {
-        std::cout << "[GLFW] no required instance extensions!\n";
+        GramError("GLFW: not all required instance extensions are supported");
     }
 
     return requiredExtensions;
 }
 
-std::vector<std::string> ApplicationSpecification::GetRequiredValidationLayers(const RendererSpecification* rendererSpec, uint32_t validationCount, const char** validations, bool displayDebug)
+std::vector<std::string> GLFWApplicationSpecification::GetRequiredValidationLayers(const VulkanRendererSpecification* rendererSpec, uint32_t validationCount, const char** validations, bool displayDebug)
 {
     std::vector<std::string> requiredValidations;
     if (validations)
@@ -51,22 +51,23 @@ std::vector<std::string> ApplicationSpecification::GetRequiredValidationLayers(c
 
     if (!rendererSpec->AreValidationsSupported(requiredValidations, displayDebug))
     {
-        std::cout << "[GLFW] no validation layers!\n";
+        GramError("GLFW: not all requested validation layers are supported");
     }
 
     return requiredValidations;
 }
+#endif // #ifdef GRAM_VULKAN_RENDERER
 
-GLFWApplication::GLFWApplication(const ApplicationSpecification &appSpec) : Application(appSpec)
+GLFWApplication::GLFWApplication(const GLFWApplicationSpecification &appSpec) : m_AppSpec(appSpec)
 {
 #ifdef GRAM_VULKAN_RENDERER
     glfwInitVulkanLoader(vkGetInstanceProcAddr);
 #endif // GRAM_VULKAN_RENDERER
 
-    glfwSetErrorCallback([](int code, const char* msg) { std::cerr << "GLFW error " << code << ": " << msg << "\n"; });
+    glfwSetErrorCallback([](int code, const char* msg) { GramError("GLFW error {}: {}", code, msg); });
 
     if (!glfwInit()) {
-        std::cerr << "failed to initialize GLFW!\n";
+        GramError("GLFW: initialization failed");
         std::exit(EXIT_FAILURE);
     }
 
@@ -84,7 +85,7 @@ GLFWApplication::GLFWApplication(const ApplicationSpecification &appSpec) : Appl
     if (!m_GLFWwindow)
     {
         glfwTerminate();
-        std::cerr << "failed to create GLFW window!\n";
+        GramError("GLFW: window creation failed");
         std::exit(EXIT_FAILURE);
     }
 

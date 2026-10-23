@@ -1,43 +1,52 @@
 #include "Gram/EntryPoint.hpp"
 #include "Gram/GLFWApplication.hpp"
-#include "Gram/Platform.hpp"
 #include "Gram/VulkanRenderer.hpp"
+
+#ifdef GRAM_VULKAN_RENDERER
+std::vector<const char*> extensionsLayers = {
+    "VK_EXT_debug_utils",
+    GramAppleOnly("VK_KHR_portability_enumeration",)
+};
+
+std::vector<const char*> deviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
+std::vector<const char*> validationLayers = {
+    "VK_LAYER_KHRONOS_validation",
+};
+#endif // #ifdef GRAM_VULKAN_RENDERER
 
 Gram::Application* Gram::CreateApplication(int argc, char** argv)
 {
-    Gram::ApplicationSpecification appSpec;
-    appSpec.m_WindowSize  = glm::vec2(1280, 720);
-    appSpec.m_WindowTitle = "Gram Application with Vulkan";
-
-    std::vector<const char*> extensionsLayers = {
-#ifdef GRAM_PLATFORM_APPLE
-        "VK_KHR_portability_enumeration",
-#endif // #ifdef GRAM_PLATFORM_APPLE
-        "VK_EXT_debug_utils",
+    Gram::Application* app = nullptr;
+    Gram::GLFWApplicationSpecification appSpec {
+        .m_EnableLogging = true,
+        .m_WindowSize  = glm::vec2(1280, 720),
+        .m_WindowTitle = "Gram Application with Vulkan",
     };
 
-    std::vector<const char*> deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    };
-    
-    std::vector<const char*> validationLayers = {
-        "VK_LAYER_KHRONOS_validation",
-    };
-    
-    Gram::VulkanRendererSpecification rendererSpec;
+    // Call into the logger entry point before handing off the application
+    GramLoggerOnly(Gram::LoggerEntryPoint(appSpec.m_EnableLogging));
 
-    // Enable custom debug messages, currently used to see which extensions and validations are available
-    rendererSpec.m_DisplayDebug     = true;
+    app = new Gram::GLFWApplication(appSpec);
 
-    // The window (and GLFW) must exist before the renderer can ask for instance extensions.
-    rendererSpec.m_Application      = new Gram::GLFWApplication(appSpec);
-    rendererSpec.m_ProjectWorkspace = Gram::GetExecutableDirectory(argc > 0 ? argv[0] : nullptr);
-    rendererSpec.m_DeviceExtensions = appSpec.GetRequiredDeviceExtensions(&rendererSpec, deviceExtensions.size(), deviceExtensions.data(), rendererSpec.m_DisplayDebug);
-    rendererSpec.m_ExtensionLayers  = appSpec.GetRequiredInstanceExtensions(&rendererSpec, extensionsLayers.size(), extensionsLayers.data(), rendererSpec.m_DisplayDebug);
-    rendererSpec.m_ValidationLayers = appSpec.GetRequiredValidationLayers(&rendererSpec, validationLayers.size(), validationLayers.data(), rendererSpec.m_DisplayDebug);
-    
+#ifdef GRAM_VULKAN_RENDERER
+    Gram::VulkanRendererSpecification rendererSpec {
+        // Enable custom debug messages, currently used to see which extensions and validations are available
+        .m_DisplayDebug = true,
+        
+        // The window (and GLFW) must exist before the renderer can ask for instance extensions.
+        .m_Application      = app,
+        .m_ProjectWorkspace = Gram::GetExecutableDirectory(argc > 0 ? argv[0] : nullptr),
+        .m_ExtensionLayers  = appSpec.GetRequiredInstanceExtensions(&rendererSpec, extensionsLayers.size(), extensionsLayers.data(), rendererSpec.m_DisplayDebug),
+        .m_DeviceExtensions = appSpec.GetRequiredDeviceExtensions(&rendererSpec, deviceExtensions.size(), deviceExtensions.data(), rendererSpec.m_DisplayDebug),
+        .m_ValidationLayers = appSpec.GetRequiredValidationLayers(&rendererSpec, validationLayers.size(), validationLayers.data(), rendererSpec.m_DisplayDebug),
+    };
+
     // The application owns the renderer from here on.
-    rendererSpec.m_Application->SetRenderer(new Gram::VulkanRenderer(&rendererSpec));
+    app->SetRenderer(new Gram::VulkanRenderer(&rendererSpec));
+#endif // #ifdef GRAM_VULKAN_RENDERER
 
-    return rendererSpec.m_Application;
+    return app;
 }

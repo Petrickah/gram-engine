@@ -1,6 +1,7 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 #include <fstream>
 
 GRAM_NAMESPACE_BEGIN
@@ -20,26 +21,27 @@ VulkanShader::VulkanShader(const VulkanRendererSpecification* rendererSpec, cons
         auto result = device.createShaderModuleUnique(vkShaderModuleCreateInfo);
         if (result.result != vk::Result::eSuccess || !result.has_value())
         {
-            std::cerr << "[Vulkan] error loading the shader in memory: " << vk::to_string(result.result) << "\n";
+            GramVulkanError("error loading the shader {} in memory: {}", filename, vk::to_string(result.result));
             return;
         }
-    
+
         m_ShaderModule = std::move(result.value);
     }
     else
     {
-        std::cerr << "[Vulkan] error reading the shader file.\n";
+        GramVulkanError("error reading the shader file {}", filename);
     }
 }
 
 bool VulkanShader::ReadShaderFile(std::vector<char>& buffer, const std::filesystem::path& workspace, const std::string &filename)
 {
-    std::cout << "[Vulkan] reading shader file at: " << workspace / filename << "\n";
-    std::ifstream file(workspace / filename, std::ios::ate | std::ios::binary);
+    const std::filesystem::path path = workspace / filename;
+    GramVulkanInfo("reading shader file at: {}", path.string());
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
 
     if (!file.is_open())
     {
-        std::cerr << "[Vulkan] couldn't open the shader file.\n";
+        GramVulkanError("couldn't open the shader file {}", path.string());
         return false;
     }
 
@@ -52,3 +54,4 @@ bool VulkanShader::ReadShaderFile(std::vector<char>& buffer, const std::filesyst
 }
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

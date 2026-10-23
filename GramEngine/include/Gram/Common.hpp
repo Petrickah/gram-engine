@@ -10,11 +10,19 @@
 #include <string>
 #include <vector>
 
-#ifndef GRAM_PLATFORM_APPLE
 #ifdef __APPLE__
+#ifndef GRAM_PLATFORM_APPLE
 #define GRAM_PLATFORM_APPLE
-#endif // #ifdef __APPLE__
 #endif // #ifndef GRAM_PLATFORM_APPLE
+#endif // #ifdef __APPLE__
+
+// Variadic so the argument may carry its own trailing comma, which an initializer list
+// needs to disappear with it: { "a", GramAppleOnly("b",) }
+#ifdef GRAM_PLATFORM_APPLE
+#define GramAppleOnly(...) __VA_ARGS__
+#else
+#define GramAppleOnly(...)
+#endif // #ifdef GRAM_PLATFORM_APPLE
 
 #ifndef GRAM_VULKAN_RENDERER
 #define GRAM_VULKAN_RENDERER
@@ -32,6 +40,17 @@
 #define GRAM_GEOMETRY_SHADERS
 #endif // #ifndef GRAM_GEOMETRY_SHADERS
 #endif // #ifndef GRAM_PLATFORM_APPLE
+
+#ifdef GRAM_VULKAN_RENDERER
+// GRAM_IMGUI_ENABLED allows to render ImGui panels using the Vulkan Renderer;
+#ifndef GRAM_IMGUI_ENABLED
+#define GRAM_IMGUI_ENABLED
+#endif // #ifndef GRAM_IMGUI_ENABLED
+#endif // #ifdef GRAM_VULKAN_RENDERER
+
+#ifndef GRAM_LOGGER_ENABLED
+#define GRAM_LOGGER_ENABLED
+#endif // #ifndef GRAM_LOGGER_ENABLED
 
 #include <glm/vec2.hpp>
 

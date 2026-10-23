@@ -1,5 +1,5 @@
 #pragma once
-
+#ifdef GRAM_VULKAN_RENDERER
 #include "Renderer.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
 
@@ -36,3 +36,4 @@ private:
 };
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

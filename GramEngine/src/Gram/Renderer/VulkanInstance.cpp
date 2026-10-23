@@ -1,7 +1,9 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanInstance.hpp"
+
+#ifdef GRAM_VULKAN_RENDERER
 #include "Gram/VulkanRenderer.hpp"
-#include "Application.hpp"
+#include "Gram/GLFWApplication.hpp"
 
 GRAM_NAMESPACE_BEGIN
 
@@ -17,46 +19,45 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSever
         return VK_FALSE;
     }
 
-    std::cout << "[Vulkan] validation layer (" << pCallbackData->pMessageIdName << "): " << pCallbackData->pMessage << std::endl;
+    // pMessageIdName is optional and may be null.
+    const char* messageId = pCallbackData->pMessageIdName ? pCallbackData->pMessageIdName : "-";
+    switch (messageSeverity)
+    {
+    case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError:
+        GramVulkanError("validation layer ({}): {}", messageId, pCallbackData->pMessage);
+        break;
+    case vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning:
+        GramVulkanWarning("validation layer ({}): {}", messageId, pCallbackData->pMessage);
+        break;
+    case vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo:
+        GramVulkanInfo("validation layer ({}): {}", messageId, pCallbackData->pMessage);
+        break;
+    default:
+        GramVulkanTrace("validation layer ({}): {}", messageId, pCallbackData->pMessage);
+        break;
+    }
+
     return VK_FALSE;
 }
 
 bool VulkanRendererSpecification::AreExtensionsSupported(const std::vector<std::string> &extensions, bool displayDebug) const
 {
-    vk::Result vkResult = vk::Result::eSuccess;
-
     uint32_t extensionCount = 0;
-    vkResult = vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] reports no instance extensions: " << vk::to_string(vkResult) << "!\n";
-        return false;
-    }
+    GramVulkanCheck(vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr), "reports no instance extensions");
 
     std::vector<vk::ExtensionProperties> supported(extensionCount);
-    vkResult = vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, supported.data());
-
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] couldn't find instance extensions: " << vk::to_string(vkResult) << "!\n";
-        return false;
-    }
+    GramVulkanCheck(vk::enumerateInstanceExtensionProperties(nullptr, &extensionCount, supported.data()), "couldn't find instance extensions");
 
     if (displayDebug)
     {
-        std::cout << "[Vulkan] available extensions:\n";
-    }
-    
-    if (displayDebug)
-    {
+        GramVulkanInfo("available extensions:");
         for (const vk::ExtensionProperties& ext : supported)
         {
             bool requested = std::any_of(extensions.begin(), extensions.end(), [&ext](const std::string& name) {
                 return name == ext.extensionName.data();
             });
 
-            std::cout << (requested ? "    - [X] " : "    - [-] ") << ext.extensionName << '\n';
+            GramVulkanListItem(requested, "{}", ext.extensionName.data());
         }
     }
 
@@ -70,7 +71,7 @@ bool VulkanRendererSpecification::AreExtensionsSupported(const std::vector<std::
 
         if (!found)
         {
-            std::cerr << "[Vulkan] instance extension not supported: " << name << "\n";
+            GramVulkanError("instance extension not supported: {}", name);
             allSupported = false;
         }
     }
@@ -80,40 +81,22 @@ bool VulkanRendererSpecification::AreExtensionsSupported(const std::vector<std::
 
 bool VulkanRendererSpecification::AreValidationsSupported(const std::vector<std::string>& validations, bool displayDebug) const
 {
-    vk::Result vkResult = vk::Result::eSuccess;
-
-    uint32_t layerCount;
-    vkResult = vk::enumerateInstanceLayerProperties(&layerCount, nullptr);
-
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] reports no validation layers: " << vk::to_string(vkResult) << "!\n";
-        return false;
-    }
+    uint32_t layerCount = 0;
+    GramVulkanCheck(vk::enumerateInstanceLayerProperties(&layerCount, nullptr), "reports no validation layers");
 
     std::vector<vk::LayerProperties> availableLayers(layerCount);
-    vkResult = vk::enumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] couldn't find validation layers: " << vk::to_string(vkResult) << "!\n";
-        return false;
-    }
+    GramVulkanCheck(vk::enumerateInstanceLayerProperties(&layerCount, availableLayers.data()), "couldn't find validation layers");
 
     if (displayDebug)
     {
-        std::cout << "[Vulkan] available validations:\n";
-    }
-    
-    if (displayDebug)
-    {
+        GramVulkanInfo("available validations:");
         for (const vk::LayerProperties& layer : availableLayers)
         {
             bool requested = std::any_of(validations.begin(), validations.end(), [&layer](const std::string& name) {
                 return name == layer.layerName.data();
             });
 
-            std::cout << (requested ? "   - [X] " : "   - [-] ") << layer.layerName << '\n';
+            GramVulkanListItem(requested, "{}", layer.layerName.data());
         }
     }
 
@@ -127,7 +110,7 @@ bool VulkanRendererSpecification::AreValidationsSupported(const std::vector<std:
 
         if (!found)
         {
-            std::cerr << "[Vulkan] validation layer not supported: " << name << "\n";
+            GramVulkanError("validation layer not supported: {}", name);
             allSupported = false;
         }
     }
@@ -143,16 +126,15 @@ VulkanInstance::~VulkanInstance()
 
 VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
 {
-    if (!rendererSpec || !rendererSpec->m_Application)
+    GLFWApplication* app = rendererSpec ? dynamic_cast<GLFWApplication*>(rendererSpec->m_Application) : nullptr;
+    if (!app)
     {
-        std::cerr << "[Vulkan] created without an Application!\n";
+        GramVulkanError("instance created without a GLFWApplication");
         return;
     }
 
-    const ApplicationSpecification& appSpec = rendererSpec->m_Application->GetAppSpec();
-
     vk::ApplicationInfo vkApplicationInfo {
-        .pApplicationName   = appSpec.m_WindowTitle.c_str(),
+        .pApplicationName   = app->GetAppSpec().m_WindowTitle.c_str(),
         .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
         .pEngineName        = "Gram Engine",
         .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
@@ -193,12 +175,7 @@ VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
         .ppEnabledExtensionNames = useExtensions ? extensionLayers.data() : nullptr
     };
 
-    vk::Result vkResult = vk::createInstance(&vkInstanceCreateInfo, nullptr, &m_VkInstance);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] failed to create instance: " << vk::to_string(vkResult) << "\n";
-        return;
-    }
+    GramVulkanCheckVoid(vk::createInstance(&vkInstanceCreateInfo, nullptr, &m_VkInstance), "failed to create instance");
 
     // The messenger needs a live instance, so it can only be created after createInstance.
     if (useValidation) CreateDebugUtilsMessengerEXT();
@@ -218,7 +195,7 @@ void VulkanInstance::CreateDebugUtilsMessengerEXT()
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(m_VkInstance, "vkCreateDebugUtilsMessengerEXT");
     if (!func)
     {
-        std::cerr << "[Vulkan] vkCreateDebugUtilsMessengerEXT not found (is VK_EXT_debug_utils enabled?)!\n";
+        GramVulkanError("vkCreateDebugUtilsMessengerEXT not found (is VK_EXT_debug_utils enabled?)");
         return;
     }
 
@@ -226,7 +203,7 @@ void VulkanInstance::CreateDebugUtilsMessengerEXT()
     VkResult vkResult = func(m_VkInstance, m_VkDebugMessengerCreateInfo, nullptr, &m_VkDebugMessenger);
     if (vkResult != VK_SUCCESS)
     {
-        std::cerr << "[Vulkan] failed to create debug messenger: " << vk::to_string(static_cast<vk::Result>(vkResult)) << "\n";
+        GramVulkanError("failed to create debug messenger: {}", vk::to_string(static_cast<vk::Result>(vkResult)));
         m_VkDebugMessenger = VK_NULL_HANDLE;
     }
 }
@@ -244,3 +221,4 @@ void VulkanInstance::DestroyDebugUtilsMessengerExt()
 }
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

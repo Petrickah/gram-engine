@@ -4,6 +4,7 @@
 // (defines main/WinMain). A build that never includes it has no entry point,
 // so its CMake target must be a static library instead of an executable.
 #include "../Application.hpp"
+#include "../Platform.hpp"
 
 #if defined(_WIN32)
     // Lowercase: mingw's header is installed as "windows.h", and unlike
@@ -18,9 +19,9 @@
     }
 #endif
 
-namespace Gram {
-    extern Application* CreateApplication(int argc, char** argv);
-}
+GRAM_NAMESPACE_BEGIN
+extern Application* CreateApplication(int argc, char** argv);
+GRAM_NAMESPACE_END
 
 #if defined(_WIN32)
 

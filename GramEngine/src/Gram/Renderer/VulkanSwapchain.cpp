@@ -1,6 +1,7 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/GLFWApplication.hpp"
 
@@ -34,7 +35,7 @@ bool VulkanSwapchain::Recreate()
 
     // The old images and views may still be in flight.
     vk::Device device = m_Device;
-    if (device.waitIdle() != vk::Result::eSuccess) return false;
+    GramVulkanCheck(device.waitIdle(), "waiting for the device before recreating the swapchain failed");
 
     return Build(false);
 }
@@ -43,20 +44,20 @@ bool VulkanSwapchain::Build(bool showDebug)
 {
     if (showDebug)
     {
-        std::cout << "[Vulkan] swapchain configuration: \n";
+        GramVulkanInfo("swapchain configuration:");
     }
 
     // Capabilities (notably currentExtent) change with the window, so they are queried on every build.
     if (!QuerySwapchainSupport(m_PhysicalDevice, m_SupportDetails, m_ExtensionsSupported))
     {
-        std::cerr << "   - [Vulkan] no swapchain support for the chosen device: " << vk::PhysicalDevice(m_PhysicalDevice).getProperties().deviceName << "\n";
+        GramVulkanError("no swapchain support for the chosen device: {}", vk::PhysicalDevice(m_PhysicalDevice).getProperties().deviceName.data());
         return false;
     }
 
     vk::Extent2D extent;
     if (!m_SupportDetails.ChooseSwapchainExtent(extent, m_RendererSpec, showDebug))
     {
-        std::cerr << "   - [Vulkan] no swapchain surface extent to choose!\n";
+        GramVulkanError("no swapchain surface extent to choose");
         return false;
     }
 
@@ -66,19 +67,19 @@ bool VulkanSwapchain::Build(bool showDebug)
 
     if (!m_SupportDetails.ChooseSwapchainSurfaceFormat(m_SurfaceFormat, showDebug))
     {
-        std::cerr << "   - [Vulkan] no swapchain surface format to choose!\n";
+        GramVulkanError("no swapchain surface format to choose");
         return false;
     }
 
     if (!m_SupportDetails.ChooseSwapchainPresentMode(m_PresentMode, showDebug))
     {
-        std::cerr << "   - [Vulkan] no swapchain surface present mode to choose!\n";
+        GramVulkanError("no swapchain surface present mode to choose");
         return false;
     }
 
     if (!m_SupportDetails.ChooseSwapchainImageCount(m_ImageCount, showDebug))
     {
-        std::cerr << "   - [Vulkan] no swapchain surface image count to choose!\n";
+        GramVulkanError("no swapchain surface image count to choose");
         return false;
     }
 
@@ -129,19 +130,13 @@ bool VulkanSwapchain::CreateSwapchainImageView(vk::ImageView& imageView, const v
     };
 
     vk::Device vkDevice = m_Device;
-    vk::Result vkResult = vkDevice.createImageView(&vkImageViewCreateInfo, nullptr, &imageView);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] couldn't create the surface image views: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    GramVulkanCheck(vkDevice.createImageView(&vkImageViewCreateInfo, nullptr, &imageView), "couldn't create the surface image views");
 
     return true;
 }
 
 bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, QueueFamilyIndices& indices, uint32_t requestedImageCount, const vk::SurfaceFormatKHR& surfaceFormat, const vk::Extent2D& extent, const vk::PresentModeKHR& presentMode)
 {
-    vk::Result vkResult = vk::Result::eSuccess;
     vk::Device vkDevice = m_Device;
 
     // Images are shared between queue families only when graphics and present are different
@@ -173,76 +168,36 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, Q
     };
 
     vk::SwapchainKHR newSwapchain;
-    vkResult = vkDevice.createSwapchainKHR(&swapchainCreateInfo, nullptr, &newSwapchain);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] couldn't create the surface swapchain: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    GramVulkanCheck(vkDevice.createSwapchainKHR(&swapchainCreateInfo, nullptr, &newSwapchain), "couldn't create the surface swapchain");
 
     // The old swapchain is retired by the create call above; its resources can go now.
     if (m_Swapchain) vkDevice.destroySwapchainKHR(m_Swapchain);
     m_Swapchain = newSwapchain;
 
     uint32_t imageCount = 0;
-    vkResult = vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, nullptr);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] swapchain surface images not found: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    GramVulkanCheck(vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, nullptr), "swapchain surface images not found");
     
     swapchainImages.resize(imageCount);
-    vkResult = vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, swapchainImages.data());
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] swapchain surface images not found: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    GramVulkanCheck(vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, swapchainImages.data()), "swapchain surface images not found");
 
     return true;
 }
 
 bool VulkanSwapchain::QuerySwapchainSupport(const vk::PhysicalDevice &device, SwapChainSupportDetails &supportDetails, bool extensionsSupported)
 {
-    vk::Result vkResult = vk::Result::eSuccess;
-    vkResult = device.getSurfaceCapabilitiesKHR(m_Surface, &supportDetails.m_Capabilities);
-
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] swapchain surface capabilities are unknown: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    GramVulkanCheck(device.getSurfaceCapabilitiesKHR(m_Surface, &supportDetails.m_Capabilities), "swapchain surface capabilities are unknown");
 
     uint32_t formatCount = 0;
-    vkResult = device.getSurfaceFormatsKHR(m_Surface, &formatCount, nullptr);
+    GramVulkanCheck(device.getSurfaceFormatsKHR(m_Surface, &formatCount, nullptr), "swapchain surface formats are unknown");
 
-    if (vkResult == vk::Result::eSuccess)
-    {
-        supportDetails.m_Formats.resize(formatCount);
-        vkResult = device.getSurfaceFormatsKHR(m_Surface, &formatCount, supportDetails.m_Formats.data());
-    }
-
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] swapchain surface formats are unknown: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    supportDetails.m_Formats.resize(formatCount);
+    GramVulkanCheck(device.getSurfaceFormatsKHR(m_Surface, &formatCount, supportDetails.m_Formats.data()), "swapchain surface formats are unknown");
 
     uint32_t presentModesCount = 0;
-    vkResult = device.getSurfacePresentModesKHR(m_Surface, &presentModesCount, nullptr);
+    GramVulkanCheck(device.getSurfacePresentModesKHR(m_Surface, &presentModesCount, nullptr), "swapchain surface present modes are unknown");
 
-    if (vkResult == vk::Result::eSuccess)
-    {
-        supportDetails.m_PresentModes.resize(presentModesCount);
-        vkResult = device.getSurfacePresentModesKHR(m_Surface, &presentModesCount, supportDetails.m_PresentModes.data());
-    }
-
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "   - [Vulkan] swapchain surface present modes are unknown: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    supportDetails.m_PresentModes.resize(presentModesCount);
+    GramVulkanCheck(device.getSurfacePresentModesKHR(m_Surface, &presentModesCount, supportDetails.m_PresentModes.data()), "swapchain surface present modes are unknown");
 
     return extensionsSupported && !supportDetails.m_Formats.empty() && !supportDetails.m_PresentModes.empty();
 }
@@ -275,14 +230,9 @@ bool SwapChainSupportDetails::ChooseSwapchainSurfaceFormat(vk::SurfaceFormatKHR 
 
     if (showDebug)
     {
-        std::cout << "   - [Vulkan] available surface formats: \n";
         for (const vk::SurfaceFormatKHR& available : m_Formats)
         {
-            std::cout << (available == surfaceFormat
-                          ? "        - [X] surface format: "
-                          : "        - [-] surface format: ")
-                      << vk::to_string(available.colorSpace) << "  "
-                      << vk::to_string(available.format)     << "\n";
+            GramVulkanListItem(available == surfaceFormat, "surface format: {}  {}", vk::to_string(available.colorSpace), vk::to_string(available.format));
         }
     }
 
@@ -291,11 +241,6 @@ bool SwapChainSupportDetails::ChooseSwapchainSurfaceFormat(vk::SurfaceFormatKHR 
 
 bool SwapChainSupportDetails::ChooseSwapchainPresentMode(vk::PresentModeKHR &presentMode, bool showDebug)
 {
-    if (showDebug)
-    {
-        std::cout << "   - [Vulkan] available surface present modes: \n";
-    }
-
     // Fifo is the only mode the spec guarantees, so it is also the fallback.
     presentMode = vk::PresentModeKHR::eFifo;
 
@@ -306,29 +251,21 @@ bool SwapChainSupportDetails::ChooseSwapchainPresentMode(vk::PresentModeKHR &pre
 
         if (showDebug)
         {
-            std::cout << (presentMode == availableMode
-                          ? "        - [X] present mode: "
-                          : "        - [-] present mode: ")
-                      << vk::to_string(availableMode) << "\n";
+            GramVulkanListItem(presentMode == availableMode, "present mode: {}", vk::to_string(availableMode));
         }
     }
 
     return hasFifo;
 }
 
-bool SwapChainSupportDetails::ChooseSwapchainExtent(vk::Extent2D &extent, const RendererSpecification *rendererSpec, bool showDebug)
+bool SwapChainSupportDetails::ChooseSwapchainExtent(vk::Extent2D &extent, const VulkanRendererSpecification *rendererSpec, bool showDebug)
 {
-    if (showDebug)
-    {
-        std::cout << "   - [Vulkan] available surface extents: \n";
-    }
-
     // A defined currentExtent means the surface dictates the size; UINT32_MAX means we pick it ourselves.
     if (m_Capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
         if (showDebug)
         {
-            std::cout << "        - [X] surface extent: " << m_Capabilities.currentExtent.width << "x" << m_Capabilities.currentExtent.height << "px\n";
+            GramVulkanListSelected("surface extent: {}x{}px", m_Capabilities.currentExtent.width, m_Capabilities.currentExtent.height);
         }
 
         extent = m_Capabilities.currentExtent;
@@ -348,7 +285,7 @@ bool SwapChainSupportDetails::ChooseSwapchainExtent(vk::Extent2D &extent, const 
 
         if (showDebug)
         {
-            std::cout << "        - [X] surface extent: " << extent.width << "x" << extent.height << "px\n";
+            GramVulkanListSelected("surface extent: {}x{}px", extent.width, extent.height);
         }
 
         return true;
@@ -367,11 +304,11 @@ bool SwapChainSupportDetails::ChooseSwapchainImageCount(uint32_t& imageCount, bo
     
     if (showDebug)
     {
-        std::cout << "   - [Vulkan] available image counts: \n";
-        std::cout << "        - [X] image count: " << imageCount << "\n";
+        GramVulkanListSelected("image count: {}", imageCount);
     }
 
     return true;
 }
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

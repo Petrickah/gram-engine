@@ -1,6 +1,6 @@
 # Wave 1 — ImGui debug UI (plan)
 
-Status as of 2026-10-19: **planned, not started**. Tracked as a Wave 1 task ("ImGui debug UI") in `.gram.kanban.md`. Not a new wave: a debug panel that shows ECS entities is useful for Task 1.4 regardless of any editor. A *visual editor* stays a non-goal in `CLAUDE.md` — this plan only lays the foundation (docking, a UI hook, later a scene viewport) without committing to one.
+Status as of 2026-10-23: **steps 1–5 done** (docking demo window over the triangle). The UI interface from *Architecture* moved to its own task, "Layers" (Task 1.z in `.gram.kanban.md`); step 6 is still open. Originally tracked as the Wave 1 task "ImGui debug UI". Not a new wave: a debug panel that shows ECS entities is useful for Task 1.4 regardless of any editor. A *visual editor* stays a non-goal in `CLAUDE.md` — this plan only lays the foundation (docking, a UI hook, later a scene viewport) without committing to one.
 
 Written against Dear ImGui's Vulkan + GLFW backends. Exact struct fields and function names shift between ImGui releases — check `backends/imgui_impl_vulkan.h` of the version vcpkg installs before writing code.
 

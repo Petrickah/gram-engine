@@ -1,24 +1,14 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/VulkanRenderer.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 bool VulkanRenderer::CreateRendererObjects()
 {
-    if (!CreateRenderFinishedSemaphores())
-    {
-        return false;
-    }
-
-    if (!CreatePresentCompleteSemaphores())
-    {
-        return false;
-    }
-
-    if (!CreateInFlightFences())
-    {
-        return false;
-    }
+    GramCheck(CreateRenderFinishedSemaphores());
+    GramCheck(CreatePresentCompleteSemaphores());
+    GramCheck(CreateInFlightFences());
     
     return true;
 }
@@ -65,13 +55,8 @@ bool VulkanRenderer::CreateRenderFinishedSemaphores()
     {
         vk::Semaphore renderFinishedSemaphore;
         vk::SemaphoreCreateInfo renderFinishedSemaphoreCreateInfo { };
-        vk::Result result = device.createSemaphore(&renderFinishedSemaphoreCreateInfo, nullptr, &renderFinishedSemaphore);
-        if (result != vk::Result::eSuccess)
-        {
-            std::cerr << "[Vulkan] render finish semaphore creation failed: "<< vk::to_string(result) << "!\n";
-            return false;
-        }
-
+        GramVulkanCheck(device.createSemaphore(&renderFinishedSemaphoreCreateInfo, nullptr, &renderFinishedSemaphore), "render finish semaphore creation failed");
+        
         m_RenderFinishedSemaphores.push_back(renderFinishedSemaphore);
     }
 
@@ -86,12 +71,7 @@ bool VulkanRenderer::CreatePresentCompleteSemaphores()
     {
         vk::Semaphore presentCompleteSemaphore;
         vk::SemaphoreCreateInfo presentCompleteSemaphoreCreateInfo { };
-        vk::Result result = device.createSemaphore(&presentCompleteSemaphoreCreateInfo, nullptr, &presentCompleteSemaphore);
-        if (result != vk::Result::eSuccess)
-        {
-            std::cerr << "[Vulkan] render finish semaphore creation failed: "<< vk::to_string(result) << "!\n";
-            return false;
-        }
+        GramVulkanCheck(device.createSemaphore(&presentCompleteSemaphoreCreateInfo, nullptr, &presentCompleteSemaphore), "present complete semaphore creation failed");
 
         presentSemaphores[frameIndex] = presentCompleteSemaphore;
         return true;
@@ -100,7 +80,7 @@ bool VulkanRenderer::CreatePresentCompleteSemaphores()
     m_PresentCompleteSemaphores.resize(Gram::vkMaxFramesInFlight);
     for (uint32_t frameIndex = 0; frameIndex < Gram::vkMaxFramesInFlight; frameIndex++)
     {
-        if (!createPresentSemaphores(frameIndex, m_PresentCompleteSemaphores)) return false;
+        GramCheck(createPresentSemaphores(frameIndex, m_PresentCompleteSemaphores));
     }
 
     return true;
@@ -113,12 +93,7 @@ bool VulkanRenderer::CreateInFlightFences()
     {
         vk::Fence inFlightFence;
         vk::FenceCreateInfo fenceCreateInfo { .flags = vk::FenceCreateFlagBits::eSignaled };
-        vk::Result result = device.createFence(&fenceCreateInfo, nullptr, &inFlightFence);
-        if (result != vk::Result::eSuccess)
-        {
-            std::cerr << "[Vulkan] draw fence creation failed: " << vk::to_string(result) << "!\n";
-            return false;
-        }
+        GramVulkanCheck(device.createFence(&fenceCreateInfo, nullptr, &inFlightFence), "draw fence creation failed");
 
         flightFences[frameIndex] = inFlightFence;
         return true;
@@ -127,19 +102,18 @@ bool VulkanRenderer::CreateInFlightFences()
     m_InFlightDrawFences.resize(Gram::vkMaxFramesInFlight);
     for (uint32_t frameIndex = 0; frameIndex < Gram::vkMaxFramesInFlight; frameIndex++)
     {
-        if (!createFlightFences(frameIndex, m_InFlightDrawFences))
-            return false;
+        GramCheck(createFlightFences(frameIndex, m_InFlightDrawFences));
     }
+
     return true;
 }
 
 bool VulkanRenderer::RecreateSwapchain()
 {
-    if (!m_VulkanSwapchain.Recreate()) return false;
-
     // One per swapchain image, so the count can change; the old ones may also have been left
     // signaled by a present that failed. The device is idle after Recreate(), so they are free.
-    if (!CreateRenderFinishedSemaphores()) return false;
+    GramCheck(m_VulkanSwapchain.Recreate());
+    GramCheck(CreateRenderFinishedSemaphores());
 
     m_SwapchainStale = false;
     return true;
@@ -152,7 +126,6 @@ bool VulkanRenderer::DrawFrame()
     // frame and retry on the next one.
     if (m_SwapchainStale && !RecreateSwapchain()) return true;
 
-    vk::Result             result                   = vk::Result::eSuccess;
     vk::PipelineStageFlags waitDestinationStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
     vk::Pipeline           graphicsPipeline         = static_cast<vk::Pipeline>(m_VulkanPipeline.GetPipeline());
     vk::Device             device                   = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
@@ -160,15 +133,11 @@ bool VulkanRenderer::DrawFrame()
     vk::CommandBuffer      commandBuffer            = static_cast<vk::CommandBuffer>(m_VulkanFrame.GetCommandBuffer(m_FrameIndex));
     vk::Extent2D           swapChainExtent          = m_VulkanSwapchain.GetExtent2D();
 
-    result = device.waitForFences(1, &m_InFlightDrawFences[m_FrameIndex], vk::True, UINT64_MAX);
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] wait for fence failed: " << vk::to_string(result) << "\n";
-        return false;
-    }
+    GramVulkanCheck(device.waitForFences(1, &m_InFlightDrawFences[m_FrameIndex], vk::True, UINT64_MAX), "wait for fence failed");
 
     uint32_t imageIndex = 0;
-    result = device.acquireNextImageKHR(swapChain, UINT64_MAX, m_PresentCompleteSemaphores[m_FrameIndex], nullptr, &imageIndex);
+    vk::Result result = device.acquireNextImageKHR(swapChain, UINT64_MAX, m_PresentCompleteSemaphores[m_FrameIndex], nullptr, &imageIndex);
+
     if (result == vk::Result::eErrorOutOfDateKHR)
     {
         // Nothing was acquired (the semaphore isn't signaled and the fence is still signaled),
@@ -182,18 +151,12 @@ bool VulkanRenderer::DrawFrame()
     {
         m_SwapchainStale = true;
     }
-    else if (result != vk::Result::eSuccess)
+    else
     {
-        std::cerr << "[Vulkan] acquire image from swapchain failed: " << vk::to_string(result) << "\n";
-        return false;
+        GramVulkanCheck(result, "acquire image from swapchain failed");
     }
 
-    result = device.resetFences(1, &m_InFlightDrawFences[m_FrameIndex]);
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] reset fences failed: " << vk::to_string(result) << "\n";
-        return false;
-    }
+    GramVulkanCheck(device.resetFences(1, &m_InFlightDrawFences[m_FrameIndex]), "reset fences failed");
 
     const std::vector<vk::Image>&     swapChainImages     = m_VulkanSwapchain.GetSwapchainImages();
     const std::vector<vk::ImageView>& swapChainImageViews = m_VulkanSwapchain.GetSwapchainImageViews();
@@ -223,18 +186,18 @@ bool VulkanRenderer::DrawFrame()
                 .pResults             = nullptr       // Optional
             };
 
-            result = m_VulkanDevice.Submit(m_InFlightDrawFences[m_FrameIndex], imageIndex, swapChainImages, submitInfo, presentInfo);
+            vk::Result result = m_VulkanDevice.Submit(m_InFlightDrawFences[m_FrameIndex], imageIndex, swapChainImages, submitInfo, presentInfo);
+
+            // Nothing was acquired (the semaphore isn't signaled and the fence is still signaled),
+            // so just rebuild and try again next frame. Suboptimal still hands over a usable image;
+            // draw this frame, rebuild after presenting.
             if (result == vk::Result::eSuboptimalKHR || result == vk::Result::eErrorOutOfDateKHR)
             {
                 m_SwapchainStale = true;
                 return true;
             }
-
-            if (result != vk::Result::eSuccess)
-            {
-                std::cerr << "[Vulkan] graphics presentation failed: " << vk::to_string(result) << "!\n";
-                return false;
-            }
+            
+            GramVulkanCheck(result, "graphics presentation failed");
 
             m_FrameIndex = (m_FrameIndex + 1) % Gram::vkMaxFramesInFlight;
             return true;
@@ -246,19 +209,14 @@ bool VulkanRenderer::DrawFrame()
 
 bool VulkanRenderer::Finish()
 {
-    vk::Result       result    = vk::Result::eSuccess;
     vk::Device       device    = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
     vk::SwapchainKHR swapChain = static_cast<vk::SwapchainKHR>(m_VulkanSwapchain.GetSwapchain());
 
-    result = device.waitIdle();
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] waiting to finish failed: " << vk::to_string(result) << "\n";
-        return false;
-    }
+    GramVulkanCheck(device.waitIdle(), "waiting to finish failed");
 
     m_VulkanImGui.Finish();
     return true;
 }
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

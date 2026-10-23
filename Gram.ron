@@ -29,6 +29,7 @@ BuildConfig(
                 "glfw3",
                 "glm",
                 "imgui",
+                "spdlog",
             ],
             targets: [
                 "linux",

@@ -1,5 +1,5 @@
 #pragma once
-
+#ifdef GRAM_VULKAN_RENDERER
 #include "Renderer.hpp"
 
 GRAM_NAMESPACE_BEGIN
@@ -14,7 +14,7 @@ struct SwapChainSupportDetails
 
     bool ChooseSwapchainSurfaceFormat(vk::SurfaceFormatKHR& surfaceFormat, bool showDebug = false);
     bool ChooseSwapchainPresentMode(vk::PresentModeKHR& presentMode, bool showDebug = false);
-    bool ChooseSwapchainExtent(vk::Extent2D& extent, const RendererSpecification* rendererSpec = nullptr, bool showDebug = false);
+    bool ChooseSwapchainExtent(vk::Extent2D& extent, const VulkanRendererSpecification* rendererSpec = nullptr, bool showDebug = false);
     bool ChooseSwapchainImageCount(uint32_t& imageCount, bool showDebug);
 };
 
@@ -69,3 +69,4 @@ private:
 };
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

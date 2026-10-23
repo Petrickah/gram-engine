@@ -1,6 +1,6 @@
 #pragma once
-
-#include "Common.hpp"
+#ifdef GRAM_VULKAN_RENDERER
+#include "Renderer.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 
 GRAM_NAMESPACE_BEGIN
@@ -40,3 +40,4 @@ private:
 };
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

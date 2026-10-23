@@ -1,8 +1,8 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
-#include "Gram/VulkanRenderer.hpp"
 
-#include <imgui.h>
+#ifdef GRAM_VULKAN_RENDERER
+#include "Gram/VulkanRenderer.hpp"
 
 GRAM_NAMESPACE_BEGIN
 
@@ -48,32 +48,23 @@ bool QueueFamilyIndices::IsComplete()
 
 bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector<std::string> &extensions, bool displayDebug) const
 {
-    if (displayDebug)
-    {
-        std::cout << "     [Vulkan] device extensions: \n";
-    }
-    
+    // Items of the physical device listed right above them, hence the "extension:" prefix.
     if (displayDebug)
     {
         for (const std::string& available : extensions)
         {
             bool requested = std::any_of(m_DeviceExtensions.begin(), m_DeviceExtensions.end(),
                 [&available](const std::string& name) { return name == available; });
-            
-#ifndef GRAM_PLATFORM_APPLE
-            const char* marker = requested
-                               ? "        - [X]"
-                               : "        - [-]"
-                               ;
-#else
-            const char* marker = requested
-                               ? "        - [X]" : (available == Gram::vkPortabilitySubsetExtension)
-                               ? "        - [+]"
-                               : "        - [-]"
-                               ;
-#endif // #ifndef GRAM_PLATFORM_APPLE
 
-            std::cout << marker << " " << available << "\n";
+#ifdef GRAM_PLATFORM_APPLE
+            if (!requested && available == Gram::vkPortabilitySubsetExtension)
+            {
+                GramVulkanListAdded("extension: {}", available);
+                continue;
+            }
+#endif // #ifdef GRAM_PLATFORM_APPLE
+
+            GramVulkanListItem(requested, "extension: {}", available);
         }
 
         // Requested extensions the device doesn't offer at all wouldn't show up above.
@@ -81,7 +72,7 @@ bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector
         {
             if (std::find(extensions.begin(), extensions.end(), requested) == extensions.end())
             {
-                std::cerr << "        - [!] missing requested device extension: " << requested << "\n";
+                GramVulkanListMissing("extension: {}", requested);
             }
         }
     }
@@ -102,29 +93,25 @@ vk::Result VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const 
 {
     vk::Queue  graphicsQueue;
     vk::Queue  presentQueue;
-    vk::Result result = vk::Result::eSuccess;
 
     if (!m_QueueFamilyIndices.TryGetDeviceQueue(presentQueue, m_VkDevice, "m_PresentFamily"))
     {
-        std::cerr << "[Vulkan] couldn't retrieve the present family queue!\n";
+        GramVulkanError("couldn't retrieve the present family queue");
         return vk::Result::eErrorInitializationFailed;
     }
 
     if (!m_QueueFamilyIndices.TryGetDeviceQueue(graphicsQueue, m_VkDevice, "m_GraphicsFamily"))
     {
-        std::cerr << "[Vulkan] couldn't retrieve the graphics family queue!\n";
+        GramVulkanError("couldn't retrieve the graphics family queue");
         return vk::Result::eErrorInitializationFailed;
     }
     
-    result = graphicsQueue.submit(1, &submitInfo, drawFence);
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] graphics request failed to submit: " << vk::to_string(result) << "!\n";
-        return result;
-    }
+    GramVulkanCheckResult(graphicsQueue.submit(1, &submitInfo, drawFence), "graphics request failed to submit");
 
+#ifdef GRAM_IMGUI_ENABLED
     ImGui::UpdatePlatformWindows();
     ImGui::RenderPlatformWindowsDefault();
+#endif // #ifdef GRAM_IMGUI_ENABLED
 
     // The C call on purpose: vk::Queue::presentKHR asserts on anything but success/suboptimal
     // under VULKAN_HPP_NO_EXCEPTIONS, and eErrorOutOfDateKHR is a normal outcome on resize
@@ -141,14 +128,14 @@ VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, cons
 
     if (!PickPhysicalDevice(rendererSpec))
     {
-        std::cerr << "[Vulkan] couldn't select a physical device!" << "\n";
+        GramVulkanError("couldn't select a physical device");
         m_VkPhysicalDevice = VK_NULL_HANDLE;
         return;
     }
 
     if (!CreateLogicalDevice(rendererSpec))
     {
-        std::cerr << "[Vulkan] couldn't create a logical device!" << "\n";
+        GramVulkanError("couldn't create a logical device");
         m_VkDevice = VK_NULL_HANDLE;
         return;
     }
@@ -157,28 +144,13 @@ VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, cons
 bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendererSpec)
 {
     uint32_t deviceCount = 0;
-    VkResult vkResult = vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, nullptr);
-    if (vkResult != VkResult::VK_SUCCESS)
-    {
-        std::cerr << "[Vulkan] no eligible physical devices found: " << vk::to_string(static_cast<vk::Result>(vkResult)) << "\n";
-        m_VkPhysicalDevice = VK_NULL_HANDLE;
-        return false;
-    }
+    m_VkPhysicalDevice = VK_NULL_HANDLE;
+    GramVulkanCheck(static_cast<vk::Result>(vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, nullptr)), "no eligible physical devices found");
 
     std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkResult = vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, devices.data());
-    if (vkResult != VkResult::VK_SUCCESS)
-    {
-        std::cerr << "[Vulkan] couldn't find physical devices: " << vk::to_string(static_cast<vk::Result>(vkResult)) << "\n";
-        m_VkPhysicalDevice = VK_NULL_HANDLE;
-        return false;
-    }
+    GramVulkanCheck(static_cast<vk::Result>(vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, devices.data())), "couldn't find physical devices");
 
     const bool displayDebug = rendererSpec && rendererSpec->m_DisplayDebug;
-    if (displayDebug)
-    {
-        std::cout << "[Vulkan] physical devices: " << "\n";
-    }
 
     int32_t suitabilityScore = 0;
     std::multimap<int32_t, vk::PhysicalDevice> scoredDevices;
@@ -187,14 +159,12 @@ bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendere
     {
         const vk::PhysicalDevice deviceInstance(device);
 
-        // Listed before rating, so devices that end up rejected are visible too.
+        // Listed before rating, so devices that end up rejected are visible too. Each device is
+        // the header of its own list: the queue families and extensions below are its items.
         if (displayDebug)
         {
             const vk::PhysicalDeviceProperties properties = deviceInstance.getProperties();
-            std::cout << "   - physical device: "
-                      << properties.deviceName << "  "
-                      << properties.deviceID   << "  "
-                      << properties.vendorID   << "\n";
+            GramVulkanInfo("physical device: {} (id {}, vendor {})", properties.deviceName.data(), properties.deviceID, properties.vendorID);
 
             QueueFamilyIndices indices;
             FindQueueFamilies(rendererSpec, deviceInstance, indices, true);
@@ -211,20 +181,18 @@ bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendere
 
     if (scoredDevices.empty())
     {
-        std::cerr << "[Vulkan] no suitable physical device!\n";
-        m_VkPhysicalDevice = VK_NULL_HANDLE;
+        GramVulkanError("no suitable physical device");
         return false;
     }
     
     m_VkPhysicalDevice = scoredDevices.lower_bound(scoredDevices.rbegin()->first)->second;
     if (displayDebug)
     {
-        std::cout << "[Vulkan] suitable physical devices:\n";
+        GramVulkanInfo("suitable physical devices:");
         for (const std::pair<const int32_t, vk::PhysicalDevice>& scoredDevice: scoredDevices)
         {
-            std::cout << ((scoredDevice.second == m_VkPhysicalDevice) ? "   - [X] " : "   - [-] ")
-                      << scoredDevice.second.getProperties().deviceName
-                      << "  (score " << scoredDevice.first << ")\n";
+            const vk::PhysicalDeviceProperties properties = scoredDevice.second.getProperties();
+            GramVulkanListItem(scoredDevice.second == m_VkPhysicalDevice, "{} (id {}, score {})", properties.deviceName.data(), properties.deviceID, scoredDevice.first);
         }
     }
     
@@ -254,22 +222,23 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecificati
 
     const bool displayDebug = rendererSpec && rendererSpec->m_DisplayDebug;
     const char* deviceName = deviceProperties.deviceName.data();
+    const uint32_t deviceID = deviceProperties.deviceID; // two drivers can expose one GPU under the same name
 
     if (rendererSpec && !FindDeviceExtensions(rendererSpec, deviceInstance, extensions))
     {
-        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": missing requested device extensions\n";
+        if (displayDebug) GramVulkanInfo("rejected {} (id {}): missing requested device extensions", deviceName, deviceID);
         return false;
     }
 
     if (rendererSpec && !FindQueueFamilies(rendererSpec, deviceInstance, indices))
     {
-        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": no graphics + present queue families\n";
+        if (displayDebug) GramVulkanInfo("rejected {} (id {}): no graphics + present queue families", deviceName, deviceID);
         return false;
     }
 
     if (deviceProperties.apiVersion < VK_API_VERSION_1_3)
     {
-        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": Vulkan 1.3 not supported\n";
+        if (displayDebug) GramVulkanInfo("rejected {} (id {}): Vulkan 1.3 not supported", deviceName, deviceID);
         return false;
     }
 
@@ -278,7 +247,7 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecificati
     // properties; reject KosmicKrisp in favour of MoltenVK, the one offering the portability subset.
     if (std::find(extensions.begin(), extensions.end(), Gram::vkPortabilitySubsetExtension) == extensions.end())
     {
-        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": no portability subset extension\n";
+        if (displayDebug) GramVulkanInfo("rejected {} (id {}): no portability subset extension", deviceName, deviceID);
         return false;
     }
 #endif
@@ -286,7 +255,7 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecificati
 #ifdef GRAM_GEOMETRY_SHADERS
     if (!deviceFeatures.geometryShader)
     {
-        if (displayDebug) std::cerr << "[Vulkan] rejected " << deviceName << ": no geometryShader feature\n";
+        if (displayDebug) GramVulkanInfo("rejected {} (id {}): no geometryShader feature", deviceName, deviceID);
         return false;
     }
 #endif // GRAM_GEOMETRY_SHADERS
@@ -299,28 +268,20 @@ bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*render
     indices.m_QueueFamiliesIndices["m_PresentFamily"] = std::nullopt;
     indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = std::nullopt;
 
-    if (showDebug)
-    {
-        std::cout << "     [Vulkan] queue families: \n";
-    }
-
     uint32_t index = 0;
     for (const vk::QueueFamilyProperties& queueFamily: deviceInstance.getQueueFamilyProperties())
     {
         if (!indices.m_QueueFamiliesIndices["m_GraphicsFamily"].has_value())
         {
-            if (queueFamily.queueFlags & vk::QueueFlagBits::eGraphics)
+            const bool hasGraphics = static_cast<bool>(queueFamily.queueFlags & vk::QueueFlagBits::eGraphics);
+            if (hasGraphics)
             {
                 indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = index;
-
-                if (showDebug)
-                {
-                    std::cout << "        - [X] m_GraphicsFamily: " << index << "\n";
-                }
             }
-            else if (showDebug)
+
+            if (showDebug)
             {
-                std::cout << "        - [-] m_GraphicsFamily: " << index << "\n";
+                GramVulkanListItem(hasGraphics, "queue family {}: m_GraphicsFamily", index);
             }
         }
 
@@ -331,7 +292,7 @@ bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*render
     
             if (vkResult != vk::Result::eSuccess)
             {
-                std::cerr << "        - [-] m_PresentFamily: " << vk::to_string(vkResult) << "\n";
+                GramVulkanWarning("queue family {}: present support query failed: {}", index, vk::to_string(vkResult));
                 presentSupport = false;
             }
     
@@ -341,7 +302,7 @@ bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*render
 
                 if (showDebug)
                 {
-                    std::cout << "        - [X] m_PresentFamily: " << index << "\n";
+                    GramVulkanListSelected("queue family {}: m_PresentFamily", index);
                 }
             }
         }
@@ -360,22 +321,10 @@ bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*render
 bool VulkanDevice::FindDeviceExtensions(const VulkanRendererSpecification* rendererSpec, const vk::PhysicalDevice &deviceInstance, std::vector<std::string> &extensions, bool showDebug)
 {
     uint32_t extensionCount = 0;
-    vk::Result vkResult = vk::Result::eSuccess;
-    
-    vkResult = deviceInstance.enumerateDeviceExtensionProperties(nullptr, &extensionCount, nullptr);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] no device extensions reported for this device: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    GramVulkanCheck(deviceInstance.enumerateDeviceExtensionProperties(nullptr, &extensionCount, nullptr), "no device extensions reported for this device");
     
     std::vector<vk::ExtensionProperties> availableExtensions(extensionCount);
-    vkResult = deviceInstance.enumerateDeviceExtensionProperties(nullptr, &extensionCount, availableExtensions.data());
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] no device extensions found for this device: " << vk::to_string(vkResult) << "\n";
-        return false;
-    }
+    GramVulkanCheck(deviceInstance.enumerateDeviceExtensionProperties(nullptr, &extensionCount, availableExtensions.data()), "no device extensions found for this device");
 
     for (const vk::ExtensionProperties& currAvailableExtension: availableExtensions)
     {
@@ -384,7 +333,8 @@ bool VulkanDevice::FindDeviceExtensions(const VulkanRendererSpecification* rende
 
     if (rendererSpec && !rendererSpec->AreDeviceExtensionsSupported(extensions, showDebug))
     {
-        std::cerr << "[Vulkan] not all device extensions are supported by this device!\n";
+        const vk::PhysicalDeviceProperties properties = deviceInstance.getProperties();
+        GramVulkanError("not all device extensions are supported by {} (id {})", properties.deviceName.data(), properties.deviceID);
         return false;
     }
 
@@ -427,7 +377,7 @@ bool VulkanDevice::CreateLogicalDevice(const VulkanRendererSpecification* render
 
     if (!AreExtensionsSupported(rendererSpec))
     {
-        std::cerr << "[Vulkan] no device extensions are active!\n";
+        GramVulkanError("no device extensions are active");
         return false;
     }
 
@@ -454,14 +404,10 @@ bool VulkanDevice::CreateLogicalDevice(const VulkanRendererSpecification* render
         .ppEnabledExtensionNames = deviceExtensions.data()
     };
 
-    vk::Result vkResult = m_VkPhysicalDevice.createDevice(&deviceCreateInfo, nullptr, &m_VkDevice);
-    if (vkResult != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] failed to create logical device: " << vk::to_string(static_cast<vk::Result>(vkResult)) << "\n";
-        return false;
-    }
+    GramVulkanCheck(m_VkPhysicalDevice.createDevice(&deviceCreateInfo, nullptr, &m_VkDevice), "failed to create logical device");
     
     return true;
 }
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER

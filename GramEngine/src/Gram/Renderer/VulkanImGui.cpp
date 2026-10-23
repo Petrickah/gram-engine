@@ -1,5 +1,7 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanImGui.hpp"
+
+#ifdef GRAM_IMGUI_ENABLED
 #include "Gram/GLFWApplication.hpp"
 
 #include <imgui_impl_glfw.h>
@@ -42,11 +44,7 @@ VulkanImGui::VulkanImGui(
     };
 
     vk::ResultValue<vk::UniqueDescriptorPool> result = device.createDescriptorPoolUnique(poolInfo);
-    if (result.result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] error creating the descriptor pool for ImGui: " << vk::to_string(result.result) << "\n";
-        return;
-    }
+    GramVulkanCheckVoid(result.result, "error creating the descriptor pool for ImGui");
 
     m_ImGuiPool = std::move(result.value);
     m_IniPath   = rendererSpec->m_ProjectWorkspace / "imgui.ini";
@@ -94,20 +92,20 @@ VulkanImGui::VulkanImGui(
     GLFWApplication* app = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application);
     if (!app)
     {
-        std::cerr << "[ImGui] no application for Vulkan";
+        GramError("ImGui: no GLFWApplication to attach to");
         return;
     }
-    
+
     constexpr bool installCallbacks = true;
     if (!ImGui_ImplGlfw_InitForVulkan(app->GetWindow(), installCallbacks))
     {
-        std::cerr << "[ImGui] error initializing ImGui for Vulkan!\n";
+        GramError("ImGui: GLFW backend initialization failed");
         return;
     }
 
     if (!ImGui_ImplVulkan_Init(&initInfo))
     {
-        std::cerr << "[ImGui] error initializing ImGui!\n";
+        GramError("ImGui: Vulkan backend initialization failed");
         return;
     }
 }
@@ -133,3 +131,4 @@ void VulkanImGui::Finish()
 }
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_IMGUI_ENABLED

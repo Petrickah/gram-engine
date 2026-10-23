@@ -1,4 +1,4 @@
-#include "Gram/Platform.hpp"
+#include "Platform.hpp"
 
 #if defined(_WIN32)
     #ifndef WIN32_LEAN_AND_MEAN

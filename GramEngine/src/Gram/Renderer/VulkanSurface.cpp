@@ -1,5 +1,7 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
+
+#ifdef GRAM_VULKAN_RENDERER
 #include "Gram/GLFWApplication.hpp"
 
 GRAM_NAMESPACE_BEGIN
@@ -11,7 +13,7 @@ VulkanSurface::VulkanSurface(const VulkanRendererSpecification* rendererSpec, co
     
     if (!CreateSurfaceKHR(rendererSpec))
     {
-        std::cerr << "[Vulkan] couldn't create a surface!" << "\n";
+        GramVulkanError("couldn't create a surface");
         m_VkSurface = VK_NULL_HANDLE;
     }
 }
@@ -28,15 +30,11 @@ bool VulkanSurface::CreateSurfaceKHR(const VulkanRendererSpecification* renderer
 
     if (application == nullptr)
     {
-        std::cerr << "[Vulkan] this is not a GLFWApplication!\n";
+        GramVulkanError("this is not a GLFWApplication");
         return false;
     }
 
-    if (glfwCreateWindowSurface(m_VkInstance, application->GetWindow(), nullptr, &m_VkSurface) != VK_SUCCESS)
-    {
-        std::cerr << "[Vulkan] couldn't create a surface from GLFW!\n";
-        return false;
-    }
+    GramVulkanCheck(static_cast<vk::Result>(glfwCreateWindowSurface(m_VkInstance, application->GetWindow(), nullptr, &m_VkSurface)), "couldn't create a surface from GLFW");
 
     return true;
 }
@@ -48,4 +46,4 @@ bool VulkanSurface::DestroySurfaceKHR()
 }
 
 GRAM_NAMESPACE_END
-
+#endif // #ifdef GRAM_VULKAN_RENDERER

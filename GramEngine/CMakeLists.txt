@@ -14,6 +14,9 @@ add_compile_definitions(VULKAN_HPP_NO_CONSTRUCTORS)
 # calls (createShaderModuleUnique & co.) return a vk::ResultValue{ result, value } to check.
 add_compile_definitions(VULKAN_HPP_NO_EXCEPTIONS)
 
+# Disable ImGui Panels
+set(GRAM_IMGUI_ENABLED)
+
 include(FetchContent)
 
 # --- gram dependencies (managed, do not edit by hand) ---
@@ -29,20 +32,34 @@ find_package(glm CONFIG REQUIRED)
 # gram:dep:imgui begin
 find_package(imgui CONFIG REQUIRED)
 # gram:dep:imgui end
+# gram:dep:spdlog begin
+FetchContent_Declare(
+  spdlog
+  GIT_REPOSITORY https://github.com/gabime/spdlog.git
+  GIT_TAG v1.17.0
+)
+FetchContent_MakeAvailable(spdlog)
+# gram:dep:spdlog end
 # --- end gram dependencies ---
 
 # --- Gram Engine ---
 add_library(GramPlatform STATIC
-    src/Gram/Platform.cpp
+    src/Platform.cpp
 )
 target_include_directories(GramPlatform PUBLIC include)
 target_link_libraries(GramPlatform PUBLIC glm::glm)
+
+add_library(GramLogger STATIC
+    src/Gram/Logging/GramLogger.cpp
+)
+target_include_directories(GramLogger PUBLIC include)
+target_link_libraries(GramLogger PUBLIC Vulkan::Vulkan spdlog::spdlog glm::glm)
 
 add_library(GramGLFW STATIC
     src/Gram/GLFWApplication.cpp
 )
 target_include_directories(GramGLFW PUBLIC include)
-target_link_libraries(GramGLFW PUBLIC glfw)
+target_link_libraries(GramGLFW PUBLIC glfw GramLogger)
 
 add_library(GramRenderer STATIC
     src/Gram/VulkanRenderer.cpp
@@ -56,11 +73,11 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanImGui.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
-target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui)
+target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui GramLogger)
 
 add_executable(GramEngine src/main.cpp)
 target_include_directories(GramEngine PRIVATE include)
-target_link_libraries(GramEngine PRIVATE GramGLFW GramRenderer GramPlatform)
+target_link_libraries(GramEngine PRIVATE GramGLFW GramRenderer GramPlatform GramLogger)
 
 # --- shaders ---
 # HLSL -> SPIR-V at build time with the Vulkan SDK's dxc (the SDK ships it on Windows, Linux

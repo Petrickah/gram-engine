@@ -1,6 +1,7 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanFrame.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 VulkanFrame::VulkanFrame(const VulkanRendererSpecification *rendererSpec, const QueueFamilyIndices& indices, const vk::Device& device)
@@ -13,13 +14,7 @@ VulkanFrame::VulkanFrame(const VulkanRendererSpecification *rendererSpec, const 
         poolInfo.queueFamilyIndex = indices.m_QueueFamiliesIndices.at("m_GraphicsFamily").value();
     };
     
-    vk::Result result = vk::Result::eSuccess;
-    result = m_Device.createCommandPool(&poolInfo, nullptr, &m_CommandPool);
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] command pool creation failed: " << vk::to_string(result) << "\n";
-        return;
-    }
+    GramVulkanCheckVoid(m_Device.createCommandPool(&poolInfo, nullptr, &m_CommandPool), "command pool creation failed");
 
     m_CommandBuffers.resize(Gram::vkMaxFramesInFlight);
     vk::CommandBufferAllocateInfo allocInfo {
@@ -28,12 +23,7 @@ VulkanFrame::VulkanFrame(const VulkanRendererSpecification *rendererSpec, const 
         .commandBufferCount = Gram::vkMaxFramesInFlight
     };
 
-    result = m_Device.allocateCommandBuffers(&allocInfo, m_CommandBuffers.data());
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] command buffer allocation failed: " << vk::to_string(result) << "\n";
-        return;
-    }
+    GramVulkanCheckVoid(m_Device.allocateCommandBuffers(&allocInfo, m_CommandBuffers.data()), "command buffer allocation failed");
 }
 
 VulkanFrame::~VulkanFrame()
@@ -83,12 +73,7 @@ void VulkanFrame::TransitionImageLayout(
 bool VulkanFrame::StartFrame(const uint32_t frameIndex, const uint32_t imageIndex, const std::vector<vk::Image> &images, const std::vector<vk::ImageView> &imageViews, const vk::Extent2D &extent)
 {
     vk::CommandBufferBeginInfo beginInfo{};
-    vk::Result result = m_CommandBuffers[frameIndex].begin(&beginInfo);
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] starting rendering the frame failed: " << vk::to_string(result) << "\n";
-        return false;
-    }
+    GramVulkanCheck(m_CommandBuffers[frameIndex].begin(&beginInfo), "starting rendering the frame failed");
 
     // Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
     TransitionImageLayout(
@@ -153,14 +138,10 @@ bool VulkanFrame::EndFrame(const uint32_t frameIndex, const uint32_t imageIndex,
         vk::PipelineStageFlagBits2::eBottomOfPipe               // dstStage
     );
 
-    vk::Result result = m_CommandBuffers[frameIndex].end();
-    if (result != vk::Result::eSuccess)
-    {
-        std::cerr << "[Vulkan] finishing rendering the frame failed: " << vk::to_string(result) << "\n";
-        return false;
-    }
+    GramVulkanCheck(m_CommandBuffers[frameIndex].end(), "finishing rendering the frame failed");
 
     return true;
 }
 
 GRAM_NAMESPACE_END
+#endif // #ifdef GRAM_VULKAN_RENDERER
