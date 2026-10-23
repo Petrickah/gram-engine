@@ -45,6 +45,7 @@ target_include_directories(GramGLFW PUBLIC include)
 target_link_libraries(GramGLFW PUBLIC glfw)
 
 add_library(GramRenderer STATIC
+    src/Gram/VulkanRenderer.cpp
     src/Gram/Renderer/VulkanDevice.cpp
     src/Gram/Renderer/VulkanInstance.cpp
     src/Gram/Renderer/VulkanSurface.cpp
