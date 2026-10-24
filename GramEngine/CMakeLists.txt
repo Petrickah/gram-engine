@@ -50,13 +50,13 @@ target_include_directories(GramLogger PUBLIC include)
 target_link_libraries(GramLogger PUBLIC Vulkan::Vulkan spdlog::spdlog glm::glm)
 
 add_library(GramGLFW STATIC
-    src/Gram/GLFWApplication.cpp
+    src/Gram/Application/GLFWApplication.cpp
 )
 target_include_directories(GramGLFW PUBLIC include)
 target_link_libraries(GramGLFW PUBLIC glfw GramLogger)
 
 add_library(GramRenderer STATIC
-    src/Gram/VulkanRenderer.cpp
+    src/Gram/Renderer/VulkanRenderer.cpp
     src/Gram/Renderer/VulkanDevice.cpp
     src/Gram/Renderer/VulkanInstance.cpp
     src/Gram/Renderer/VulkanSurface.cpp
@@ -72,7 +72,9 @@ target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui G
 # The engine as one target for runtime/editor modules: PUBLIC so whatever links GramEngine also
 # gets its headers and the component libraries (GramRuntime's main.cpp includes
 # Gram/EntryPoint.hpp, GLFWApplication and VulkanRenderer directly).
-add_library(GramEngine STATIC src/Platform.cpp)
+add_library(GramEngine STATIC
+    src/Platform.cpp
+)
 target_include_directories(GramEngine PUBLIC include)
 target_link_libraries(GramEngine PUBLIC GramGLFW GramRenderer GramLogger)
 

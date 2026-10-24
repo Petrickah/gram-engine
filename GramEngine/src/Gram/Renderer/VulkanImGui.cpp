@@ -1,9 +1,9 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanImGui.hpp"
 
-#ifdef GRAM_IMGUI_ENABLED
-#include "Gram/GLFWApplication.hpp"
+#include "Gram/Application/GLFWApplication.hpp"
 
+#ifdef GRAM_IMGUI_ENABLED
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 #include <imgui.h>

@@ -1,8 +1,8 @@
 #pragma once
-#ifdef GRAM_VULKAN_RENDERER
-#include "Renderer.hpp"
+
 #include "Gram/Renderer/VulkanDevice.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 class QueueFamilyIndices;

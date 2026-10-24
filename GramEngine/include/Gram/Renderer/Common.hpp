@@ -2,7 +2,7 @@
 
 #include "Gram/Common.hpp"
 #include "Gram/Logging/GramLogger.hpp"
-#include "Renderer.hpp"
+#include "Gram/Renderer.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
 

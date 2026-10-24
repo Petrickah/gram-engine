@@ -1,10 +1,11 @@
 #pragma once
 
-#include "../Application.hpp"
 #include <GLFW/glfw3.h>
 
+#include "Gram/Application.hpp"
+
 #ifdef GRAM_VULKAN_RENDERER
-#include "Gram/VulkanRenderer.hpp"
+#include "Gram/Renderer/VulkanRenderer.hpp"
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
 GRAM_NAMESPACE_BEGIN

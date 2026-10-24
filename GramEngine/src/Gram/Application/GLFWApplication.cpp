@@ -1,7 +1,8 @@
-#include "Gram/GLFWApplication.hpp"
+#include "Gram/Common.hpp"
+#include "Gram/Application.hpp"
+#include "Gram/Application/GLFWApplication.hpp"
 
 #include <cstdlib>
-#include "Application.hpp"
 
 GRAM_NAMESPACE_BEGIN
 

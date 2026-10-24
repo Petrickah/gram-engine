@@ -1,8 +1,9 @@
 #pragma once
-#ifdef GRAM_VULKAN_RENDERER
-#include "Renderer.hpp"
+
+#include "Gram/Renderer.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 class VulkanPipeline : private UniqueObject

@@ -1,18 +1,18 @@
 #include "Gram/EntryPoint.hpp"
-#include "Gram/GLFWApplication.hpp"
-#include "Gram/VulkanRenderer.hpp"
+#include "Gram/Application/GLFWApplication.hpp"
+#include "Gram/Renderer/VulkanRenderer.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
-std::vector<const char*> extensionsLayers = {
-    "VK_EXT_debug_utils",
+static std::vector<const char*> extensionsLayers = {
     GramAppleOnly("VK_KHR_portability_enumeration",)
+    "VK_EXT_debug_utils",
 };
 
-std::vector<const char*> deviceExtensions = {
+static std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
-std::vector<const char*> validationLayers = {
+static std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation",
 };
 #endif // #ifdef GRAM_VULKAN_RENDERER

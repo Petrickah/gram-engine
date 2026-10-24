@@ -1,7 +1,6 @@
 #pragma once
-#ifdef GRAM_VULKAN_RENDERER
-#include "Renderer.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 class VulkanFrame;

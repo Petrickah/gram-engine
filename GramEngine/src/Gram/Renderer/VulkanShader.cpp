@@ -1,9 +1,9 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
 
-#ifdef GRAM_VULKAN_RENDERER
 #include <fstream>
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 VulkanShader::VulkanShader(const VulkanRendererSpecification* rendererSpec, const std::string& filename, const vk::Device& device)

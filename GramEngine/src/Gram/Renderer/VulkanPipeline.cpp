@@ -1,9 +1,9 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 
-#ifdef GRAM_VULKAN_RENDERER
 #include <utility>
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D& extent, const vk::SurfaceFormatKHR& surfaceFormat)

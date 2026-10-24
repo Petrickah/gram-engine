@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Gram/Common.hpp"
+#include "Gram/Renderer/Common.hpp"
 
 GRAM_NAMESPACE_BEGIN
 

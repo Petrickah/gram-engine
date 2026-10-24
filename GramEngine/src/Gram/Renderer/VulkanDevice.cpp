@@ -1,9 +1,8 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
+#include "Gram/Renderer/VulkanRenderer.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
-#include "Gram/VulkanRenderer.hpp"
-
 GRAM_NAMESPACE_BEGIN
 
 bool QueueFamilyIndices::TryGetDeviceIndices(std::vector<uint32_t> &indices) const

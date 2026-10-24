@@ -1,10 +1,10 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanInstance.hpp"
+#include "Gram/Renderer/VulkanRenderer.hpp"
+
+#include "Gram/Application/GLFWApplication.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
-#include "Gram/VulkanRenderer.hpp"
-#include "Gram/GLFWApplication.hpp"
-
 GRAM_NAMESPACE_BEGIN
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT       messageSeverity,

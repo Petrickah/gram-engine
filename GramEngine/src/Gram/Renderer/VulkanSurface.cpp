@@ -1,9 +1,9 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
 
-#ifdef GRAM_VULKAN_RENDERER
-#include "Gram/GLFWApplication.hpp"
+#include "Gram/Application/GLFWApplication.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 VulkanSurface::VulkanSurface(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance)

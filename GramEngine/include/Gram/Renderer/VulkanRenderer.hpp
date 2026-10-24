@@ -1,7 +1,6 @@
 #pragma once
-#ifdef GRAM_VULKAN_RENDERER
 
-#include "Renderer.hpp"
+#include "Gram/Renderer.hpp"
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanInstance.hpp"
@@ -11,6 +10,7 @@
 #include "Gram/Renderer/VulkanFrame.hpp"
 #include "Gram/Renderer/VulkanImGui.hpp"
 
+#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
 class VulkanRenderer: public Renderer, private UniqueObject

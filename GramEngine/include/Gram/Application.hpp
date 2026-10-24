@@ -1,9 +1,7 @@
 #pragma once
 
-#include "Gram/Common.hpp"
 #include "Gram/Logging/GramLogger.hpp"
-
-#include "Renderer.hpp"
+#include "Gram/Renderer.hpp"
 
 GRAM_NAMESPACE_BEGIN
 

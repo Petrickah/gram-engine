@@ -3,8 +3,8 @@
 // Including this header turns the translation unit into the app's entry point
 // (defines main/WinMain). A build that never includes it has no entry point,
 // so its CMake target must be a static library instead of an executable.
-#include "../Application.hpp"
-#include "../Platform.hpp"
+#include "Gram/Application.hpp"
+#include "Gram/Platform.hpp"
 
 #if defined(_WIN32)
     // Lowercase: mingw's header is installed as "windows.h", and unlike

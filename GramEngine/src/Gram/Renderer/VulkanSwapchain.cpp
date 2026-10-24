@@ -1,10 +1,10 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
+#include "Gram/Renderer/VulkanDevice.hpp"
+
+#include "Gram/Application/GLFWApplication.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
-#include "Gram/Renderer/VulkanDevice.hpp"
-#include "Gram/GLFWApplication.hpp"
-
 GRAM_NAMESPACE_BEGIN
 
 VulkanSwapchain::~VulkanSwapchain()
