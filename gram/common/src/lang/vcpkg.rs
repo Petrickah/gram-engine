@@ -6,8 +6,99 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde_json::{json, Map, Value};
+
 use crate::config::module::ModuleConfig;
 use crate::lang::cmake::DEPS_END;
+
+/// Which vcpkg manifest a cmake module's configure should use.
+pub(crate) enum BuildManifest {
+    /// The module's own vcpkg.json, which vcpkg finds on its own (top-level source dir).
+    Own,
+    /// A manifest merged from the module's and its referenced modules' vcpkg.json files,
+    /// written to this directory; pass it as VCPKG_MANIFEST_DIR.
+    Merged(PathBuf),
+}
+
+/// vcpkg's manifest mode only reads the vcpkg.json of the *top-level* CMake project, so a module
+/// pulled in with add_subdirectory (a module ref) would get its vcpkg dependencies silently
+/// skipped. When referenced modules have manifests, their dependencies are merged with the
+/// module's own into `<build dir>/vcpkg-manifest/vcpkg.json`. None: no vcpkg involved at all.
+///
+/// Only direct references are followed (a referenced module's own refs aren't, yet).
+pub(crate) fn build_manifest(module: &ModuleConfig, build_dir: &Path) -> io::Result<Option<BuildManifest>> {
+    let module_dir = Path::new(&module.src).parent().unwrap_or_else(|| Path::new("."));
+    let own = module_dir.join("vcpkg.json");
+    // Module refs are recorded in `deps` by module name, and gram's layout is flat, so a
+    // referenced module lives next to this one; external dependencies have no such directory.
+    let referenced: Vec<PathBuf> = module.deps.iter()
+        .map(|dep| module_dir.join("..").join(dep).join("vcpkg.json"))
+        .filter(|path| path.exists())
+        .collect();
+
+    if referenced.is_empty() {
+        return Ok(own.exists().then_some(BuildManifest::Own));
+    }
+
+    let manifests: Vec<PathBuf> = own.exists().then_some(own).into_iter().chain(referenced).collect();
+    let mut merged = Map::new();
+    let mut dependencies: Vec<Value> = Vec::new();
+    for path in &manifests {
+        let malformed = |detail: String| io::Error::new(io::ErrorKind::InvalidData, format!("malformed {}: {detail}", path.display()));
+        let manifest: Value = serde_json::from_str(&fs::read_to_string(path)?).map_err(|err| malformed(err.to_string()))?;
+        let Some(fields) = manifest.as_object() else { return Err(malformed(String::from("not a JSON object"))) };
+
+        for (key, field) in fields {
+            match key.as_str() {
+                "dependencies" => for dependency in field.as_array().into_iter().flatten() {
+                    match dependencies.iter_mut().find(|known| dependency_name(known) == dependency_name(dependency)) {
+                        Some(known) => merge_dependency(known, dependency),
+                        None => dependencies.push(dependency.clone()),
+                    }
+                },
+                // Describe the merged manifest itself, set below.
+                "name" | "version" => {},
+                // builtin-baseline, overrides, ...: the first manifest that sets one wins.
+                _ => { merged.entry(key.clone()).or_insert_with(|| field.clone()); },
+            }
+        }
+    }
+    merged.insert(String::from("name"), json!(sanitize_name(&module.name)));
+    merged.insert(String::from("version"), json!("0.1.0"));
+    merged.insert(String::from("dependencies"), Value::Array(dependencies));
+
+    let dir = std::env::current_dir()?.join(build_dir).join("vcpkg-manifest");
+    fs::create_dir_all(&dir)?;
+    let pretty = serde_json::to_string_pretty(&Value::Object(merged))
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+    fs::write(dir.join("vcpkg.json"), format!("{pretty}\n"))?;
+    Ok(Some(BuildManifest::Merged(dir)))
+}
+
+/// A vcpkg dependency is either a plain port name or an object with a "name" field.
+fn dependency_name(dependency: &Value) -> Option<&str> {
+    dependency.as_str().or_else(|| dependency.get("name")?.as_str())
+}
+
+/// The same port requested by two manifests: keep the richer form and the union of features.
+/// Differing "platform" filters aren't reconciled; the first manifest's wins.
+fn merge_dependency(known: &mut Value, other: &Value) {
+    if known.is_string() {
+        if other.is_object() {
+            *known = other.clone();
+        }
+        return;
+    }
+    let (Some(known), Some(other)) = (known.as_object_mut(), other.as_object()) else { return };
+    let Some(other_features) = other.get("features").and_then(Value::as_array) else { return };
+    if let Some(features) = known.entry("features").or_insert_with(|| json!([])).as_array_mut() {
+        for feature in other_features {
+            if !features.contains(feature) {
+                features.push(feature.clone());
+            }
+        }
+    }
+}
 
 /// Adds a dependency resolved via a vcpkg manifest (vcpkg.json) instead of FetchContent:
 /// records it in the module's vcpkg.json and inserts a plain `find_package(...)` in the

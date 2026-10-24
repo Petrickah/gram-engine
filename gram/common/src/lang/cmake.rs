@@ -72,8 +72,9 @@ impl ModuleBackend for CMake {
         // from gram's own build dir, without needing a separate IDE-driven configure.
         configure.arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
 
-        let has_vcpkg = Path::new(manifest_dir).join("vcpkg.json").exists();
-        if has_vcpkg {
+        let vcpkg_manifest = vcpkg::build_manifest(module, Path::new(build_dir))?;
+        let has_vcpkg = vcpkg_manifest.is_some();
+        if let Some(manifest) = &vcpkg_manifest {
             let vcpkg_root = std::env::var("VCPKG_ROOT").map_err(|_| io::Error::new(
                 io::ErrorKind::NotFound,
                 "module declares vcpkg dependencies (vcpkg.json) but VCPKG_ROOT isn't set",
@@ -81,6 +82,9 @@ impl ModuleBackend for CMake {
             configure.arg(format!(
                 "-DCMAKE_TOOLCHAIN_FILE={vcpkg_root}/scripts/buildsystems/vcpkg.cmake"
             ));
+            if let vcpkg::BuildManifest::Merged(dir) = manifest {
+                configure.arg(format!("-DVCPKG_MANIFEST_DIR={}", dir.display()));
+            }
         }
 
         match target {
@@ -123,9 +127,21 @@ impl ModuleBackend for CMake {
             return Err(io::Error::new(io::ErrorKind::Other, "cmake build failed"));
         }
 
-        let (prefix, ext) = self.artifact_naming(module, target);
-        let from = Path::new(build_dir).join(format!("{prefix}{}{ext}", module.name));
-        std::fs::copy(from, out)?;
+        // The CMakeLists decides whether a library is SHARED or STATIC, not gram, so look for
+        // every naming the module could have produced. The copy keeps the real file name.
+        let candidates: Vec<_> = artifact_candidates(module, target).into_iter()
+            .map(|file| Path::new(build_dir).join(file))
+            .collect();
+        let from = candidates.iter().find(|path| path.exists()).ok_or_else(|| io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "cmake built module {} but its artifact wasn't found (looked for {})",
+                module.name,
+                candidates.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join(", ")
+            ),
+        ))?;
+        let dest = Path::new(out).with_file_name(from.file_name().expect("artifact candidates are file names"));
+        fs::copy(from, dest)?;
 
         // Compiled shaders (SPIR-V) are runtime assets the executable loads from disk, so they
         // travel with it. Stopgap until shaders get their own module kind with N artifacts.
@@ -253,4 +269,17 @@ impl ModuleBackend for CMake {
         module.deps.push(dependency.to_owned());
         Ok(())
     }
+}
+
+/// File names a cmake module's artifact can have on `target`. A runtime module is an
+/// executable; a library is either shared (the naming `artifact_naming` reports, used by
+/// gram's own scaffold) or static (lib*.a, which mingw also produces for Windows).
+fn artifact_candidates(module: &ModuleConfig, target: &str) -> Vec<String> {
+    let (prefix, ext) = CMake.artifact_naming(module, target);
+    let name = &module.name;
+    let mut candidates = vec![format!("{prefix}{name}{ext}")];
+    if module.kind == "library" {
+        candidates.push(format!("lib{name}.a"));
+    }
+    candidates
 }
