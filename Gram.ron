@@ -1,7 +1,7 @@
 BuildConfig(
     name: "gram-engine",
     version: "0.1.0",
-    main: "GramEngine",
+    main: "GramRuntime",
     modules: [
         ModuleConfig(
             name: "gram",
@@ -22,7 +22,7 @@ BuildConfig(
         ModuleConfig(
             name: "GramEngine",
             lang: "cmake",
-            kind: "runtime",
+            kind: "library",
             src: "GramEngine/CMakeLists.txt",
             deps: [
                 "vulkan",
@@ -34,6 +34,20 @@ BuildConfig(
             targets: [
                 "linux",
                 "windows",
+                "macos",
+            ],
+        ),
+        ModuleConfig(
+            name: "GramRuntime",
+            lang: "cmake",
+            kind: "runtime",
+            src: "GramRuntime/CMakeLists.txt",
+            deps: [
+                "GramEngine",
+            ],
+            targets: [
+                "windows",
+                "linux",
                 "macos",
             ],
         ),

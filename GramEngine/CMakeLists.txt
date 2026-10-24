@@ -43,12 +43,6 @@ FetchContent_MakeAvailable(spdlog)
 # --- end gram dependencies ---
 
 # --- Gram Engine ---
-add_library(GramPlatform STATIC
-    src/Platform.cpp
-)
-target_include_directories(GramPlatform PUBLIC include)
-target_link_libraries(GramPlatform PUBLIC glm::glm)
-
 add_library(GramLogger STATIC
     src/Gram/Logging/GramLogger.cpp
 )
@@ -75,15 +69,18 @@ add_library(GramRenderer STATIC
 target_include_directories(GramRenderer PUBLIC include)
 target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui GramLogger)
 
-add_executable(GramEngine src/main.cpp)
-target_include_directories(GramEngine PRIVATE include)
-target_link_libraries(GramEngine PRIVATE GramGLFW GramRenderer GramPlatform GramLogger)
+# The engine as one target for runtime/editor modules: PUBLIC so whatever links GramEngine also
+# gets its headers and the component libraries (GramRuntime's main.cpp includes
+# Gram/EntryPoint.hpp, GLFWApplication and VulkanRenderer directly).
+add_library(GramEngine STATIC src/Platform.cpp)
+target_include_directories(GramEngine PUBLIC include)
+target_link_libraries(GramEngine PUBLIC GramGLFW GramRenderer GramLogger)
 
 # --- shaders ---
 # HLSL -> SPIR-V at build time with the Vulkan SDK's dxc (the SDK ships it on Windows, Linux
 # and macOS; vcpkg's directx-dxc port has no macOS support). SPIR-V is platform-independent, so
 # the host's dxc is the right one even when cross-compiling for Windows. Output lands in
-# <build dir>/shaders/, which gram copies next to the built executable.
+# <top-level build dir>/shaders/, which gram copies next to the built executable.
 # Stopgap until gram grows a dedicated shader module kind.
 # Plain find_program instead of FindVulkan's dxc component: that one also requires the dxcompiler
 # library for the *target* platform, which a mingw cross-build doesn't have (and doesn't need).
@@ -94,7 +91,9 @@ find_program(GRAM_DXC_EXECUTABLE dxc
     REQUIRED
 )
 
-set(GRAM_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
+# CMAKE_BINARY_DIR, not CMAKE_CURRENT_BINARY_DIR: when a runtime module pulls GramEngine in with
+# add_subdirectory, the shaders must still land in the *top-level* build dir, where gram looks.
+set(GRAM_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
 set(GRAM_SHADER_OUTPUTS)
 
 # One .hlsl file holds both stages (VSMain/PSMain), so it compiles to <name>.vert.spv and <name>.frag.spv.
