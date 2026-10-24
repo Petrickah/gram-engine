@@ -47,7 +47,7 @@ VulkanImGui::VulkanImGui(
     GramVulkanCheckVoid(result.result, "error creating the descriptor pool for ImGui");
 
     m_ImGuiPool = std::move(result.value);
-    m_IniPath   = rendererSpec->m_ProjectWorkspace / "imgui.ini";
+    m_IniPath   = (rendererSpec->m_ProjectWorkspace / "imgui.ini").string();
 
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = m_IniPath.c_str();
