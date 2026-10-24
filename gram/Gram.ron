@@ -1,0 +1,31 @@
+BuildConfig(
+    name: "gram",
+    version: "0.1.0",
+    main: "cli",
+    modules: [
+        ModuleConfig(
+            name: "common",
+            lang: "cargo",
+            kind: "library",
+            src: "common/Cargo.toml",
+            deps: [],
+            targets: [
+                "linux",
+                "windows",
+                "macos",
+            ],
+        ),
+        ModuleConfig(
+            name: "cli",
+            lang: "cargo",
+            kind: "runtime",
+            src: "cli/Cargo.toml",
+            deps: [],
+            targets: [
+                "linux",
+                "windows",
+                "macos",
+            ],
+        ),
+    ],
+)

@@ -1,0 +1,256 @@
+use std::fs;
+use std::io;
+use std::path::Path;
+use std::process::Command;
+
+use crate::config::module::ModuleConfig;
+use crate::directory::Directory;
+use crate::lang::CMake;
+use crate::lang::DependencySpec;
+use crate::lang::ModuleBackend;
+use crate::lang::vcpkg;
+
+// Marker lines bracketing the block of gram-managed FetchContent dependencies
+// inside a cmake module's CMakeLists.txt, so add/remove can edit that region
+// as text without parsing the rest of the file.
+pub(crate) const DEPS_BEGIN: &str = "# --- gram dependencies (managed, do not edit by hand) ---";
+pub(crate) const DEPS_END: &str = "# --- end gram dependencies ---";
+
+impl ModuleBackend for CMake {
+    fn manifest_file(&self) -> &'static str {
+        "CMakeLists.txt"
+    }
+    
+    fn scaffold(&self, module: &ModuleConfig, project: &Directory) -> io::Result<()> {
+        let module_dir = Path::new(&module.src).parent().unwrap_or_else(|| Path::new("."));
+        let module_dir = module_dir.to_str().expect("module src path is not valid UTF-8");
+        let name = &module.name;
+
+        let target = match module.kind.as_str() {
+            "library" => format!(
+                "add_library({name} SHARED src/{name}.cpp)\ntarget_include_directories({name} PUBLIC include)\n"
+            ),
+            _ => format!("add_executable({name} src/main.cpp)\n"),
+        };
+
+        let cmakelists = format!(
+            "cmake_minimum_required(VERSION 3.20)\nproject({name})\n\nset(CMAKE_CXX_STANDARD 17)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)\n\ninclude(FetchContent)\n\n{DEPS_BEGIN}\n{DEPS_END}\n\n{target}"
+        );
+        project.write_source(&module.src, &cmakelists)?;
+
+        match module.kind.as_str() {
+            "library" => {
+                let header = format!(
+                    "#pragma once\n\nnamespace {name} {{\n    void hello();\n}}\n"
+                );
+                let source = format!(
+                    "#include <iostream>\n\n#include \"{name}/{name}.hpp\"\n\nnamespace {name} {{\n    void hello() {{\n        std::cout << \"Hello, World!\" << std::endl;\n    }}\n}}\n"
+                );
+                project.write_source(&format!("{module_dir}/include/{name}/{name}.hpp"), &header)?;
+                project.write_source(&format!("{module_dir}/src/{name}.cpp"), &source)
+            },
+            _ => {
+                let main = "#include <iostream>\n\nint main() {\n    std::cout << \"Hello, World!\" << std::endl;\n    return 0;\n}\n";
+                project.write_source(&format!("{module_dir}/src/main.cpp"), main)
+            },
+        }
+    }
+    
+    fn compile(&self, module: &ModuleConfig, out: &str, target: &str) -> io::Result<()> {
+        let manifest_dir = Path::new(&module.src).parent().unwrap_or_else(|| Path::new("."));
+        let build_dir = manifest_dir.join(format!("build-{target}"));
+        let build_dir = build_dir.to_str().expect("build dir path is not valid UTF-8");
+        let manifest_dir = manifest_dir.to_str().expect("module src path is not valid UTF-8");
+
+        let mut configure = Command::new("cmake");
+        // --fresh:  and CMakeLists.txt are regenerated on every add/remove,
+        // so reconfigure from scratch each build too — otherwise settings that only take
+        // effect on a build dir's *first* configure (CMAKE_TOOLCHAIN_FILE among them) go
+        // stale once a module gets vcpkg wired up on top of an already-configured build dir.
+        configure.args(["-S", manifest_dir, "-B", build_dir, "--fresh"]);
+        // So editors (VS Code's C/C++ extension) can get accurate IntelliSense straight
+        // from gram's own build dir, without needing a separate IDE-driven configure.
+        configure.arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
+
+        let has_vcpkg = Path::new(manifest_dir).join("vcpkg.json").exists();
+        if has_vcpkg {
+            let vcpkg_root = std::env::var("VCPKG_ROOT").map_err(|_| io::Error::new(
+                io::ErrorKind::NotFound,
+                "module declares vcpkg dependencies (vcpkg.json) but VCPKG_ROOT isn't set",
+            ))?;
+            configure.arg(format!(
+                "-DCMAKE_TOOLCHAIN_FILE={vcpkg_root}/scripts/buildsystems/vcpkg.cmake"
+            ));
+        }
+
+        match target {
+            // Native host build — cmake/vcpkg pick the host compiler and triplet on their own.
+            _ if target == std::env::consts::OS => {},
+            "windows" => {
+                // Cross-compiles the project itself. Without an explicit VCPKG_TARGET_TRIPLET,
+                // vcpkg defaults to the MSVC-based x64-windows triplet for any Windows target —
+                // it ignores CMAKE_C_COMPILER/CMAKE_CXX_COMPILER for that guess — so a vcpkg
+                // module needs to be told explicitly to resolve its dependencies against the
+                // mingw triplet instead (which chainloads scripts/toolchains/mingw.cmake for
+                // vcpkg's own port builds; it doesn't affect the outer project's compiler choice
+                // below, which is set the same way regardless of vcpkg).
+                if has_vcpkg {
+                    configure.arg("-DVCPKG_TARGET_TRIPLET=x64-mingw-static");
+                }
+                configure.args([
+                    "-DCMAKE_SYSTEM_NAME=Windows",
+                    "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc",
+                    "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
+                    // mingw dynamically links libstdc++/libgcc/winpthread by default, so the
+                    // .exe needs their DLLs alongside it. Static-link them instead — same
+                    // standalone-binary goal as +crt-static in .cargo/config.toml for the
+                    // cargo cross-compile path.
+                    "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -static",
+                ]);
+            },
+            other => return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unsupported target: {other}"),
+            )),
+        }
+
+        if !configure.status()?.success() {
+            return Err(io::Error::new(io::ErrorKind::Other, "cmake configure failed"));
+        }
+
+        let status = Command::new("cmake").args(["--build", build_dir]).status()?;
+        if !status.success() {
+            return Err(io::Error::new(io::ErrorKind::Other, "cmake build failed"));
+        }
+
+        let (prefix, ext) = self.artifact_naming(module, target);
+        let from = Path::new(build_dir).join(format!("{prefix}{}{ext}", module.name));
+        std::fs::copy(from, out)?;
+
+        // Compiled shaders (SPIR-V) are runtime assets the executable loads from disk, so they
+        // travel with it. Stopgap until shaders get their own module kind with N artifacts.
+        let shaders = Path::new(build_dir).join("shaders");
+        if shaders.is_dir() {
+            let dest = Path::new(out).parent().unwrap_or_else(|| Path::new(".")).join("shaders");
+            fs::create_dir_all(&dest)?;
+            for entry in fs::read_dir(&shaders)? {
+                let entry = entry?;
+                if entry.file_type()?.is_file() {
+                    fs::copy(entry.path(), dest.join(entry.file_name()))?;
+                }
+            }
+        }
+        Ok(())
+    }
+    
+    /// A "library" module produces a shared library (lib*.so / lib*.dylib / *.dll) instead
+    /// of the default executable naming.
+    fn artifact_naming(&self, module: &ModuleConfig, target: &str) -> (&'static str, &'static str) {
+        match (module.kind.as_str(), target) {
+            ("library", "windows") => ("", ".dll"),
+            ("library", "macos")   => ("lib", ".dylib"),
+            ("library", _)         => ("lib", ".so"),
+            (_, "windows")         => ("", ".exe"),
+            _                      => ("", ""),
+        }
+    }
+    
+    fn add_dependency(&self, module: &mut ModuleConfig, dep: &DependencySpec) -> io::Result<()> {
+        // Registry: a plain name with neither --url nor --vcpkg, which cmake has nowhere to resolve from.
+        const NEEDS_SOURCE: &str = "cmake dependencies need --url (used as FetchContent's GIT_REPOSITORY), or pass --vcpkg to resolve from a vcpkg registry instead";
+
+        match dep {
+            DependencySpec::Vcpkg { name } => vcpkg::add_dependency(module, name),
+            DependencySpec::Registry { .. } => Err(io::Error::new(io::ErrorKind::InvalidInput, NEEDS_SOURCE)),
+            DependencySpec::Git { name, url, tag } => {
+                if url.is_empty() {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, NEEDS_SOURCE));
+                }
+
+                println!("gram add (dependency={name}, src={}): adding the new dependency", module.src);
+                let contents = fs::read_to_string(&module.src)?;
+                let begin_marker = format!("# gram:dep:{name} begin");
+
+                if !contents.contains(&begin_marker) {
+                    let tag_line = if tag.is_empty() { String::new() } else { format!("\n  GIT_TAG {tag}") };
+                    let block = format!(
+                        "{begin_marker}\nFetchContent_Declare(\n  {name}\n  GIT_REPOSITORY {url}{tag_line}\n)\nFetchContent_MakeAvailable({name})\n# gram:dep:{name} end\n"
+                    );
+                    let contents = contents.replacen(DEPS_END, &format!("{block}{DEPS_END}"), 1);
+                    fs::write(&module.src, contents)?;
+                }
+
+                module.deps.push(name.to_owned());
+                Ok(())
+            }
+        }
+    }
+    
+    fn rm_dependency(&self, module: &mut ModuleConfig, dependency: &str) -> io::Result<String> {
+        println!("gram remove (dependency={dependency}, src={}): removing the dependency", module.src);
+        let contents = fs::read_to_string(&module.src)?;
+        let begin_marker = format!("# gram:dep:{dependency} begin");
+        let end_marker = format!("# gram:dep:{dependency} end");
+
+        let (start, end) = match (contents.find(&begin_marker), contents.find(&end_marker)) {
+            (Some(start), Some(end)) => (start, end + end_marker.len()),
+            _ => return Err(io::Error::new(io::ErrorKind::Other, "dependency not found in CMakeLists.txt")),
+        };
+
+        let mut new_contents = contents[..start].to_string();
+        new_contents.push_str(contents[end..].trim_start_matches('\n'));
+
+        // A module-ref dependency also gets a target_link_libraries block appended after
+        // the target (see add_module_ref) — strip it too if present. Every other
+        // dependency kind never has one, so this is a no-op for them.
+        let link_begin = format!("# gram:link:{dependency} begin");
+        let link_end = format!("# gram:link:{dependency} end");
+        if let (Some(start), Some(end)) = (new_contents.find(&link_begin), new_contents.find(&link_end)) {
+            let end = end + link_end.len();
+            let mut trimmed = new_contents[..start].trim_end_matches('\n').to_string();
+            trimmed.push('\n');
+            trimmed.push_str(new_contents[end..].trim_start_matches('\n'));
+            new_contents = trimmed;
+        }
+
+        fs::write(&module.src, new_contents)?;
+
+        vcpkg::remove_dependency(module, dependency)?;
+
+        match module.deps.iter().position(|dep| dep == dependency) {
+            Some(position) => Ok(module.deps.swap_remove(position)),
+            None => Err(io::Error::new(io::ErrorKind::Other, "dependency not found in module config")),
+        }
+    }
+    
+    fn add_module_ref(&self, module: &mut ModuleConfig, dependency: &str) -> io::Result<()> {
+        println!("gram add (dependency={dependency}, src={}): adding module reference (add_subdirectory)", module.src);
+        let contents = fs::read_to_string(&module.src)?;
+        let begin_marker = format!("# gram:dep:{dependency} begin");
+
+        let contents = if !contents.contains(&begin_marker) {
+            let block = format!(
+                "{begin_marker}\nadd_subdirectory(${{CMAKE_CURRENT_SOURCE_DIR}}/../{dependency} ${{CMAKE_CURRENT_BINARY_DIR}}/{dependency})\n# gram:dep:{dependency} end\n"
+            );
+            contents.replacen(DEPS_END, &format!("{block}{DEPS_END}"), 1)
+        } else {
+            contents
+        };
+
+        // target_link_libraries needs the target (add_executable/add_library) to already
+        // exist, so it can't live in the DEPS region above — appended after it instead.
+        let link_marker = format!("# gram:link:{dependency} begin");
+        let contents = if !contents.contains(&link_marker) {
+            format!(
+                "{contents}\n{link_marker}\ntarget_link_libraries({} PRIVATE {dependency})\n# gram:link:{dependency} end\n",
+                module.name
+            )
+        } else {
+            contents
+        };
+
+        fs::write(&module.src, contents)?;
+        module.deps.push(dependency.to_owned());
+        Ok(())
+    }
+}
