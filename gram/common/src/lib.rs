@@ -5,6 +5,6 @@ pub mod lang;
 pub mod target;
 mod vscode;
 
-pub use config::BuildConfig;
+pub use config::{AddOutcome, BuildConfig};
 pub use config::module::ModuleConfig;
 pub use directory::Directory;

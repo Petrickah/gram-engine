@@ -15,8 +15,9 @@ use support::*;
 fn creates_the_module_when_it_does_not_exist() {
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
 
-    project.gram(&["add", "--module", "engine", "--lang", "cmake", "--kind", "library"]).succeeds();
+    let run = project.gram(&["add", "--module", "engine", "--lang", "cmake", "--kind", "library"]).succeeds();
 
+    assert!(run.printed("Module engine created."));
     let config = project.config();
     let engine = config.module("engine");
     assert_eq!(engine.lang, "cmake");
@@ -54,7 +55,7 @@ fn adds_targets_to_an_existing_module() {
 
     let run = project.gram(&["add", "--module", "main", "--target", "windows,macos"]).succeeds();
 
-    assert!(run.printed("added target(s) windows, macos"));
+    assert!(run.printed("Module main now also targets windows, macos."));
     assert_eq!(project.config().module("main").targets, ["linux", "windows", "macos"]);
 }
 
@@ -64,7 +65,7 @@ fn does_not_duplicate_a_target_already_declared() {
 
     let run = project.gram(&["add", "--module", "main", "--target", "linux"]).succeeds();
 
-    assert!(!run.printed("added target(s)"));
+    assert!(run.printed("Nothing to do: module main already exists with these targets."));
     assert_eq!(project.config().module("main").targets, ["linux", "windows"]);
 }
 
@@ -82,8 +83,10 @@ fn rejects_an_unknown_target() {
 fn adds_a_fetchcontent_dependency_to_a_cmake_module() {
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
 
-    project.gram(&["add", "fmt", "--module", "main",
-                   "--url", "https://github.com/fmtlib/fmt", "--tag", "11.0.2"]).succeeds();
+    let run = project.gram(&["add", "fmt", "--module", "main",
+                             "--url", "https://github.com/fmtlib/fmt", "--tag", "11.0.2"]).succeeds();
+
+    assert!(run.printed("Added fmt to module main."));
 
     // The dependency goes inside the managed region, between its own begin/end markers, so
     // `gram remove` can find and cut exactly this block later.
@@ -112,6 +115,7 @@ fn adding_a_dependency_the_module_already_has_only_warns() {
     let run = project.gram(&["add", "fmt", "--module", "main", "--url", "https://github.com/fmtlib/fmt"]).succeeds();
 
     assert!(run.printed("warning: module main already depends on fmt, nothing to do"));
+    assert!(!run.printed("Added fmt"), "no success message for something that didn't happen");
     assert_eq!(project.read("main/CMakeLists.txt"), before, "nothing is written again");
     assert_eq!(project.config().module("main").deps, ["fmt"], "recorded once in Gram.ron");
 }

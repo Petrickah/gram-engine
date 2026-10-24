@@ -14,6 +14,22 @@ pub mod module;
 
 use module::ModuleConfig;
 
+/// What a `gram add` actually did, so the CLI can say so (one command can create a module,
+/// add targets, add a dependency, or find there's nothing to do).
+#[derive(Debug, PartialEq)]
+pub enum AddOutcome {
+    /// No dependency given; the module didn't exist and was created.
+    ModuleCreated { module: String },
+    /// No dependency given; the existing module now declares these extra targets.
+    TargetsAdded { module: String, targets: Vec<String> },
+    /// The dependency was added (the module was created first if it didn't exist).
+    DependencyAdded { module: String, dependency: String },
+    /// The module already had this dependency; nothing was run or written.
+    AlreadyPresent { module: String, dependency: String },
+    /// No dependency given, and the module already existed with every requested target.
+    NothingToDo { module: String },
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BuildConfig {
     pub(crate) name: String,
@@ -117,14 +133,17 @@ impl BuildConfig {
         Ok(())
     }
 
-    pub fn add_dependency(&mut self, command: AddCommand) -> io::Result<()> {
+    pub fn add_dependency(&mut self, command: AddCommand) -> io::Result<AddOutcome> {
         let project    = Directory::new(".")?;
         let lang          = command.lang;
         let targets  = command.target;
         let module        = command.module;
         let dependency    = command.name;
 
-        if !self.modules.iter().any(|m| m.name == module) {
+        let created = !self.modules.iter().any(|m| m.name == module);
+        let mut added_targets: Vec<String> = vec![];
+
+        if created {
             println!("gram module (name={module}, lang={lang}) created");
             self.add_module(&module, &lang, &command.kind, &targets)?;
             self.modules.last().unwrap().save(&project)?;
@@ -136,62 +155,77 @@ impl BuildConfig {
             let added: Vec<&String> = targets.iter().filter(|t| !existing.targets.contains(t)).collect();
             if !added.is_empty() {
                 let added_display = added.iter().map(|t| t.as_str()).collect::<Vec<_>>().join(", ");
-                existing.targets.extend(added.into_iter().cloned());
+                added_targets = added.into_iter().cloned().collect();
+                existing.targets.extend(added_targets.iter().cloned());
                 println!("gram module (name={module}): added target(s) {added_display}");
                 project.write_file("Gram.ron", self)?;
             }
         }
 
-        if !dependency.is_empty() {
-            if command.module_ref {
-                if !command.url.is_empty() || !command.tag.is_empty() || command.vcpkg {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "--module-ref can't be combined with --url/--tag/--vcpkg (those are for external dependencies)",
-                    ));
-                }
-                if dependency == module {
-                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "a module can't reference itself"));
-                }
+        if dependency.is_empty() {
+            return Ok(if created {
+                AddOutcome::ModuleCreated { module }
+            } else if !added_targets.is_empty() {
+                AddOutcome::TargetsAdded { module, targets: added_targets }
+            } else {
+                AddOutcome::NothingToDo { module }
+            });
+        }
 
-                let dep = self.modules.iter().find(|m| m.name == dependency).ok_or_else(|| io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("referenced module not found: {dependency} (create it first, e.g. `gram add --module {dependency} --lang ...`)"),
-                ))?;
-                if dep.kind != "library" {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("referenced module {dependency} is a \"{}\" module, not a library — only library modules can be referenced", dep.kind),
-                    ));
-                }
-                let dep_lang = dep.lang.clone();
+        // Checked before anything else about the dependency: adding one the module already has
+        // is a no-op (no second `cargo add`, no second CMake block, no duplicate in Gram.ron).
+        let consumer = self.modules.iter().find(|m| m.name == module).expect("module was just created above, or already existed");
+        if consumer.has_dependency(&dependency) {
+            return Ok(AddOutcome::AlreadyPresent { module, dependency });
+        }
 
-                let consumer = self.modules.iter().find(|m| m.name == module).expect("module was just created above, or already existed");
-                if consumer.lang != dep_lang {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!(
-                            "cross-language module references aren't supported yet ({module} is \"{}\", {dependency} is \"{dep_lang}\")",
-                            consumer.lang
-                        ),
-                    ));
-                }
+        if command.module_ref {
+            if !command.url.is_empty() || !command.tag.is_empty() || command.vcpkg {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "--module-ref can't be combined with --url/--tag/--vcpkg (those are for external dependencies)",
+                ));
+            }
+            if dependency == module {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "a module can't reference itself"));
+            }
 
-                self.modules.iter_mut()
-                    .find(|m| m.name == module)
-                    .expect("checked above")
-                    .add_module_ref(&dependency)?;
-                return project.write_file("Gram.ron", self);
+            let dep = self.modules.iter().find(|m| m.name == dependency).ok_or_else(|| io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("referenced module not found: {dependency} (create it first, e.g. `gram add --module {dependency} --lang ...`)"),
+            ))?;
+            if dep.kind != "library" {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("referenced module {dependency} is a \"{}\" module, not a library — only library modules can be referenced", dep.kind),
+                ));
+            }
+            let dep_lang = dep.lang.clone();
+
+            let consumer = self.modules.iter().find(|m| m.name == module).expect("module was just created above, or already existed");
+            if consumer.lang != dep_lang {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "cross-language module references aren't supported yet ({module} is \"{}\", {dependency} is \"{dep_lang}\")",
+                        consumer.lang
+                    ),
+                ));
             }
 
             self.modules.iter_mut()
                 .find(|m| m.name == module)
+                .expect("checked above")
+                .add_module_ref(&dependency)?;
+        } else {
+            self.modules.iter_mut()
+                .find(|m| m.name == module)
                 .expect("module was just created above, or already existed")
                 .add_dependency(&dependency, &command.url, &command.tag, command.vcpkg)?;
-            return project.write_file("Gram.ron", self);
         }
 
-        Ok(())
+        project.write_file("Gram.ron", self)?;
+        Ok(AddOutcome::DependencyAdded { module, dependency })
     }
 
     pub fn rm_dependency(&mut self, command: RemoveCommand) -> io::Result<()> {

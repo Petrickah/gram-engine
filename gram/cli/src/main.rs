@@ -1,5 +1,6 @@
 use clap::Parser;
 
+use gram_common::AddOutcome;
 use gram_common::commands::Cli;
 use gram_common::commands::Commands;
 use gram_common::commands::add;
@@ -28,9 +29,18 @@ fn main() {
                     std::process::exit(1)
                 }
             }
-        Commands::Add(command) => 
+        Commands::Add(command) =>
             match add::module(command) {
-                Ok(_) => println!("Module dependency added successfully."),
+                Ok(AddOutcome::DependencyAdded { module, dependency }) =>
+                    println!("Added {dependency} to module {module}."),
+                Ok(AddOutcome::AlreadyPresent { module, dependency }) =>
+                    eprintln!("warning: module {module} already depends on {dependency}, nothing to do"),
+                Ok(AddOutcome::ModuleCreated { module }) =>
+                    println!("Module {module} created."),
+                Ok(AddOutcome::TargetsAdded { module, targets }) =>
+                    println!("Module {module} now also targets {}.", targets.join(", ")),
+                Ok(AddOutcome::NothingToDo { module }) =>
+                    println!("Nothing to do: module {module} already exists with these targets."),
                 Err(err) => {
                     eprintln!("Error: {err}");
                     std::process::exit(1)

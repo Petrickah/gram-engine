@@ -27,10 +27,6 @@ pub struct ModuleConfig {
 
 impl ModuleConfig {
     pub fn add_dependency(&mut self, dependency: &str, url: &str, tag: &str, vcpkg: bool) -> io::Result<()> {
-        if self.warn_if_already_depends_on(dependency) {
-            return Ok(());
-        }
-
         let name = dependency.to_owned();
         let dep = if vcpkg {
             if !url.is_empty() || !tag.is_empty() {
@@ -54,20 +50,13 @@ impl ModuleConfig {
     /// target_link_libraries. Unlike an external dependency, gram knows the exact target
     /// name here (it generated it), so it can wire the link itself.
     pub fn add_module_ref(&mut self, dependency: &str) -> io::Result<()> {
-        if self.warn_if_already_depends_on(dependency) {
-            return Ok(());
-        }
         self.backend()?.add_module_ref(self, dependency)
     }
 
-    /// Adding a dependency the module already has is a no-op: nothing is run or written again
-    /// (a second `cargo add`, a second CMake block, a duplicate entry in Gram.ron's deps).
-    fn warn_if_already_depends_on(&self, dependency: &str) -> bool {
-        let already = self.deps.iter().any(|dep| dep == dependency);
-        if already {
-            eprintln!("warning: module {} already depends on {dependency}, nothing to do", self.name);
-        }
-        already
+    /// Whether the module already lists `dependency`, whatever its source (registry, git,
+    /// vcpkg or module ref): a module depends on a name at most once.
+    pub(crate) fn has_dependency(&self, dependency: &str) -> bool {
+        self.deps.iter().any(|dep| dep == dependency)
     }
 
     pub fn rm_dependency(&mut self, dependency: &str) -> io::Result<String> {

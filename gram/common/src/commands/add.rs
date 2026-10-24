@@ -1,6 +1,7 @@
 use std::io;
 use clap::Args;
 use crate::BuildConfig;
+use crate::config::AddOutcome;
 
 #[derive(Args)]
 pub struct AddCommand {
@@ -38,7 +39,7 @@ pub struct AddCommand {
     pub(crate) module_ref: bool,
 }
 
-pub fn module(command: AddCommand) -> io::Result<()> {
+pub fn module(command: AddCommand) -> io::Result<AddOutcome> {
     let path = &command.path;
 
     if !path.is_empty() {
