@@ -6,3 +6,8 @@ version = "0.1.0"
 [dependencies]
 clap.workspace = true
 gram-common = { version = "0.1.0", path = "../common" }
+
+# Only for the command tests in tests/: they parse the Gram.ron files gram writes.
+[dev-dependencies]
+ron.workspace   = true
+serde.workspace = true
