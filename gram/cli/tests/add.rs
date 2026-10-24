@@ -104,26 +104,28 @@ fn the_tag_is_optional() {
 }
 
 #[test]
-fn adding_the_same_dependency_twice_keeps_one_cmake_block() {
+fn adding_a_dependency_the_module_already_has_only_warns() {
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "fmt", "--module", "main", "--url", "https://github.com/fmtlib/fmt"]).succeeds();
+    let before = project.read("main/CMakeLists.txt");
 
-    for _ in 0..2 {
-        project.gram(&["add", "fmt", "--module", "main", "--url", "https://github.com/fmtlib/fmt"]).succeeds();
-    }
+    let run = project.gram(&["add", "fmt", "--module", "main", "--url", "https://github.com/fmtlib/fmt"]).succeeds();
 
-    assert_eq!(project.read("main/CMakeLists.txt").matches("# gram:dep:fmt begin").count(), 1);
+    assert!(run.printed("warning: module main already depends on fmt, nothing to do"));
+    assert_eq!(project.read("main/CMakeLists.txt"), before, "nothing is written again");
+    assert_eq!(project.config().module("main").deps, ["fmt"], "recorded once in Gram.ron");
 }
 
 #[test]
-#[ignore = "known bug: Gram.ron's deps gets a second \"fmt\" entry; remove this line once fixed"]
-fn adding_the_same_dependency_twice_records_it_once() {
+fn the_duplicate_check_is_by_name_whatever_the_source() {
+    // Same name, different source: still the same dependency as far as the module goes.
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "glm", "--module", "main", "--vcpkg"]).succeeds();
 
-    for _ in 0..2 {
-        project.gram(&["add", "fmt", "--module", "main", "--url", "https://github.com/fmtlib/fmt"]).succeeds();
-    }
+    let run = project.gram(&["add", "glm", "--module", "main", "--url", "https://github.com/g-truc/glm"]).succeeds();
 
-    assert_eq!(project.config().module("main").deps, ["fmt"]);
+    assert!(run.printed("already depends on glm"));
+    assert_not_contains(&project.read("main/CMakeLists.txt"), "FetchContent_Declare(\n  glm");
 }
 
 #[test]
@@ -228,6 +230,19 @@ fn links_a_cargo_module_to_a_cargo_library() {
     // A path dependency: no registry involved.
     assert_contains(&project.read("main/Cargo.toml"), r#"util = { version = "0.1.0", path = "../util" }"#);
     assert_eq!(project.config().module("main").deps, ["util"]);
+}
+
+#[test]
+fn referencing_the_same_module_twice_only_warns() {
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "--module", "engine", "--lang", "cmake", "--kind", "library"]).succeeds();
+    project.gram(&["add", "engine", "--module", "main", "--module-ref"]).succeeds();
+
+    let run = project.gram(&["add", "engine", "--module", "main", "--module-ref"]).succeeds();
+
+    assert!(run.printed("already depends on engine"));
+    assert_eq!(project.read("main/CMakeLists.txt").matches("target_link_libraries(main PRIVATE engine)").count(), 1);
+    assert_eq!(project.config().module("main").deps, ["engine"]);
 }
 
 #[test]

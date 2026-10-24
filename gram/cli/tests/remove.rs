@@ -69,12 +69,13 @@ fn removing_a_dependency_that_is_not_there_fails() {
 }
 
 #[test]
-#[ignore = "known bug: gram panics (\"module already existed\") instead of reporting an error"]
-fn removing_a_dependency_from_a_missing_module_fails_cleanly() {
+fn removing_a_dependency_from_a_missing_module_fails() {
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
 
-    project.gram(&["remove", "fmt", "--module", "nowhere"])
-        .fails_with("module not found");
+    let run = project.gram(&["remove", "fmt", "--module", "nowhere"])
+        .fails_with("module not found: nowhere");
+
+    assert!(!run.printed("panicked"), "a normal error, not a crash");
 }
 
 // --- removing whole modules ---------------------------------------------------------------------
@@ -99,6 +100,14 @@ fn purge_also_deletes_the_module_directory() {
 
     assert!(!project.config().has_module("engine"));
     assert!(!project.exists("engine"));
+}
+
+#[test]
+fn removing_a_missing_module_fails() {
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+
+    project.gram(&["remove", "--module", "nowhere"])
+        .fails_with("module not found: nowhere");
 }
 
 #[test]

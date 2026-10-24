@@ -199,29 +199,28 @@ impl BuildConfig {
         let module     = command.module;
         let dependency = command.name;
 
+        let Some(existing) = self.modules.iter_mut().find(|m| m.name == module) else {
+            return Err(io::Error::new(io::ErrorKind::NotFound, format!("module not found: {module}")));
+        };
+
         if !dependency.is_empty() {
-            self.modules.iter_mut()
-                .find(|m| m.name == module)
-                .expect("module already existed")
-                .rm_dependency(&dependency)?;
+            existing.rm_dependency(&dependency)?;
             return project.write_file("Gram.ron", self);
         }
 
-        if self.modules.iter().any(|m| m.name == module) {
-            let removed = self.rm_module(&module)?;
-            if self.main == module {
-                self.main = String::new();
-            }
-            project.write_file("Gram.ron", self)?;
-            self.write_vscode_settings(&project)?;
+        let removed = self.rm_module(&module)?;
+        if self.main == module {
+            self.main = String::new();
+        }
+        project.write_file("Gram.ron", self)?;
+        self.write_vscode_settings(&project)?;
 
-            if command.purge {
-                let module_dir = Path::new(&removed.src).parent().unwrap_or_else(|| Path::new("."));
-                fs::remove_dir_all(module_dir)?;
-                println!("gram module (name={module}) removed, {} deleted", module_dir.display());
-            } else {
-                println!("gram module (name={module}) removed");
-            }
+        if command.purge {
+            let module_dir = Path::new(&removed.src).parent().unwrap_or_else(|| Path::new("."));
+            fs::remove_dir_all(module_dir)?;
+            println!("gram module (name={module}) removed, {} deleted", module_dir.display());
+        } else {
+            println!("gram module (name={module}) removed");
         }
 
         Ok(())
