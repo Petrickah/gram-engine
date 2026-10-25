@@ -13,46 +13,43 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
-class VulkanRenderer: public Renderer, private UniqueObject
+class VulkanRenderer: public Renderer, public Layer<Application>
 {
 public:
     VulkanRenderer(const VulkanRendererSpecification* rendererSpec)
-        : m_VulkanRendererSpec(
-            dynamic_cast<const VulkanRendererSpecification*>(rendererSpec)
-        )
-        , m_VulkanInstance(
-            m_VulkanRendererSpec
+        : m_VulkanInstance(
+            rendererSpec
         )
         , m_VulkanSurface(
-            m_VulkanRendererSpec,
+            rendererSpec,
             static_cast<vk::Instance>(m_VulkanInstance.GetInstance())
         )
         , m_VulkanDevice(
-            m_VulkanRendererSpec,
+            rendererSpec,
             static_cast<vk::Instance>(m_VulkanInstance.GetInstance()),
             static_cast<vk::SurfaceKHR>(m_VulkanSurface.GetSurface())
         )
         , m_VulkanSwapchain(
-            m_VulkanRendererSpec,
+            rendererSpec,
             m_VulkanDevice.GetQueueFamilyIndices(),
             static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()),
             static_cast<vk::PhysicalDevice>(m_VulkanDevice.GetPhysicalDevice()),
             static_cast<vk::SurfaceKHR>(m_VulkanSurface.GetSurface()),
-            m_VulkanDevice.AreExtensionsSupported(m_VulkanRendererSpec)
+            m_VulkanDevice.AreExtensionsSupported(rendererSpec)
         )
         , m_VulkanPipeline(
-            m_VulkanRendererSpec,
+            rendererSpec,
             static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()),
             m_VulkanSwapchain.GetExtent2D(),
             m_VulkanSwapchain.GetSurfaceFormat()
         )
         , m_VulkanFrame(
-            m_VulkanRendererSpec,
+            rendererSpec,
             m_VulkanDevice.GetQueueFamilyIndices(),
             static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
         )
         , m_VulkanImGui(
-            m_VulkanRendererSpec,
+            rendererSpec,
             static_cast<vk::Instance>(m_VulkanInstance.GetInstance()),
             static_cast<vk::PhysicalDevice>(m_VulkanDevice.GetPhysicalDevice()),
             static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()),
@@ -60,21 +57,26 @@ public:
             m_VulkanDevice.GetQueueFamilyIndices(),
             m_VulkanSwapchain.GetImageCount()
         )
+    { }
+
+public:
+    bool OnDrawFrame() override;
+    bool OnFinish() override;
+    void OnResize() override { m_SwapchainStale = true; }
+
+    bool OnStart() override
     {
-        if (!CreateRendererObjects()) return;
+        GramCheck(CreateRendererObjects(), "couldn't create the renderer objects!\n");
+        return true;
     }
-    
-    ~VulkanRenderer()
+
+    bool OnStop() override
     {
         DestroyRenderFinishedSemaphores();
         DestroyPresentCompleteSemaphores();
         DestroyInFlightFences();
+        return true;
     }
-
-public:
-    bool DrawFrame() override;
-    bool Finish() override;
-    void OnResize() override { m_SwapchainStale = true; }
 
 private:
     bool CreateRendererObjects();
@@ -87,7 +89,6 @@ private:
     bool RecreateSwapchain();
 
 private:
-    const VulkanRendererSpecification* m_VulkanRendererSpec;
     VulkanInstance m_VulkanInstance;
     VulkanSurface m_VulkanSurface;
     VulkanDevice m_VulkanDevice;

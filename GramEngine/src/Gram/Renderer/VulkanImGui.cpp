@@ -89,7 +89,7 @@ VulkanImGui::VulkanImGui(
         .UseDynamicRendering = true,
     };
 
-    GLFWApplication* app = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application);
+    GLFWApplication* app = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application.get());
     if (!app)
     {
         GramError("ImGui: no GLFWApplication to attach to");

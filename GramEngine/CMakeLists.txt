@@ -73,7 +73,7 @@ target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui G
 # gets its headers and the component libraries (GramRuntime's main.cpp includes
 # Gram/EntryPoint.hpp, GLFWApplication and VulkanRenderer directly).
 add_library(GramEngine STATIC
-    src/Platform.cpp
+    src/Gram/Platform.cpp
 )
 target_include_directories(GramEngine PUBLIC include)
 target_link_libraries(GramEngine PUBLIC GramGLFW GramRenderer GramLogger)

@@ -1,6 +1,6 @@
 #include "Gram/Common.hpp"
-#include "Gram/Application.hpp"
 #include "Gram/Application/GLFWApplication.hpp"
+#include "Gram/Renderer/VulkanRenderer.hpp"
 
 #include <cstdlib>
 
@@ -92,23 +92,28 @@ GLFWApplication::GLFWApplication(const GLFWApplicationSpecification &appSpec) : 
 
     // Some platforms never report an out-of-date swapchain on resize, so tell the renderer directly.
     glfwSetWindowUserPointer(m_GLFWwindow, this);
-    glfwSetFramebufferSizeCallback(m_GLFWwindow, [](GLFWwindow* window, int, int) {
-        auto* application = static_cast<GLFWApplication*>(glfwGetWindowUserPointer(window));
-        if (application && application->m_Renderer) application->m_Renderer->OnResize();
+    glfwSetFramebufferSizeCallback(m_GLFWwindow, [](GLFWwindow* window, int, int)
+    {
+        if (auto* application = static_cast<GLFWApplication*>(glfwGetWindowUserPointer(window)))
+        {
+            if (std::shared_ptr<VulkanRenderer> renderer = application->Get<VulkanRenderer>())
+            {
+                renderer->OnResize();
+            }
+        }
     });
 }
 
 GLFWApplication::~GLFWApplication()
 {
     // Renderer owns Vulkan objects that depend on the window/GLFW; tear it down first.
-    delete m_Renderer;
-    m_Renderer = nullptr;
+    UnregisterAll();
 
     glfwDestroyWindow(m_GLFWwindow);
     glfwTerminate();
 }
 
-void GLFWApplication::Run()
+bool GLFWApplication::Run()
 {
     while (!glfwWindowShouldClose(m_GLFWwindow))
     {
@@ -123,10 +128,10 @@ void GLFWApplication::Run()
             continue;
         }
 
-        if (!m_Renderer->DrawFrame()) break;
+        if (!DrawFrame()) break;
     }
 
-    m_Renderer->Finish();
+    return Finish();
 }
 
 GRAM_NAMESPACE_END

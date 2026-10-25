@@ -17,9 +17,8 @@ static std::vector<const char*> validationLayers = {
 };
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
-Gram::Application* Gram::CreateApplication(int argc, char** argv)
+std::shared_ptr<Gram::LayerOwner<Gram::Application>> Gram::CreateApplication(int argc, char** argv)
 {
-    Gram::Application* app = nullptr;
     Gram::GLFWApplicationSpecification appSpec {
         .m_EnableLogging = true,
         .m_WindowSize  = glm::vec2(1280, 720),
@@ -29,8 +28,8 @@ Gram::Application* Gram::CreateApplication(int argc, char** argv)
     // Call into the logger entry point before handing off the application
     GramLoggerOnly(Gram::LoggerEntryPoint(appSpec.m_EnableLogging));
 
-    app = new Gram::GLFWApplication(appSpec);
-
+    auto app = std::make_shared<Gram::GLFWApplication>(appSpec);
+    
 #ifdef GRAM_VULKAN_RENDERER
     Gram::VulkanRendererSpecification rendererSpec {
         // Enable custom debug messages, currently used to see which extensions and validations are available
@@ -43,9 +42,9 @@ Gram::Application* Gram::CreateApplication(int argc, char** argv)
         .m_DeviceExtensions = appSpec.GetRequiredDeviceExtensions(&rendererSpec, deviceExtensions.size(), deviceExtensions.data(), rendererSpec.m_DisplayDebug),
         .m_ValidationLayers = appSpec.GetRequiredValidationLayers(&rendererSpec, validationLayers.size(), validationLayers.data(), rendererSpec.m_DisplayDebug),
     };
-
+    
     // The application owns the renderer from here on.
-    app->SetRenderer(new Gram::VulkanRenderer(&rendererSpec));
+    GramCheckNull(app->RegisterLayer<Gram::VulkanRenderer>(&rendererSpec), "couldn't initialize the Vulkan Renderer framework");
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
     return app;

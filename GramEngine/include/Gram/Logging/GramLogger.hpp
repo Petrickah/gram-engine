@@ -50,6 +50,26 @@ GRAM_NAMESPACE_END
 #define GramVulkanWarning(...) GramLog_(GetVulkanLogger, warn,  __VA_ARGS__)
 #define GramVulkanError(...)   GramLog_(GetVulkanLogger, error, __VA_ARGS__)
 
+// When expression isn't true, logs message plus any arguments and leaves the enclosing function.
+// The expression is evaluated exactly once. The variants differ only in what they return,
+// matching the enclosing function's return type
+#define GramCheck_(expression, onFailure, ...) do { \
+    if (!(expression))                              \
+    {                                               \
+        GramError(__VA_ARGS__);                     \
+        onFailure;                                  \
+    }                                               \
+} while (0)
+// Returns false from the enclosing function when expression is false.
+#define GramCheck(expression, ...)     GramCheck_(expression, return false, __VA_ARGS__)
+// Returns nothing from the enclosing function when expression is false.
+#define GramCheckNull(expression, ...) GramCheck_(expression, return nullptr, __VA_ARGS__)
+// Returns nothing from the enclosing function when expression is false.
+#define GramCheckVoid(expression, ...) GramCheck_(expression, return, __VA_ARGS__)
+
+#ifdef GRAM_VULKAN_RENDERER
+#include <vulkan/vulkan.hpp>
+
 // List items, named by what the item is; the level behind each one picks its marker.
 // Introduce the list with a regular GramVulkanInfo line. Items of a nested list name their
 // parent in the message instead of being indented: GramVulkanListSelected("{}: {}", device, ext)
@@ -60,29 +80,22 @@ GRAM_NAMESPACE_END
 
 // The common two-state item: "- [X]" when selected is true, "- [-]" otherwise.
 // selected is evaluated once; only one branch runs, so the message is formatted once too.
-#define GramVulkanListItem(selected, ...) do {                                          \
-        if (selected) GramVulkanListSelected(__VA_ARGS__);                              \
-        else          GramVulkanListAvailable(__VA_ARGS__);                             \
-    } while (0)
-
-// Returns false from the enclosing function when expression is false. No message: the callee
-// already logged why it failed, so this only passes the failure up the call stack.
-#define GramCheck(expression) do { if (!(expression)) return false; } while (0)
-
-#ifdef GRAM_VULKAN_RENDERER
-#include <vulkan/vulkan.hpp>
+#define GramVulkanListItem(selected, ...) do {                                      \
+    if (selected) GramVulkanListSelected(__VA_ARGS__);                              \
+    else          GramVulkanListAvailable(__VA_ARGS__);                             \
+} while (0)
 
 // When expression (a vk::Result) isn't eSuccess, logs message plus the result's name and leaves
 // the enclosing function. The expression is evaluated exactly once. The variants differ only in
 // what they return, matching the enclosing function's return type.
-#define GramVulkanCheck_(expression, message, onFailure) do {                           \
-        const vk::Result gramResult_ = (expression);                                    \
-        if (gramResult_ != vk::Result::eSuccess)                                        \
-        {                                                                               \
-            GramVulkanError("{}: {}", message, vk::to_string(gramResult_));             \
-            onFailure;                                                                  \
-        }                                                                               \
-    } while (0)
+#define GramVulkanCheck_(expression, message, onFailure) do {                       \
+    const vk::Result gramResult_ = (expression);                                    \
+    if (gramResult_ != vk::Result::eSuccess)                                        \
+    {                                                                               \
+        GramVulkanError("{}: {}", message, vk::to_string(gramResult_));             \
+        onFailure;                                                                  \
+    }                                                                               \
+} while (0)
 
 // bool functions: returns false.
 #define GramVulkanCheck(expression, message)       GramVulkanCheck_(expression, message, return false)

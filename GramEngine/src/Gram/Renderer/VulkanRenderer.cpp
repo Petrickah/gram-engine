@@ -6,9 +6,9 @@ GRAM_NAMESPACE_BEGIN
 
 bool VulkanRenderer::CreateRendererObjects()
 {
-    GramCheck(CreateRenderFinishedSemaphores());
-    GramCheck(CreatePresentCompleteSemaphores());
-    GramCheck(CreateInFlightFences());
+    GramCheck(CreateRenderFinishedSemaphores(), "couldn't create the render finished semaphores");
+    GramCheck(CreatePresentCompleteSemaphores(), "couldn't create the present complete semaphores");
+    GramCheck(CreateInFlightFences(), "couldn't create the flight fences");
     
     return true;
 }
@@ -80,7 +80,7 @@ bool VulkanRenderer::CreatePresentCompleteSemaphores()
     m_PresentCompleteSemaphores.resize(Gram::vkMaxFramesInFlight);
     for (uint32_t frameIndex = 0; frameIndex < Gram::vkMaxFramesInFlight; frameIndex++)
     {
-        GramCheck(createPresentSemaphores(frameIndex, m_PresentCompleteSemaphores));
+        GramCheck(createPresentSemaphores(frameIndex, m_PresentCompleteSemaphores), "");
     }
 
     return true;
@@ -102,7 +102,7 @@ bool VulkanRenderer::CreateInFlightFences()
     m_InFlightDrawFences.resize(Gram::vkMaxFramesInFlight);
     for (uint32_t frameIndex = 0; frameIndex < Gram::vkMaxFramesInFlight; frameIndex++)
     {
-        GramCheck(createFlightFences(frameIndex, m_InFlightDrawFences));
+        GramCheck(createFlightFences(frameIndex, m_InFlightDrawFences), "couldn't create the flight fence");
     }
 
     return true;
@@ -112,14 +112,14 @@ bool VulkanRenderer::RecreateSwapchain()
 {
     // One per swapchain image, so the count can change; the old ones may also have been left
     // signaled by a present that failed. The device is idle after Recreate(), so they are free.
-    GramCheck(m_VulkanSwapchain.Recreate());
-    GramCheck(CreateRenderFinishedSemaphores());
+    GramCheck(m_VulkanSwapchain.Recreate(), "couldn't recreate the swapchain: call to VulkanSwapchain::Recreate failed");
+    GramCheck(CreateRenderFinishedSemaphores(), "couldn't recreate the swapchain: call to create the render finished semaphores failed");
 
     m_SwapchainStale = false;
     return true;
 }
 
-bool VulkanRenderer::DrawFrame()
+bool VulkanRenderer::OnDrawFrame()
 {
     // Resized, or an earlier acquire/present reported the swapchain out of date. A false here
     // is not fatal: it is a minimized window (or a build error already logged), so skip the
@@ -207,7 +207,7 @@ bool VulkanRenderer::DrawFrame()
     return false;
 }
 
-bool VulkanRenderer::Finish()
+bool VulkanRenderer::OnFinish()
 {
     vk::Device       device    = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
     vk::SwapchainKHR swapChain = static_cast<vk::SwapchainKHR>(m_VulkanSwapchain.GetSwapchain());

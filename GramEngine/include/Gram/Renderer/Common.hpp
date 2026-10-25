@@ -1,12 +1,14 @@
 #pragma once
 
 #include "Gram/Common.hpp"
+#include "Gram/Layer.hpp"
 #include "Gram/Logging/GramLogger.hpp"
 #include "Gram/Renderer.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
 
 #include <optional>
+#include <filesystem>
 #include <vulkan/vulkan.hpp>
 
 #ifdef GRAM_IMGUI_ENABLED
@@ -32,12 +34,12 @@ inline constexpr const char* vkNonAcquiredSwapchainImageUsed = "UNASSIGNED-non-a
 
 struct VulkanRendererSpecification
 {
-    bool                     m_DisplayDebug     = false;
-    Application*             m_Application      = nullptr;
-    std::filesystem::path    m_ProjectWorkspace = "";
-    std::vector<std::string> m_ExtensionLayers;
-    std::vector<std::string> m_DeviceExtensions;
-    std::vector<std::string> m_ValidationLayers;
+    bool                                     m_DisplayDebug     = false;
+    std::shared_ptr<LayerOwner<Application>> m_Application      = nullptr;
+    std::filesystem::path                    m_ProjectWorkspace = "";
+    std::vector<std::string>                 m_ExtensionLayers;
+    std::vector<std::string>                 m_DeviceExtensions;
+    std::vector<std::string>                 m_ValidationLayers;
     
     bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const;
     bool AreExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const;
@@ -62,27 +64,6 @@ protected:
 
         return cStrings;
     }
-};
-
-// Owns Vulkan resources at a fixed address (members of VulkanRenderer): neither copyable nor
-// movable. Declaring the copy operations, even deleted, also suppresses the implicit moves.
-struct UniqueObject
-{
-    UniqueObject() = default;
-    UniqueObject(const UniqueObject&) = delete;
-    UniqueObject& operator=(const UniqueObject&) = delete;
-};
-
-// Move-only. The defaulted moves are only safe when every member owns itself (vk::Unique*
-// handles, std containers) — a raw vk:: handle would be copied and then destroyed twice.
-// Don't combine with UniqueObject: a derived class can only move if all its bases can.
-struct MoveObject
-{
-    MoveObject() = default;
-    MoveObject(const MoveObject&) = delete;
-    MoveObject& operator=(const MoveObject&) = delete;
-    MoveObject(MoveObject&&) noexcept = default;
-    MoveObject& operator=(MoveObject&&) noexcept = default;
 };
 
 GRAM_NAMESPACE_END

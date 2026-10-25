@@ -4,6 +4,7 @@
 // (defines main/WinMain). A build that never includes it has no entry point,
 // so its CMake target must be a static library instead of an executable.
 #include "Gram/Application.hpp"
+#include "Gram/Layer.hpp"
 #include "Gram/Platform.hpp"
 
 #if defined(_WIN32)
@@ -20,24 +21,22 @@
 #endif
 
 GRAM_NAMESPACE_BEGIN
-extern Application* CreateApplication(int argc, char** argv);
+extern std::shared_ptr<LayerOwner<Application>> CreateApplication(int argc, char** argv);
 GRAM_NAMESPACE_END
 
 #if defined(_WIN32)
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    Gram::Application* app = Gram::CreateApplication(__argc, __argv);
+    std::shared_ptr<Gram::LayerOwner<Gram::Application>> app = Gram::CreateApplication(__argc, __argv);
     app->Run();
-    delete app;
     return 0;
 }
 
 #else
 
 int main(int argc, char** argv) {
-    Gram::Application* app = Gram::CreateApplication(argc, argv);
+    std::shared_ptr<Gram::LayerOwner<Gram::Application>> app = Gram::CreateApplication(argc, argv);
     app->Run();
-    delete app;
     return 0;
 }
 

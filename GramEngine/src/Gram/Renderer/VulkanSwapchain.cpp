@@ -274,7 +274,7 @@ bool SwapChainSupportDetails::ChooseSwapchainExtent(vk::Extent2D &extent, const 
 
     if (!rendererSpec) return false;
 
-    if (GLFWApplication* glfwApplication = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application))
+    if (GLFWApplication* glfwApplication = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application.get()))
     {
         int width, height;
         glfwGetFramebufferSize(glfwApplication->GetWindow(), &width, &height);

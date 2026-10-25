@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include "Gram/Application.hpp"
+#include "Gram/Layer.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
 #include "Gram/Renderer/VulkanRenderer.hpp"
@@ -23,13 +24,13 @@ struct GLFWApplicationSpecification
 #endif // #ifdef GRAM_VULKAN_RENDERER
 };
 
-class GLFWApplication : public Application
+class GLFWApplication : public Application, public LayerOwner<Application>
 {
 public:
     GLFWApplication(const GLFWApplicationSpecification& appSpec);
 
     virtual ~GLFWApplication() override;
-    virtual void Run() override;
+    virtual bool Run() override;
 
     GLFWwindow* GetWindow() const { return m_GLFWwindow; }
     const GLFWApplicationSpecification& GetAppSpec() const { return m_AppSpec; }
