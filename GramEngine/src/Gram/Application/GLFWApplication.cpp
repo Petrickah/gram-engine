@@ -7,7 +7,7 @@
 GRAM_NAMESPACE_BEGIN
 
 #ifdef GRAM_VULKAN_RENDERER
-std::vector<std::string> GLFWApplicationSpecification::GetRequiredDeviceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
+std::vector<std::string> GLFWApplicationSpecification::GetRequiredDeviceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug) const
 {
     std::vector<std::string> requiredExtensions;
     if (extensions)
@@ -18,7 +18,7 @@ std::vector<std::string> GLFWApplicationSpecification::GetRequiredDeviceExtensio
     return requiredExtensions;
 }
 
-std::vector<std::string> GLFWApplicationSpecification::GetRequiredInstanceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug)
+std::vector<std::string> GLFWApplicationSpecification::GetRequiredInstanceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount, const char **extensions, bool displayDebug) const
 {
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -42,7 +42,7 @@ std::vector<std::string> GLFWApplicationSpecification::GetRequiredInstanceExtens
     return requiredExtensions;
 }
 
-std::vector<std::string> GLFWApplicationSpecification::GetRequiredValidationLayers(const VulkanRendererSpecification* rendererSpec, uint32_t validationCount, const char** validations, bool displayDebug)
+std::vector<std::string> GLFWApplicationSpecification::GetRequiredValidationLayers(const VulkanRendererSpecification* rendererSpec, uint32_t validationCount, const char** validations, bool displayDebug) const
 {
     std::vector<std::string> requiredValidations;
     if (validations)

@@ -1,5 +1,6 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
+#include "Gram/Renderer/VulkanShader.hpp"
 
 #include <utility>
 

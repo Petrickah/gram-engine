@@ -1,9 +1,9 @@
 #pragma once
 
-#include "Gram/Renderer.hpp"
-
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
+
+struct VulkanRendererSpecification;
 
 class VulkanSurface: private UniqueObject
 {

@@ -1,30 +1,25 @@
 #pragma once
 
-#include <GLFW/glfw3.h>
-
-#include "Gram/Application.hpp"
-#include "Gram/Layer.hpp"
+GRAM_NAMESPACE_BEGIN
 
 #ifdef GRAM_VULKAN_RENDERER
-#include "Gram/Renderer/VulkanRenderer.hpp"
+struct VulkanRendererSpecification;
 #endif // #ifdef GRAM_VULKAN_RENDERER
-
-GRAM_NAMESPACE_BEGIN
 
 struct GLFWApplicationSpecification
 {
-    bool m_EnableLogging      = false;
-    glm::vec2 m_WindowSize    = glm::vec2(800, 600);
-    std::string m_WindowTitle = "Gram";
-
+    bool        m_EnableLogging = false;
+    glm::vec2   m_WindowSize    = glm::vec2(800, 600);
+    std::string m_WindowTitle   = "Gram";
+    
 #ifdef GRAM_VULKAN_RENDERER
-    std::vector<std::string> GetRequiredDeviceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount = 0, const char** extensions = nullptr, bool displayDebug = false);
-    std::vector<std::string> GetRequiredInstanceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount = 0, const char** extensions = nullptr, bool displayDebug = false);
-    std::vector<std::string> GetRequiredValidationLayers(const VulkanRendererSpecification* rendererSpec, uint32_t validationCount = 0, const char** validations = nullptr, bool displayDebug = false);
+    std::vector<std::string> GetRequiredDeviceExtensions  (const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount = 0, const char** extensions = nullptr, bool displayDebug = false) const;
+    std::vector<std::string> GetRequiredInstanceExtensions(const VulkanRendererSpecification* rendererSpec, uint32_t extensionCount = 0, const char** extensions = nullptr, bool displayDebug = false) const;
+    std::vector<std::string> GetRequiredValidationLayers  (const VulkanRendererSpecification* rendererSpec, uint32_t validationCount = 0, const char** validations = nullptr, bool displayDebug = false) const;
 #endif // #ifdef GRAM_VULKAN_RENDERER
 };
 
-class GLFWApplication : public Application, public LayerOwner<Application>
+class GLFWApplication : public Gram::Application, public LayerOwner<GLFWApplication>
 {
 public:
     GLFWApplication(const GLFWApplicationSpecification& appSpec);

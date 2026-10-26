@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Gram/Common.hpp"
-
 // Two separate jobs live in this header, kept apart on purpose:
 //  1. Logging (GramInfo, GramVulkanError, ...) only prints. It never changes control flow,
 //     and compiles to nothing without GRAM_LOGGER_ENABLED.

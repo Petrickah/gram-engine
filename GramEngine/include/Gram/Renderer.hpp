@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Gram/Renderer/Common.hpp"
-
 GRAM_NAMESPACE_BEGIN
 
 class Renderer

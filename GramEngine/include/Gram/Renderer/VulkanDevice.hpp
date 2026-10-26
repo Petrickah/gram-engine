@@ -4,6 +4,7 @@
 GRAM_NAMESPACE_BEGIN
 
 class VulkanFrame;
+struct VulkanRendererSpecification;
 
 struct QueueFamilyIndices
 {
@@ -23,11 +24,7 @@ public:
 public:
     // Returns the present result as-is: eSuboptimalKHR / eErrorOutOfDateKHR mean "recreate the swapchain", not "failed".
     vk::Result Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
-    bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec)
-    {
-        // Only ask for extensions if the device actually offers all of them;
-        return m_QueueFamilyIndices.IsComplete() && !rendererSpec->m_DeviceExtensions.empty() && rendererSpec->AreDeviceExtensionsSupported(m_DeviceExtensions);
-    }
+    bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec);
 
     QueueFamilyIndices& GetQueueFamilyIndices() { return m_QueueFamilyIndices; }
     const QueueFamilyIndices& GetQueueFamilyIndices() const { return m_QueueFamilyIndices; }

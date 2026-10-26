@@ -1,3 +1,4 @@
+#include "Gram/Common.hpp"
 #include "Gram/Platform.hpp"
 
 #if defined(_WIN32)

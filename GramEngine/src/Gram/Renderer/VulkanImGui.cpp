@@ -1,4 +1,5 @@
 #include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanImGui.hpp"
 
 #include "Gram/Application/GLFWApplication.hpp"
@@ -89,7 +90,7 @@ VulkanImGui::VulkanImGui(
         .UseDynamicRendering = true,
     };
 
-    GLFWApplication* app = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application.get());
+    GLFWApplication* app = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application);
     if (!app)
     {
         GramError("ImGui: no GLFWApplication to attach to");
@@ -117,17 +118,25 @@ void VulkanImGui::RenderFrame(const vk::CommandBuffer &commandBuffer)
 
     ImGui::NewFrame();
     ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
-    ImGui::ShowDemoWindow();
+    DrawFrame();
     ImGui::Render();
     
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), static_cast<VkCommandBuffer>(commandBuffer));
 }
 
-void VulkanImGui::Finish()
+bool VulkanImGui::Finish()
 {
+    if (!super::Finish())
+    {
+        GramError("finishing all the layers failed");
+    }
+    
+    UnregisterAll();
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+
+    return true;
 }
 
 GRAM_NAMESPACE_END

@@ -3,6 +3,8 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
+struct VulkanRendererSpecification;
+
 class VulkanInstance : private UniqueObject
 {
 public:

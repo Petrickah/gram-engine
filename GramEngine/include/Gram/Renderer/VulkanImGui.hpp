@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Gram/Renderer/VulkanSwapchain.hpp"
-#include "Gram/Renderer/VulkanDevice.hpp"
-
-#ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
+struct ImGuiApplicationLayer;
+struct QueueFamilyIndices;
+struct VulkanRendererSpecification;
 
-class VulkanImGui : private UniqueObject
+#if defined(GRAM_VULKAN_RENDERER) && defined(GRAM_IMGUI_ENABLED)
+class VulkanImGui : public LayerOwner<ImGuiApplicationLayer>
 {
 public:
     VulkanImGui(
@@ -20,12 +20,15 @@ public:
     );
 
     void RenderFrame(const vk::CommandBuffer& commandBuffer);
-    void Finish();
+    bool Finish() override;
+
+private:
+    using super = LayerOwner<ImGuiApplicationLayer>;
 
 private:
     vk::UniqueDescriptorPool  m_ImGuiPool;
     std::string               m_IniPath;
 };
+#endif // #if defined(GRAM_VULKAN_RENDERER) && defined(GRAM_IMGUI_ENABLED)
 
 GRAM_NAMESPACE_END
-#endif // #ifdef GRAM_VULKAN_RENDERER

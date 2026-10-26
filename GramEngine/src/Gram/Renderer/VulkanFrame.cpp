@@ -1,4 +1,5 @@
 #include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanFrame.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER

@@ -1,11 +1,10 @@
 #pragma once
 
-#include "Gram/Renderer/VulkanDevice.hpp"
-
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
-class QueueFamilyIndices;
+struct QueueFamilyIndices;
+struct VulkanRendererSpecification;
 
 class VulkanFrame: private UniqueObject
 {

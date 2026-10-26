@@ -48,12 +48,14 @@ add_library(GramLogger STATIC
 )
 target_include_directories(GramLogger PUBLIC include)
 target_link_libraries(GramLogger PUBLIC Vulkan::Vulkan spdlog::spdlog glm::glm)
+target_precompile_headers(GramLogger PUBLIC include/Gram/Common.hpp)
 
 add_library(GramGLFW STATIC
     src/Gram/Application/GLFWApplication.cpp
 )
 target_include_directories(GramGLFW PUBLIC include)
 target_link_libraries(GramGLFW PUBLIC glfw GramLogger)
+target_precompile_headers(GramGLFW PUBLIC include/Gram/Common.hpp)
 
 add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanRenderer.cpp
@@ -68,6 +70,7 @@ add_library(GramRenderer STATIC
 )
 target_include_directories(GramRenderer PUBLIC include)
 target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui GramLogger)
+target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)
 
 # The engine as one target for runtime/editor modules: PUBLIC so whatever links GramEngine also
 # gets its headers and the component libraries (GramRuntime's main.cpp includes
@@ -77,6 +80,7 @@ add_library(GramEngine STATIC
 )
 target_include_directories(GramEngine PUBLIC include)
 target_link_libraries(GramEngine PUBLIC GramGLFW GramRenderer GramLogger)
+target_precompile_headers(GramEngine PUBLIC include/Gram/Common.hpp)
 
 # --- shaders ---
 # HLSL -> SPIR-V at build time with the Vulkan SDK's dxc (the SDK ships it on Windows, Linux

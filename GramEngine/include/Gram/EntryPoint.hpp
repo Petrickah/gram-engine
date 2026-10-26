@@ -3,9 +3,7 @@
 // Including this header turns the translation unit into the app's entry point
 // (defines main/WinMain). A build that never includes it has no entry point,
 // so its CMake target must be a static library instead of an executable.
-#include "Gram/Application.hpp"
-#include "Gram/Layer.hpp"
-#include "Gram/Platform.hpp"
+#include "Gram/Common.hpp"
 
 #if defined(_WIN32)
     // Lowercase: mingw's header is installed as "windows.h", and unlike
@@ -21,23 +19,29 @@
 #endif
 
 GRAM_NAMESPACE_BEGIN
-extern std::shared_ptr<LayerOwner<Application>> CreateApplication(int argc, char** argv);
+extern std::shared_ptr<Gram::Application> CreateApplication(int argc, char** argv);
 GRAM_NAMESPACE_END
 
 #if defined(_WIN32)
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+    if (std::shared_ptr<Gram::Application> app = Gram::CreateApplication(__argc, __argv))
+    {
+        app->Run();
+        return 0;
+    }
 
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    std::shared_ptr<Gram::LayerOwner<Gram::Application>> app = Gram::CreateApplication(__argc, __argv);
-    app->Run();
-    return 0;
+    return 1;
 }
-
 #else
+int main(int argc, char** argv)
+{
+    if (std::shared_ptr<Gram::Application> app = Gram::CreateApplication(argc, argv))
+    {
+        app->Run();
+        return 0;
+    }
 
-int main(int argc, char** argv) {
-    std::shared_ptr<Gram::LayerOwner<Gram::Application>> app = Gram::CreateApplication(argc, argv);
-    app->Run();
-    return 0;
+    return 1;
 }
-
 #endif

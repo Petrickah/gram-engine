@@ -119,6 +119,52 @@ bool VulkanRenderer::RecreateSwapchain()
     return true;
 }
 
+VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
+    : m_RendererSpec(
+        * rendererSpec
+    )
+    , m_VulkanInstance(
+        & m_RendererSpec
+    )
+    , m_VulkanSurface(
+        & m_RendererSpec
+        , static_cast<vk::Instance>(m_VulkanInstance.GetInstance())
+    )
+    , m_VulkanDevice(
+        & m_RendererSpec
+        , static_cast<vk::Instance>(m_VulkanInstance.GetInstance())
+        , static_cast<vk::SurfaceKHR>(m_VulkanSurface.GetSurface())
+    )
+    , m_VulkanSwapchain(
+        & m_RendererSpec
+        , m_VulkanDevice.GetQueueFamilyIndices()
+        , static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
+        , static_cast<vk::PhysicalDevice>(m_VulkanDevice.GetPhysicalDevice())
+        , static_cast<vk::SurfaceKHR>(m_VulkanSurface.GetSurface())
+        , m_VulkanDevice.AreExtensionsSupported(&m_RendererSpec)
+    )
+    , m_VulkanPipeline(
+        & m_RendererSpec
+        , static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
+        , m_VulkanSwapchain.GetExtent2D()
+        , m_VulkanSwapchain.GetSurfaceFormat()
+    )
+    , m_VulkanFrame(
+        & m_RendererSpec
+        , m_VulkanDevice.GetQueueFamilyIndices()
+        , static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
+    )
+    , m_VulkanImGui(
+        & m_RendererSpec
+        , static_cast<vk::Instance>(m_VulkanInstance.GetInstance())
+        , static_cast<vk::PhysicalDevice>(m_VulkanDevice.GetPhysicalDevice())
+        , static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
+        , m_VulkanSwapchain.GetSurfaceFormat()
+        , m_VulkanDevice.GetQueueFamilyIndices()
+        , m_VulkanSwapchain.GetImageCount()
+    )
+{ }
+
 bool VulkanRenderer::OnDrawFrame()
 {
     // Resized, or an earlier acquire/present reported the swapchain out of date. A false here
@@ -215,6 +261,20 @@ bool VulkanRenderer::OnFinish()
     GramVulkanCheck(device.waitIdle(), "waiting to finish failed");
 
     m_VulkanImGui.Finish();
+    return true;
+}
+
+bool VulkanRenderer::OnStart()
+{
+    GramCheck(CreateRendererObjects(), "couldn't create the renderer objects!\n");
+    return true;
+}
+
+bool VulkanRenderer::OnStop()
+{
+    DestroyRenderFinishedSemaphores();
+    DestroyPresentCompleteSemaphores();
+    DestroyInFlightFences();
     return true;
 }
 

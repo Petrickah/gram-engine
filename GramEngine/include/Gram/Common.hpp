@@ -1,5 +1,10 @@
 #pragma once
 
+// Everything a Gram source file usually needs in one include: the foundation plus
+// the engine's base types. The headers below never includes this file:
+// Common.hpp includes them, so including it back would make a cycle that only compiles
+// when Common.hpp happens to be the first include.
+
 #include <algorithm>
 #include <concepts>
 #include <cstdint>
@@ -7,6 +12,8 @@
 #include <filesystem>
 #include <iostream>
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -27,6 +34,7 @@
 
 #ifndef GRAM_VULKAN_RENDERER
 #define GRAM_VULKAN_RENDERER
+#include <vulkan/vulkan.hpp>
 #endif // #ifndef GRAM_VULKAN_RENDERER
 
 #ifdef GRAM_VULKAN_RENDERER
@@ -34,6 +42,7 @@
 // from also pulling in <GL/gl.h>. GLFW_INCLUDE_NONE does.
 #define GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
 #ifndef GRAM_PLATFORM_APPLE
@@ -46,7 +55,14 @@
 // GRAM_IMGUI_ENABLED allows to render ImGui panels using the Vulkan Renderer;
 #ifndef GRAM_IMGUI_ENABLED
 #define GRAM_IMGUI_ENABLED
+#include <imgui.h>
 #endif // #ifndef GRAM_IMGUI_ENABLED
+
+#ifdef GRAM_IMGUI_ENABLED
+#define GramImGuiOnly(...) __VA_ARGS__
+#else
+#define GramImGuiOnly(...)
+#endif // #ifdef GRAM_IMGUI_ENABLED
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
 #ifndef GRAM_LOGGER_ENABLED
@@ -79,4 +95,16 @@ struct MoveObject
     MoveObject(MoveObject&&) noexcept = default;
     MoveObject& operator=(MoveObject&&) noexcept = default;
 };
+GRAM_NAMESPACE_END
+
+#include "Gram/Application.hpp"
+#include "Gram/Layer.hpp"
+#include "Gram/Logging/GramLogger.hpp"
+#include "Gram/Platform.hpp"
+#include "Gram/Renderer.hpp"
+
+GRAM_NAMESPACE_BEGIN
+#ifdef GRAM_IMGUI_ENABLED
+struct ImGuiApplicationLayer : public Gram::Layer<ImGuiApplicationLayer> {};
+#endif // #ifdef GRAM_IMGUI_ENABLED
 GRAM_NAMESPACE_END

@@ -126,7 +126,7 @@ VulkanInstance::~VulkanInstance()
 
 VulkanInstance::VulkanInstance(const VulkanRendererSpecification* rendererSpec)
 {
-    GLFWApplication* app = rendererSpec ? dynamic_cast<GLFWApplication*>(rendererSpec->m_Application.get()) : nullptr;
+    GLFWApplication* app = rendererSpec ? dynamic_cast<GLFWApplication*>(rendererSpec->m_Application) : nullptr;
     if (!app)
     {
         GramVulkanError("instance created without a GLFWApplication");

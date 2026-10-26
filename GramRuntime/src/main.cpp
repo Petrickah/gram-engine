@@ -3,49 +3,53 @@
 #include "Gram/Renderer/VulkanRenderer.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
-static std::vector<const char*> extensionsLayers = {
-    GramAppleOnly("VK_KHR_portability_enumeration",)
-    "VK_EXT_debug_utils",
-};
+class RuntimeApplication : public Gram::GLFWApplication
+{
+public:
+    RuntimeApplication(const std::string& workspace, const Gram::GLFWApplicationSpecification& spec)
+        : GLFWApplication(spec)
+    {
+        constexpr bool displayDebug = true;
+        Gram::VulkanRendererSpecification rendererSpec(this, workspace, spec, displayDebug);
 
-static std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
+        std::shared_ptr<Gram::VulkanRenderer> renderer = nullptr;
+        GramCheckVoid(RegisterLayer<Gram::VulkanRenderer>(renderer, &rendererSpec), "couldn't initialize the Vulkan Renderer framework");
+        GramImGuiOnly(GramCheckVoid(renderer->GetImGuiApplication().RegisterLayer<RuntimeApplication::UI>(m_UILayer, *this), "couldn't initialize the UI"));
+    }
 
-static std::vector<const char*> validationLayers = {
-    "VK_LAYER_KHRONOS_validation",
+private:
+#ifdef GRAM_IMGUI_ENABLED
+    struct UI : Gram::ImGuiApplicationLayer
+    {
+        RuntimeApplication& m_App;
+        UI(RuntimeApplication& app) : m_App(app) { }
+        
+        bool OnDrawFrame() override
+        {
+            ImGui::ShowDemoWindow();
+            return true;
+        }
+    };
+
+    std::shared_ptr<UI> m_UILayer = nullptr;
+#endif // #ifdef GRAM_IMGUI_ENABLED
 };
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
-std::shared_ptr<Gram::LayerOwner<Gram::Application>> Gram::CreateApplication(int argc, char** argv)
+std::shared_ptr<Gram::Application> Gram::CreateApplication(int argc, char** argv)
 {
-    Gram::GLFWApplicationSpecification appSpec {
-        .m_EnableLogging = true,
-        .m_WindowSize  = glm::vec2(1280, 720),
-        .m_WindowTitle = "Gram Application with Vulkan",
-    };
+    const bool enableLogging   = true;
+    const char* executableFile = argc > 0 ? argv[0] : nullptr;
 
     // Call into the logger entry point before handing off the application
-    GramLoggerOnly(Gram::LoggerEntryPoint(appSpec.m_EnableLogging));
+    GramLoggerOnly(Gram::LoggerEntryPoint(enableLogging));
 
-    auto app = std::make_shared<Gram::GLFWApplication>(appSpec);
-    
-#ifdef GRAM_VULKAN_RENDERER
-    Gram::VulkanRendererSpecification rendererSpec {
-        // Enable custom debug messages, currently used to see which extensions and validations are available
-        .m_DisplayDebug = true,
-        
-        // The window (and GLFW) must exist before the renderer can ask for instance extensions.
-        .m_Application      = app,
-        .m_ProjectWorkspace = Gram::GetExecutableDirectory(argc > 0 ? argv[0] : nullptr),
-        .m_ExtensionLayers  = appSpec.GetRequiredInstanceExtensions(&rendererSpec, extensionsLayers.size(), extensionsLayers.data(), rendererSpec.m_DisplayDebug),
-        .m_DeviceExtensions = appSpec.GetRequiredDeviceExtensions(&rendererSpec, deviceExtensions.size(), deviceExtensions.data(), rendererSpec.m_DisplayDebug),
-        .m_ValidationLayers = appSpec.GetRequiredValidationLayers(&rendererSpec, validationLayers.size(), validationLayers.data(), rendererSpec.m_DisplayDebug),
-    };
-    
-    // The application owns the renderer from here on.
-    GramCheckNull(app->RegisterLayer<Gram::VulkanRenderer>(&rendererSpec), "couldn't initialize the Vulkan Renderer framework");
-#endif // #ifdef GRAM_VULKAN_RENDERER
-
-    return app;
+    return std::make_shared<RuntimeApplication>(
+        Gram::GetExecutableDirectory(executableFile),
+        Gram::GLFWApplicationSpecification {
+            .m_EnableLogging = enableLogging,
+            .m_WindowSize    = glm::vec2(1280, 720),
+            .m_WindowTitle   = "Gram Application with Vulkan",
+        }
+    );
 }

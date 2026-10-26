@@ -1,3 +1,4 @@
+#include "Gram/Common.hpp"
 #include "Gram/Logging/GramLogger.hpp"
 
 #ifdef GRAM_LOGGER_ENABLED

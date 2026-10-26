@@ -2,6 +2,10 @@
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanRenderer.hpp"
 
+#ifdef GRAM_IMGUI_ENABLED
+#include <imgui.h>
+#endif // #ifdef GRAM_IMGUI_ENABLED
+
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
@@ -117,6 +121,12 @@ vk::Result VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const 
     // or minimize that the caller recovers from by recreating the swapchain.
     const VkPresentInfoKHR& rawPresentInfo = presentInfo;
     return static_cast<vk::Result>(vkQueuePresentKHR(static_cast<VkQueue>(presentQueue), &rawPresentInfo));
+}
+
+bool VulkanDevice::AreExtensionsSupported(const VulkanRendererSpecification *rendererSpec)
+{
+    // Only ask for extensions if the device actually offers all of them;
+    return m_QueueFamilyIndices.IsComplete() && !rendererSpec->m_DeviceExtensions.empty() && rendererSpec->AreDeviceExtensionsSupported(m_DeviceExtensions);
 }
 
 VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)

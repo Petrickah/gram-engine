@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Gram/Common.hpp"
-
 GRAM_NAMESPACE_BEGIN
 
 // Directory holding the running executable, resolved through the OS rather than argv[0]:

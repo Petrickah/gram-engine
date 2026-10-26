@@ -1,6 +1,6 @@
 #include "Gram/Renderer/Common.hpp"
-#include "Gram/Renderer/VulkanSwapchain.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
+#include "Gram/Renderer/VulkanSwapchain.hpp"
 
 #include "Gram/Application/GLFWApplication.hpp"
 
@@ -274,7 +274,7 @@ bool SwapChainSupportDetails::ChooseSwapchainExtent(vk::Extent2D &extent, const 
 
     if (!rendererSpec) return false;
 
-    if (GLFWApplication* glfwApplication = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application.get()))
+    if (GLFWApplication* glfwApplication = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application))
     {
         int width, height;
         glfwGetFramebufferSize(glfwApplication->GetWindow(), &width, &height);

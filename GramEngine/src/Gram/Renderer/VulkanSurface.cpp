@@ -26,7 +26,7 @@ VulkanSurface::~VulkanSurface()
 bool VulkanSurface::CreateSurfaceKHR(const VulkanRendererSpecification* rendererSpec)
 {
     m_VkSurface = VK_NULL_HANDLE;
-    GLFWApplication* application = rendererSpec ? dynamic_cast<GLFWApplication*>(rendererSpec->m_Application.get()) : nullptr;
+    GLFWApplication* application = rendererSpec ? dynamic_cast<GLFWApplication*>(rendererSpec->m_Application) : nullptr;
 
     if (application == nullptr)
     {
