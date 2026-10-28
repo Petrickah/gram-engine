@@ -14,7 +14,7 @@ fn default_kind() -> String {
     String::from("runtime")
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleConfig {
     pub(crate) name: String,
     pub(crate) lang: String,
@@ -23,7 +23,12 @@ pub struct ModuleConfig {
     pub(crate) kind: String,
     pub(crate) src: String,
     pub(crate) deps: Vec<DependencySpec>,
-    pub(crate) targets: Vec<String>
+    pub(crate) targets: Vec<String>,
+    /// Directory of the Gram.ron this module is declared in, relative to the root project
+    /// ("" for the root itself). `src` is kept relative to the root in memory; this is what
+    /// lets `BuildConfig::write` put the module back in its own file.
+    #[serde(skip)]
+    pub(crate) project: String,
 }
 
 impl ModuleConfig {
@@ -103,13 +108,19 @@ impl ModuleConfig {
         let backend = self.backend()?;
         fs::create_dir_all(&builds)?;
         let (prefix, ext) = backend.artifact_naming(self, target);
-        let out = format!("{builds}/{prefix}{name}{ext}");
+        let out = format!("{builds}/{prefix}{}{ext}", project.artifact_name(self));
 
         let refs = project.module_refs(self)?;
         backend.compile(self, &refs, &out, target)
     }
 
-    pub fn run(&self, project: &str, target: &str, args: &[String]) -> io::Result<i32> {
+    pub fn run(&self, project: &BuildConfig, target: &str, args: &[String]) -> io::Result<i32> {
+        if self.lang == "gram" {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("module {} is a gram module (a collection of modules) — run one of its modules instead", self.name),
+            ));
+        }
         if self.kind != "runtime" {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -118,7 +129,7 @@ impl ModuleConfig {
         }
 
         let (prefix, ext) = self.backend()?.artifact_naming(self, target);
-        let path = format!("build/{project}/{target}/{prefix}{}{ext}", self.name);
+        let path = format!("build/{}/{target}/{prefix}{}{ext}", project.name, project.artifact_name(self));
 
         if !Path::new(&path).exists() {
             return Err(io::Error::new(

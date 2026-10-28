@@ -24,7 +24,7 @@ pub struct InitCommand
 pub fn project(command: InitCommand) -> io::Result<()> {
     let name: &str = &command.name;
     let mut project = BuildConfig::new(name, "0.1.0")?;
-    project.add_module("main", &command.lang, &command.kind, &command.target.to_vec())?;
+    project.add_module("main", &command.lang, &command.kind, &command.target.to_vec(), "")?;
     project.set_main("main");
     project.save(&format!("./{name}/").to_string())?;
 

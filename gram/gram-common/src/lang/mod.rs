@@ -14,6 +14,7 @@ use crate::ModuleConfig;
 
 pub mod cargo;
 pub mod cmake;
+pub mod gram;
 pub mod vcpkg;
 
 /// A `DependencySpec::Module` looked up in Gram.ron: everything a backend needs to wire the
@@ -72,11 +73,13 @@ pub(crate) trait ModuleBackend {
 // Zero-sized: no data, behavior only. The module's data stays in ModuleConfig.
 pub(crate) struct Cargo;
 pub(crate) struct CMake;
+pub(crate) struct Gram;
 
 pub(crate) fn backend_for(lang: &str) -> io::Result<&'static dyn ModuleBackend> {
     match lang {
         "cargo" => Ok(&Cargo),
         "cmake" => Ok(&CMake),
+        "gram"  => Ok(&Gram),
         other   => Err(io::Error::new(io::ErrorKind::InvalidInput, format!("unsupported module language: {other}"))),
     }
 }

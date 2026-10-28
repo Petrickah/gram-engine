@@ -16,7 +16,10 @@ pub struct AddCommand {
     /// The module to add the dependency to, created first if it doesn't exist
     #[arg(short, long, default_value = "main")]
     pub(crate) module: String,
-    /// Language for --module if it needs to be created: "cargo" or "cmake". Ignored if --module already exists.
+    /// Create --module inside this gram module's project instead of the root one. Ignored if --module already exists.
+    #[arg(long, default_value = "")]
+    pub(crate) parent: String,
+    /// Language for --module if it needs to be created: "cargo", "cmake" or "gram" (a nested Gram project). Ignored if --module already exists.
     #[arg(long, default_value = "cargo")]
     pub(crate) lang: String,
     /// Kind for --module if it needs to be created: "runtime" or "library". Ignored if --module already exists or --lang isn't cmake.

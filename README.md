@@ -19,7 +19,7 @@ cargo build
 ```
 gram init <name> [--lang cargo|cmake] [--kind runtime|library] [--target linux,windows,macos]
 gram build [--path <dir>] [--ci] [--target linux|windows|macos]
-gram add [<dependency>] [--module <name>] [--lang cargo|cmake] [--kind runtime|library] [--target linux,windows,macos] [--url <git-url> --tag <tag>] [--vcpkg] [--module-ref]
+gram add [<dependency>] [--module <name>] [--lang cargo|cmake|gram] [--parent <gram module>] [--kind runtime|library] [--target linux,windows,macos] [--url <git-url> --tag <tag>] [--vcpkg] [--module-ref]
 gram remove [<dependency>] [--module <name>] [--purge]
 gram run [--module <name>] [--target linux|windows|macos] [-- <args>]
 ```
@@ -30,5 +30,6 @@ gram run [--module <name>] [--target linux|windows|macos] [-- <args>]
   - `cargo` modules delegate straight to `cargo add`/`cargo rm`.
   - `cmake` modules resolve a dependency either via CMake FetchContent (`--url`/`--tag`, for anything that's a plain git-clonable CMake project) or a vcpkg manifest (`--vcpkg`, for anything with a maintained vcpkg port — needs `VCPKG_ROOT` set). Either way, `gram` only wires up dependency *resolution*; `target_link_libraries` stays a manual edit in the module's `CMakeLists.txt`.
   - `--module-ref` treats the dependency name as another module already in this project instead of an external one — a cargo path dependency, or (cmake) `add_subdirectory` + an auto-generated `target_link_libraries` (gram knows the exact target name here, unlike for FetchContent/vcpkg). Both modules must already exist, share the same `lang`, and the referenced one must be `kind: "library"`. Cross-language references (cmake depending on cargo, or vice versa) aren't supported yet.
+  - `--lang gram` creates a nested Gram project: the module's `src` is its own `Gram.ron`, and `--parent <that module>` creates further modules inside it. Its modules are loaded together with the root's (built, referenced and edited the same way, artifacts in the root's `build/`), but stay declared in the nested `Gram.ron` with `src` relative to it. Module names are unique across all nested projects, so `--module-ref` reaches a module of a parent project by name. A `gram` module itself takes no dependencies and can't be run; removing it removes its modules from the config too.
   - `gram remove --module <name>` (no dependency given) only removes the module from `gram-build.ron` by default; add `--purge` to also delete the module's directory from disk.
 - `gram run` executes an already-built `kind: "runtime"` module's binary straight from its `builds/<target>/` output — it doesn't trigger a build first. Omit `--module` to run the project's default module; anything after `--` is forwarded verbatim to the binary. CI doesn't use this — it runs the `gram build --ci` artifact directly.

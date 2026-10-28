@@ -10,7 +10,7 @@ include(FetchContent)
 
 # --- gram dependencies (managed, do not edit by hand) ---
 # gram:dep:GramEngine begin
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../GramEngine ${CMAKE_CURRENT_BINARY_DIR}/GramEngine)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine ${CMAKE_CURRENT_BINARY_DIR}/GramEngine)
 # gram:dep:GramEngine end
 # --- end gram dependencies ---
 

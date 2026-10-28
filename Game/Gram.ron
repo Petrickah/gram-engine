@@ -1,0 +1,21 @@
+BuildConfig(
+    name: "Game",
+    version: "0.1.0",
+    main: "GramRuntime",
+    modules: [
+        ModuleConfig(
+            name: "GramRuntime",
+            lang: "cmake",
+            kind: "runtime",
+            src: "GramRuntime/CMakeLists.txt",
+            deps: [
+                Module(name: "GramEngine"),
+            ],
+            targets: [
+                "windows",
+                "linux",
+                "macos",
+            ],
+        ),
+    ],
+)

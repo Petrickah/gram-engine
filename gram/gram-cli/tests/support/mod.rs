@@ -131,6 +131,12 @@ impl Sandbox {
     pub fn config(&self) -> BuildConfig {
         ron::from_str(&self.read("Gram.ron")).expect("Gram.ron is valid RON")
     }
+
+    /// A nested project's Gram.ron (`dir/Gram.ron`), parsed.
+    #[track_caller]
+    pub fn config_at(&self, dir: &str) -> BuildConfig {
+        ron::from_str(&self.read(&format!("{dir}/Gram.ron"))).expect("Gram.ron is valid RON")
+    }
 }
 
 impl Drop for Sandbox {

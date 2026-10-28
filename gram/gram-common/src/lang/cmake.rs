@@ -142,7 +142,12 @@ impl ModuleBackend for CMake {
                 candidates.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join(", ")
             ),
         ))?;
-        let dest = Path::new(out).with_file_name(from.file_name().expect("artifact candidates are file names"));
+        // An executable takes the name gram picked (`out`: the project's name for a main module);
+        // a library keeps its real one, since gram can't know whether it's static or shared.
+        let dest = match module.kind.as_str() {
+            "library" => Path::new(out).with_file_name(from.file_name().expect("artifact candidates are file names")),
+            _ => Path::new(out).to_path_buf(),
+        };
         fs::copy(from, dest)?;
 
         // Compiled shaders (SPIR-V) are runtime assets the executable loads from disk, so they

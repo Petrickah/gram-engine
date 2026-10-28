@@ -1,5 +1,6 @@
 use std::fs;
-use std::io::{self, Read};
+use std::collections::HashSet;
+use std::io;
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +8,7 @@ use crate::commands::add::AddCommand;
 use crate::commands::remove::RemoveCommand;
 use crate::commands::run::RunCommand;
 use crate::directory::Directory;
-use crate::lang::{DependencySpec, backend_for};
+use crate::lang::{DependencySpec, backend_for, slash_path};
 use crate::target::validate_targets;
 
 pub mod module;
@@ -30,6 +31,17 @@ pub enum AddOutcome {
     NothingToDo { module: String },
 }
 
+/// A nested Gram project (a `gram` module) as read from its own Gram.ron: kept so `write` can
+/// put back what isn't stored on its modules.
+#[derive(Debug)]
+struct SubProject {
+    /// Its directory, relative to the root project.
+    dir: String,
+    name: String,
+    version: String,
+    main: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BuildConfig {
     pub(crate) name: String,
@@ -39,7 +51,10 @@ pub struct BuildConfig {
     /// Gram.ron predating this field) means there's no implicit default.
     #[serde(default)]
     pub(crate) main: String,
-    pub(crate) modules: Vec<ModuleConfig>
+    /// Every module of the project, nested projects' included (see `open`).
+    pub(crate) modules: Vec<ModuleConfig>,
+    #[serde(skip)]
+    subprojects: Vec<SubProject>,
 }
 
 impl BuildConfig {
@@ -48,7 +63,8 @@ impl BuildConfig {
             name: String::from(name),
             version: String::from(version),
             main: String::new(),
-            modules: vec![]
+            modules: vec![],
+            subprojects: vec![],
         })
     }
 
@@ -56,28 +72,129 @@ impl BuildConfig {
         self.main = String::from(module);
     }
 
+    /// Reads the project's Gram.ron, plus the Gram.ron of every `gram` module in it, recursively.
+    /// A nested project's modules join `modules` with their `src` prefixed by the project's
+    /// directory, so everything else (build, references, `cargo`/`cmake` run from the root)
+    /// sees one flat list of modules relative to the root. Module names are unique across it.
     pub fn open(path: &str) -> io::Result<Self> {
-        let path = PathBuf::new().join(path);
-        let mut file = fs::File::open(path.join("Gram.ron"))?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        let root = PathBuf::new().join(path);
+        let mut project = Self::read(&root.join("Gram.ron"))?;
 
-        match ron::de::from_bytes(&contents.as_bytes()) {
-            Ok(project) => Ok(project),
-            Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err)),
+        // Appended modules get visited too, which is what makes nesting recursive.
+        let mut index = 0;
+        while index < project.modules.len() {
+            let module = &project.modules[index];
+            index += 1;
+            if module.lang != "gram" {
+                continue;
+            }
+
+            let dir = slash_path(module.dir());
+            let nested = Self::read(&root.join(&module.src))?;
+            project.subprojects.push(SubProject {
+                dir: dir.clone(),
+                name: nested.name,
+                version: nested.version,
+                main: nested.main,
+            });
+            for mut module in nested.modules {
+                module.src = slash_path(&Path::new(&dir).join(&module.src));
+                module.project = dir.clone();
+                project.modules.push(module);
+            }
         }
+
+        let mut names = HashSet::new();
+        if let Some(duplicate) = project.modules.iter().find(|m| !names.insert(m.name.as_str())) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("module name {} is used twice (module names must be unique across nested gram projects)", duplicate.name),
+            ));
+        }
+        Ok(project)
+    }
+
+    fn read(file: &Path) -> io::Result<Self> {
+        let contents = fs::read_to_string(file)
+            .map_err(|err| io::Error::new(err.kind(), format!("couldn't read {}: {err}", file.display())))?;
+        ron::de::from_str(&contents)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {err}", file.display())))
+    }
+
+    /// Writes the root Gram.ron and every nested project's, each with only its own modules and
+    /// their `src` relative to that file again.
+    pub(crate) fn write(&self) -> io::Result<()> {
+        self.write_to(Path::new("."))
+    }
+
+    fn write_to(&self, root: &Path) -> io::Result<()> {
+        let file = |dir: &str, name: &str, version: &str, main: &str| BuildConfig {
+            name: name.to_owned(),
+            version: version.to_owned(),
+            main: main.to_owned(),
+            modules: self.modules.iter()
+                .filter(|m| m.project == dir)
+                .map(|m| ModuleConfig {
+                    src: slash_path(Path::new(&m.src).strip_prefix(dir).expect("a module's src is inside its project")),
+                    ..m.clone()
+                })
+                .collect(),
+            subprojects: vec![],
+        };
+
+        Directory::new(root)?.write_file("Gram.ron", &file("", &self.name, &self.version, &self.main))?;
+        for sub in &self.subprojects {
+            Directory::new(root.join(&sub.dir))?.write_file("Gram.ron", &file(&sub.dir, &sub.name, &sub.version, &sub.main))?;
+        }
+        Ok(())
     }
 
     pub fn rm_module(&mut self, name: &str) -> io::Result<ModuleConfig> {
         match self.modules.iter().position(|module| module.name == name) {
             result => match result {
-                Some(index) => Ok(self.modules.swap_remove(index)),
+                Some(index) => Ok(self.modules.remove(index)),
                 None => Err(io::Error::new(io::ErrorKind::Other, "module not found")),
             },
         }
     }
 
-    pub fn add_module(&mut self, name: &str, lang: &str, kind: &str, targets: &[String]) -> io::Result<()> {
+    /// File name (without platform prefix/extension) of `module`'s artifact under build/: the
+    /// name of its project if it's that project's main runtime module (the game executable is
+    /// "Game", not "GramRuntime"), the module's own name otherwise.
+    pub(crate) fn artifact_name<'a>(&'a self, module: &'a ModuleConfig) -> &'a str {
+        if module.kind != "runtime" || module.lang == "gram" {
+            return &module.name;
+        }
+        let (name, main) = if module.project.is_empty() {
+            (self.name.as_str(), self.main.as_str())
+        } else {
+            match self.subprojects.iter().find(|sub| sub.dir == module.project) {
+                Some(sub) => (sub.name.as_str(), sub.main.as_str()),
+                None => return &module.name,
+            }
+        };
+        if main == module.name { name } else { &module.name }
+    }
+
+    /// Adds a module to the root project or, with `parent` (the name of a `gram` module), to
+    /// that nested project.
+    pub fn add_module(&mut self, name: &str, lang: &str, kind: &str, targets: &[String], parent: &str) -> io::Result<()> {
+        let project = if parent.is_empty() {
+            String::new()
+        } else {
+            let parent_module = self.modules.iter().find(|m| m.name == parent).ok_or_else(|| io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("--parent module not found: {parent}"),
+            ))?;
+            if parent_module.lang != "gram" {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("--parent {parent} is a \"{}\" module, not a gram module", parent_module.lang),
+                ));
+            }
+            slash_path(parent_module.dir())
+        };
+
         let targets = if targets.is_empty() {
             vec![String::from(std::env::consts::OS)]
         } else {
@@ -90,9 +207,10 @@ impl BuildConfig {
             name: String::from(name),
             lang: String::from(lang),
             kind: String::from(kind),
-            src: format!("{name}/{manifest}"),
+            src: slash_path(&Path::new(&project).join(name).join(manifest)),
             deps: vec![],
-            targets
+            targets,
+            project,
         });
         Ok(())
     }
@@ -111,7 +229,7 @@ impl BuildConfig {
         self.modules.iter()
             .find(|m| m.name == module)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("module not found: {module}")))?
-            .run(&self.name, target, &command.args)
+            .run(self, target, &command.args)
     }
 
     pub fn build(&self, ci: &bool, target: &str) -> io::Result<()> {
@@ -143,9 +261,9 @@ impl BuildConfig {
 
         if created {
             println!("gram module (name={module}, lang={lang}) created");
-            self.add_module(&module, &lang, &command.kind, &targets)?;
+            self.add_module(&module, &lang, &command.kind, &targets, &command.parent)?;
             self.modules.last().unwrap().save(&project)?;
-            project.write_file("Gram.ron", self)?;
+            self.write()?;
             self.write_vscode_settings(&project)?;
         } else if !targets.is_empty() {
             validate_targets(&targets)?;
@@ -156,7 +274,7 @@ impl BuildConfig {
                 added_targets = added.into_iter().cloned().collect();
                 existing.targets.extend(added_targets.iter().cloned());
                 println!("gram module (name={module}): added target(s) {added_display}");
-                project.write_file("Gram.ron", self)?;
+                self.write()?;
             }
         }
 
@@ -215,7 +333,7 @@ impl BuildConfig {
                 .add_dependency(&dependency)?;
         }
 
-        project.write_file("Gram.ron", self)?;
+        self.write()?;
         Ok(AddOutcome::DependencyAdded { module, dependency })
     }
 
@@ -230,14 +348,21 @@ impl BuildConfig {
 
         if !dependency.is_empty() {
             existing.rm_dependency(&dependency)?;
-            return project.write_file("Gram.ron", self);
+            return self.write();
         }
 
         let removed = self.rm_module(&module)?;
         if self.main == module {
             self.main = String::new();
         }
-        project.write_file("Gram.ron", self)?;
+        if removed.lang == "gram" {
+            // Its modules (and any project nested in it) go with it, from Gram.ron at least.
+            let dir = slash_path(removed.dir());
+            let inside = |project: &str| Path::new(project).starts_with(&dir);
+            self.modules.retain(|m| !inside(&m.project));
+            self.subprojects.retain(|sub| !inside(&sub.dir));
+        }
+        self.write()?;
         self.write_vscode_settings(&project)?;
 
         if command.purge {
@@ -254,7 +379,7 @@ impl BuildConfig {
     pub fn save(&mut self, path: &str) -> io::Result<()> {
         let name = self.name.clone();
         let project = Directory::new(path)?;
-        project.write_file("Gram.ron", self)?;
+        self.write_to(Path::new(path))?;
         println!("gram init (name={name}, path={path})");
         for curr_module in &self.modules {
             curr_module.save(&project)?;

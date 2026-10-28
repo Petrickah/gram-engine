@@ -16,7 +16,7 @@ fn builds_a_cargo_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("main"))));
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
 }
 
 #[test]
@@ -25,7 +25,7 @@ fn builds_a_cmake_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("main"))));
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
     // cmake's own build directory lives inside the module, one per target.
     assert!(project.exists(&format!("main/build-{}/CMakeCache.txt", host())));
 }
@@ -60,7 +60,7 @@ fn builds_a_referenced_library_as_part_of_the_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("main"))));
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
     assert!(project.exists(&format!("build/demo/{}/{}", host(), shared_lib("engine"))));
 }
 
@@ -88,8 +88,19 @@ fn builds_a_cargo_workspace_member() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("main"))),
-        "the artifact is still named after the gram module");
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))),
+        "the artifact is named after the project (main is its main module), not the cargo package");
+}
+
+#[test]
+fn only_the_main_runtime_module_is_named_after_the_project() {
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "--module", "tool", "--lang", "cmake"]).succeeds();
+
+    project.gram(&["build"]).succeeds();
+
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("tool"))), "not the main module: keeps its name");
 }
 
 // --- targets ------------------------------------------------------------------------------------
@@ -100,7 +111,7 @@ fn ci_builds_every_declared_target_into_versioned_directories() {
 
     project.gram(&["build", "--ci"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo_0.1.0_{}/{}", host(), exe("main"))));
+    assert!(project.exists(&format!("build/demo_0.1.0_{}/{}", host(), exe("demo"))));
 }
 
 #[test]
@@ -111,7 +122,7 @@ fn ci_skips_targets_this_host_cannot_build() {
     let run = project.gram(&["build", "--ci"]).succeeds();
 
     assert!(run.printed(&format!("skipping module main target \"{other}\"")));
-    assert!(project.exists(&format!("build/demo_0.1.0_{}/{}", host(), exe("main"))));
+    assert!(project.exists(&format!("build/demo_0.1.0_{}/{}", host(), exe("demo"))));
     assert!(!project.exists(&format!("build/demo_0.1.0_{other}")));
 }
 
@@ -147,7 +158,7 @@ fn warns_when_building_a_target_the_module_does_not_declare() {
     let run = project.gram(&["build"]).succeeds();
 
     assert!(run.printed(&format!("does not declare \"{}\"", host())));
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("main"))));
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
 }
 
 // --- vcpkg ----------------------------------------------------------------------------------------

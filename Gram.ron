@@ -5,14 +5,10 @@ BuildConfig(
     modules: [
         ModuleConfig(
             name: "gram",
-            lang: "cargo",
+            lang: "gram",
             kind: "runtime",
-            src: "gram/Cargo.toml",
-            deps: [
-                Registry(name: "clap"),
-                Registry(name: "serde"),
-                Registry(name: "ron"),
-            ],
+            src: "gram/Gram.ron",
+            deps: [],
             targets: [
                 "linux",
                 "windows",
@@ -42,16 +38,14 @@ BuildConfig(
             ],
         ),
         ModuleConfig(
-            name: "GramRuntime",
-            lang: "cmake",
+            name: "Game",
+            lang: "gram",
             kind: "runtime",
-            src: "GramRuntime/CMakeLists.txt",
-            deps: [
-                Module(name: "GramEngine"),
-            ],
+            src: "Game/Gram.ron",
+            deps: [],
             targets: [
-                "windows",
                 "linux",
+                "windows",
                 "macos",
             ],
         ),
