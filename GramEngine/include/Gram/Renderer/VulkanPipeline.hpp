@@ -3,16 +3,20 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
+class VulkanShader;
 struct VulkanRendererSpecification;
 
 class VulkanPipeline : private UniqueObject
 {
 public:
-    VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D& extent, const vk::SurfaceFormatKHR& surfaceFormat);
+    VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D &extent, const vk::SurfaceFormatKHR &surfaceFormat);
     ~VulkanPipeline();
-
+    
 public:
     VkPipeline GetPipeline() const { return static_cast<VkPipeline>(m_Pipeline); }
+
+private:
+    bool TryLoadShaderProgram(const Gram::VulkanRendererSpecification *rendererSpec, const vk::Device &device);
 
 private:
     vk::Device m_Device;
@@ -20,6 +24,9 @@ private:
     vk::Viewport m_Viewport;
     
     std::vector<vk::DynamicState> m_DynamicStates;
+    // Loaded by TryLoadShaderProgram, alive only until createGraphicsPipelines: the pipeline
+    // keeps its own copy of the code, so the modules are released right after.
+    std::vector<VulkanShader> m_Shaders;
 
     vk::Pipeline m_Pipeline = VK_NULL_HANDLE;
     vk::PipelineLayout m_PipelineLayout = VK_NULL_HANDLE;

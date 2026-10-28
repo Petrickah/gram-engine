@@ -56,22 +56,7 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
 {
     if (!rendererSpec || !device) return;
 
-    // Only needed until createGraphicsPipelines below; destroyed at the end of the constructor.
-    const VulkanShader vertShader(rendererSpec, "shaders/Default.vert.spv", device);
-    const VulkanShader fragShader(rendererSpec, "shaders/Default.frag.spv", device);
-    if (!vertShader.IsValid() || !fragShader.IsValid()) return;
-    
-    m_ShaderStageCreateInfos.reserve(2);
-    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo {
-        .stage  = vk::ShaderStageFlagBits::eVertex,
-        .module = vertShader.GetShaderModule(),
-        .pName  = "VSMain"
-    });
-    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo {
-        .stage  = vk::ShaderStageFlagBits::eFragment,
-        .module = fragShader.GetShaderModule(),
-        .pName  = "PSMain"
-    });
+    GramCheckVoid(TryLoadShaderProgram(rendererSpec, device), "VulkanPipeline::VulkanPipeline: shader program creation failed");
 
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo
     {
@@ -102,7 +87,32 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
         }
     };
 
-    GramVulkanCheckVoid(m_Device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>(), nullptr, &m_Pipeline), "pipeline creation failed");
+    const vk::Result result = m_Device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>(), nullptr, &m_Pipeline);
+    m_Shaders.clear();
+    m_ShaderStageCreateInfos.clear(); // their module handles are gone with m_Shaders
+    GramVulkanCheckVoid(result, "pipeline creation failed");
+}
+
+bool VulkanPipeline::TryLoadShaderProgram(const Gram::VulkanRendererSpecification *rendererSpec, const vk::Device &device)
+{
+    // Kept in m_Shaders until createGraphicsPipelines (see the constructor). The handles are
+    // read right away, so a later emplace_back moving the vector's elements doesn't matter.
+    const VkShaderModule vertModule = m_Shaders.emplace_back(rendererSpec, std::format("shaders/{}.vert.spv", rendererSpec->m_ShaderProgram), device).GetShaderModule();
+    const VkShaderModule fragModule = m_Shaders.emplace_back(rendererSpec, std::format("shaders/{}.frag.spv", rendererSpec->m_ShaderProgram), device).GetShaderModule();
+    GramCheck(vertModule && fragModule, "VulkanPipeline::TryLoadShaderProgram: shader program creation failed");
+
+    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo{
+        .stage = vk::ShaderStageFlagBits::eVertex,
+        .module = vertModule,
+        .pName = "VSMain"
+    });
+    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo{
+        .stage = vk::ShaderStageFlagBits::eFragment,
+        .module = fragModule,
+        .pName = "PSMain"
+    });
+    
+    return true;
 }
 
 VulkanPipeline::~VulkanPipeline()

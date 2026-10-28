@@ -41,6 +41,7 @@ std::shared_ptr<Gram::Application> Gram::CreateApplication(int argc, char** argv
             .m_EnableLogging = enableLogging,
             .m_WindowSize    = glm::vec2(1280, 720),
             .m_WindowTitle   = "Gram Application with Vulkan",
+            .m_ShaderProgram = "Default",
             .m_Workspace     = Gram::GetExecutableDirectory(executableFile)
         }
     );
