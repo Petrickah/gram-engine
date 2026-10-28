@@ -9,14 +9,14 @@ Gram — a personal game engine (Rust + C++), started from rediscovered passion,
 ## Waves
 
 - **Wave 0 — Gram Build** (done): a pure-Rust CLI build tool — no C++, no runtime deps. Full command set: `gram init`/`build`/`add`/`remove`/`run`, driving a `Gram.ron` project file (serde + `ron-rs`, a format reused later for asset definitions). A `cargo` module kind delegates straight to real `cargo`; a `cmake` module kind scaffolds a C++ project with FetchContent/vcpkg dependency resolution, for when Wave 1 needs it. The project is self-hosting (`gram` builds itself via its own `Gram.ron`). Details: `docs/wave-0-*.md`.
-- **Wave 1 — Hello Triangle**: window + Vulkan + triangle, C++/Rust interop. C++ owns `main()` and the renderer core (static, never reloaded). Rust is the reloadable gameplay layer, split into two crates for `TypeId` stability across recompiles: `gram-core` (linked statically into the C++ binary via `cxx` + Corrosion, defines the `bevy_ecs` `World` and Component/Resource types) and `gram-hot` (`cdylib`, reloaded at runtime via `LoadLibrary`/`dlopen`, contains the Systems). The dynamic reload boundary is plain `extern "C"` / `#[repr(C)]`, not `cxx` — `cxx` is only used between `gram-core` (static) and C++. Build system: CMake + Corrosion (Premake was considered and rejected — it doesn't generate a CMake project on Linux).
-- **Wave 2 — Ray Tracer**: Vulkan compute shader pipeline, spheres driven by Rust entities (position/color/radius).
+- **Wave 1 — Hello Triangle**: window + Vulkan + triangle + ImGui, C++/Rust interop. C++ owns `main()`, the renderer and **all state** (entities, components, IDs; never reloaded). Rust is a single stateless `cdylib` (`gram-hot`) holding only gameplay logic, loaded/reloaded via `LoadLibrary`/`dlopen` (copy-on-load) and called through plain `extern "C"` with a `HostApi` function table; shared data is `#[repr(C)]` in host memory, reached from Rust through IDs (`Handle`/`Reference`). No `bevy_ecs`, no `gram-core`, no `cxx`/Corrosion (adopted 2026-10-28, replacing the earlier `gram-core` static + `gram-hot` split). Components are described in `.ron` schemas from which `gram build` generates the Rust struct, the C++ struct and a descriptor table (like Anvil's `.mold`); a schema change needs a rebuild + restart, a Rust logic change only a reload. Proof of concept: a `Greeting` component with one text field, edited in an ImGui inspector, surviving a reload — no sphere in Wave 1. Details: `docs/wave-1-rust-gameplay-design.md`.
+- **Wave 2 — Ray Tracer**: Vulkan compute shader pipeline; spheres first owned by C++, then driven by Rust entities (position/color/radius).
 - **Wave 3+**: raster pipeline, post-processing, asset manager, world serialization — noted, unplanned.
 
 ## Methodology — who writes what
 
 - **User writes**: anything that's a new skill being learned for the first time (a CLI with subcommands the first time, Vulkan code following the official tutorial, ECS entity/component/system definitions) — the parts with real learning value.
-- **Claude Code writes**: scaffolding (CLI boilerplate, build system wiring, Rust↔C++ interop glue, CMake+Corrosion setup) — plumbing without learning value, once a pattern is already familiar.
+- **Claude Code writes**: scaffolding (CLI boilerplate, build system wiring, Rust↔C++ interop glue, CMake setup) — plumbing without learning value, once a pattern is already familiar.
 - Rule of thumb: first time doing something new → user writes it. Something done many times before (Cargo.toml config, adding a dependency) → delegate to Claude Code.
 
 ## Commands
@@ -43,7 +43,7 @@ Module language behavior:
 
 Builds land in `build/<project>/<target>/` (plain `gram build`) or `build/<project>_<version>_<target>/` (`--ci`, one per `targets` entry). `gram run` executes an already-built `runtime` module's binary directly — it doesn't trigger a build. `gram init`/`add`/`remove` also (re)generate `.vscode/settings.json` (`rust-analyzer.linkedProjects`) for every cargo module, so rust-analyzer doesn't get confused by a project root that isn't itself a Cargo project.
 
-No C++/Rust interop yet — that's introduced in Wave 1, where CMake + Corrosion get invoked as a build step from `gram build` for a module declaring a C++/Rust mix (`gram`'s own `cmake` module kind is plain C++ scaffolding, unrelated to that).
+No C++/Rust interop yet. In Wave 1 it needs no build-system bridge: the C++ executable only `dlopen`s/`LoadLibrary`s the Rust `cdylib`, so `gram` needs `crate-type = ["cdylib"]` support, copying the library next to the executable, and later the `.ron` schema → Rust/C++ code generation step.
 
 ## Non-goals (current)
 

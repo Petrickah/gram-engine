@@ -1,6 +1,6 @@
 # Notes — drawing the Sphere entity (Task 1.4 → Wave 2)
 
-Status as of 2026-10-19: **notes for future work, nothing implemented.** Written so the reasoning doesn't have to be rediscovered when Task 1.4 and Wave 2 (Task 2.1) start. Some statements about third-party support (MoltenVK, GPU vendors) come from memory — re-check them against current docs before depending on them.
+Status as of 2026-10-19: **notes for future work, nothing implemented.** Update 2026-10-28: the sphere moved entirely to Wave 2 (Task 2.1). Wave 1's Task 1.4 is now a text component edited in ImGui (`wave-1-rust-gameplay-design.md`), so the "Task 1.4" section below is no longer planned; the Wave 2 notes stand. The `gram-core` / `cxx` mentions below predate the adopted design (state in C++, Rust as a stateless `cdylib`). Written so the reasoning doesn't have to be rediscovered when Task 1.4 and Wave 2 (Task 2.1) start. Some statements about third-party support (MoltenVK, GPU vendors) come from memory — re-check them against current docs before depending on them.
 
 ## The idea in one line
 

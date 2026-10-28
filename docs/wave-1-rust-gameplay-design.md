@@ -1,6 +1,6 @@
-# Wave 1 — Rust gameplay layer over a C++ engine (design proposal)
+# Wave 1 — Rust gameplay layer over a C++ engine (design)
 
-Status as of 2026-10-21: **proposal, not adopted yet.** Nothing is implemented. `CLAUDE.md` and Tasks 1.3/1.4 in `.gram.kanban.md` still describe the original two-crate plan (`gram-core` static + `gram-hot` dynamic, `bevy_ecs` World in Rust). If this design is adopted, update both (see *Impact on the plan*). Statements about third-party engines and platform behavior come from memory; re-check them before depending on them.
+Status as of 2026-10-28: **adopted, nothing implemented yet.** Proposed 2026-10-21, adopted 2026-10-28 together with schema-driven components (see *Schema-driven components*) and a narrower Wave 1 proof of concept: one component with a text field, edited in ImGui, no sphere on screen. `CLAUDE.md` and Tasks 1.3/1.4 in `.gram.kanban.md` have been updated to match. Statements about third-party engines and platform behavior come from memory; re-check them before depending on them.
 
 ## The idea in one line
 
@@ -90,9 +90,43 @@ Rust assumes there are never two `&mut` to the same object. Two `Handle`s to the
 
 ## Data layout across the boundary
 
-- Every shared type is defined twice, in C++ and in Rust, with the same layout. Check it on both sides: `static_assert(sizeof(T) == N && alignof(T) == M)` in C++, `const _: () = assert!(size_of::<T>() == N);` in Rust.
-- Later, generate one side from the other (`cbindgen` from Rust, or `bindgen` from C++) instead of keeping both by hand.
+- Every shared type exists twice, in C++ and in Rust, with the same layout. Check it on both sides: `static_assert(sizeof(T) == N && alignof(T) == M)` in C++, `const _: () = assert!(size_of::<T>() == N);` in Rust.
+- Neither side is the source: both are generated from a `.ron` schema (next section). Until the generator exists, write by hand exactly what it would produce.
 - **Changing a shared layout needs a full restart** (or a migration step). A reload only replaces code, never the shape of data already in memory. This is the same limit every hot-reload system has.
+
+## Schema-driven components
+
+A component is described once, in a `.ron` schema, and `gram build` generates both sides from it. Same workflow as Anvil's `.mold` files (which generated the C# editor-side model and the C++ side from one definition):
+
+```ron
+Component(
+    name: "Greeting",
+    fields: [
+        Field(name: "text", ty: Str(64)),
+    ],
+)
+```
+
+Generated from it:
+
+- **Rust**: a `#[repr(C)]` struct, written into the module's cargo package (a `.rs` file, not a crate).
+- **C++**: the matching struct, with the `static_assert`s on size, alignment and offsets.
+- **A static descriptor table** (component name, fields with name / type / offset): what lets an ImGui inspector show any component generically, without knowing `Greeting` at compile time.
+
+What changes need what:
+
+| Change | Rebuild | Restart |
+|---|---|---|
+| A schema (`.ron`): new component, new field | C++ executable and the Rust library (both sides are generated) | yes |
+| Rust gameplay logic | the `cdylib` only | no, reload (copy-on-load) |
+| C++ code | the executable | yes (an editor could later hide this by restarting the game process itself) |
+
+Notes:
+
+- **Strings**: `String` is neither `#[repr(C)]` nor allocated by the host. For now a schema string is `Str(N)`, a fixed inline buffer (`[u8; N]` / `char[N]`). C++-owned strings behind an ID can come later.
+- **Inspector**: selecting an entity shows the cargo module it comes from, then one collapsing header per component (with the `.ron` it's defined in) and its fields, read from the descriptor table.
+- **Instances**: Rust can read an instance from a `.ron` file and hand it to C++ (`add_component(entity, component, const void* data)`, copied into host memory). From then on Rust only reaches it through an `ObjectId`, never a stored pointer: host storage may move when it grows.
+- Later, a file watcher triggers the reload; when there's an editor, it loads the game executable / the Rust library the same way. Not needed for the proof of concept.
 
 ## Platform pitfalls
 
@@ -112,22 +146,24 @@ Rust assumes there are never two `&mut` to the same object. Two `Handle`s to the
 - **Threading:** assume single-threaded gameplay for now. Multi-threaded access changes the aliasing story.
 - **Is the original plan still preferable?** Yes, if writing gameplay with `bevy_ecs` in Rust is itself the goal. Then the rule is strict: every type in `gram-core`, nothing with `Drop` or a vtable defined in `gram-hot`.
 
-## Impact on the plan (if adopted)
+## Impact on the plan (applied 2026-10-28)
 
-- **`CLAUDE.md`, Wave 1 description:** replace the `gram-core` / `gram-hot` split and the `cxx` + Corrosion mention with this architecture.
-- **Task 1.3** becomes: "Rust `cdylib` + host loader: C++ loads `gram-hot` (copy-on-load), calls `on_load` / `update` / `on_unload` through `extern "C"`, panics caught at the boundary."
-- **Task 1.4** becomes: "C++ owns a `Sphere` object; Rust moves it through a `Handle`; reload picks up new logic live, state untouched." The drawing notes in `wave-1-2-sphere-rendering-notes.md` are unaffected; only the sphere's owner changes from `gram-core` to C++.
+- **`CLAUDE.md`, Wave 1 description:** the `gram-core` / `gram-hot` split and the `cxx` + Corrosion mention replaced with this architecture.
+- **Task 1.3:** "Rust `cdylib` + host loader: C++ loads `gram-hot` (copy-on-load), calls `on_load` / `update` / `on_unload` through `extern "C"`, panics caught at the boundary."
+- **Task 1.4:** the proof of concept is a `Greeting` component (one `Str(64)` field) on one entity, shown and edited in an ImGui inspector; Rust reads or changes it through a `Handle`; a reload picks up new logic while the edited text survives. **No sphere and no Vulkan buffers in Wave 1**: the ImGui layers already give a place to see the data.
+- **Sphere moves to Wave 2 (Task 2.1):** first a sphere owned by C++ in the compute ray tracer, then driven from Rust as a real entity. `wave-1-2-sphere-rendering-notes.md` keeps its rendering notes; its "Task 1.4" part (fullscreen triangle + push constants) is no longer planned for Wave 1.
 - **ImGui (Task 1.y):** unaffected. The ImGui context already stays on the C++ side.
 
 ## Suggested order
 
 1. Host loader + `extern "C"` lifecycle with an empty Rust library (copy-on-load, reload on file change, `catch_unwind`).
 2. `HostApi` with `log` only: prove a call in each direction survives a reload.
-3. `ObjectId` + ID table in C++, `Handle<T>` in Rust, one object (the sphere).
+3. `ObjectId` + ID table in C++, `Handle<T>` in Rust, one entity with a `Greeting` component (hand-written `#[repr(C)]` struct + descriptor), shown and edited in an ImGui inspector. A reload keeps the edited text.
+3b. The `gram build` step generating the Rust / C++ / descriptor code from the `.ron` schema, once step 3 shows what it must produce.
 4. `Reference<T>` once something needs to be kept alive (assets).
 5. Aliasing guard (closure access or borrow flags) before more than one gameplay system touches the same objects.
 
-Per the methodology in `CLAUDE.md`, steps 1–5 are new territory (first safe FFI layer, first generational IDs), so they're written by hand. The `gram` changes in *Build* (`crate-type`, copying the library) are plumbing and can be delegated.
+Per the methodology in `CLAUDE.md`, steps 1–5 are new territory (first safe FFI layer, first generational IDs), so they're written by hand. The `gram` changes in *Build* (`crate-type`, copying the library) are plumbing and can be delegated; the schema code generator (3b) is the user's call.
 
 ## Precedents
 
