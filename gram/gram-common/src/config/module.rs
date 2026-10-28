@@ -21,42 +21,27 @@ pub struct ModuleConfig {
     #[serde(default = "default_kind")]
     pub(crate) kind: String,
     pub(crate) src: String,
-    pub(crate) deps: Vec<String>,
+    pub(crate) deps: Vec<DependencySpec>,
     pub(crate) targets: Vec<String>
 }
 
 impl ModuleConfig {
-    pub fn add_dependency(&mut self, dependency: &str, url: &str, tag: &str, vcpkg: bool) -> io::Result<()> {
-        let name = dependency.to_owned();
-        let dep = if vcpkg {
-            if !url.is_empty() || !tag.is_empty() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "--vcpkg can't be combined with --url/--tag (those are FetchContent-only)",
-                ));
-            }
-            DependencySpec::Vcpkg { name }
-        } else if url.is_empty() && tag.is_empty() {
-            DependencySpec::Registry { name }
-        } else {
-            DependencySpec::Git { name, url: url.to_owned(), tag: tag.to_owned() }
-        };
-
-        self.backend()?.add_dependency(self, &dep)
+    pub fn add_dependency(&mut self, dependency: &DependencySpec) -> io::Result<()> {
+        self.backend()?.add_dependency(self, &dependency)
     }
 
     /// Adds another module already in Gram.ron as a dependency (same-language only,
     /// enforced by the caller): a cargo path dependency, or a cmake add_subdirectory +
     /// target_link_libraries. Unlike an external dependency, gram knows the exact target
     /// name here (it generated it), so it can wire the link itself.
-    pub fn add_module_ref(&mut self, dependency: &str) -> io::Result<()> {
-        self.backend()?.add_module_ref(self, dependency)
+    pub fn add_module_ref(&mut self, dependency: &DependencySpec) -> io::Result<()> {
+        self.backend()?.add_module_ref(self, &dependency)
     }
 
     /// Whether the module already lists `dependency`, whatever its source (registry, git,
     /// vcpkg or module ref): a module depends on a name at most once.
-    pub(crate) fn has_dependency(&self, dependency: &str) -> bool {
-        self.deps.iter().any(|dep| dep == dependency)
+    pub(crate) fn has_dependency(&self, dependency: &DependencySpec) -> bool {
+        self.deps.iter().any(|dep| dep.name() == dependency.name())
     }
 
     pub fn rm_dependency(&mut self, dependency: &str) -> io::Result<String> {

@@ -23,17 +23,18 @@ impl ModuleBackend for Cargo {
         "Cargo.toml"
     }
 
-    fn add_module_ref(&self, module: &mut ModuleConfig, dependency: &str) -> io::Result<()> {
-        println!("gram add (dependency={dependency}, src={}): adding module reference (cargo path dependency)", module.src);
+    fn add_module_ref(&self, module: &mut ModuleConfig, dependency: &DependencySpec) -> io::Result<()> {
+        let name = dependency.name();
+        println!("gram add (dependency={name}, src={}): adding module reference (cargo path dependency)", module.src);
         let mut command = Command::new("cargo");
         // gram's own module layout is always flat (every module is a direct child
         // of the project root), and gram already runs with cwd = project root, so
         // the dependency module's own directory name is the correct --path as-is.
-        command.args(["add", dependency, "--path", dependency, "--manifest-path", &module.src.clone()]);
+        command.args(["add", &name.clone(), "--path", &name.clone(), "--manifest-path", &module.src.clone()]);
 
         let status = command.status()?;
         match status.success() {
-            true => Ok(module.deps.push(dependency.to_owned())),
+            true => Ok(module.deps.push(dependency.clone())),
             false => Err(io::Error::new(io::ErrorKind::Other, "cargo add (path dependency) failed"))
         }
     }
@@ -115,7 +116,7 @@ impl ModuleBackend for Cargo {
 
         let status = command.status()?;
         match status.success() {
-            true => Ok(module.deps.push(name.to_owned())),
+            true => Ok(module.deps.push(dep.clone())),
             false => Err(io::Error::new(io::ErrorKind::Other, "cargo add failed"))
         }
     }
@@ -128,8 +129,8 @@ impl ModuleBackend for Cargo {
 
         let status = command.status()?;
         match status.success() {
-            true => match module.deps.iter().position(|dep| dep == dependency) {
-                Some(position) => Ok(module.deps.swap_remove(position)),
+            true => match module.deps.iter().position(|dep| dep.name() == dependency) {
+                Some(position) => Ok(module.deps.swap_remove(position).name()),
                 None => Err(io::Error::new(io::ErrorKind::Other, "dependency not found")),
             },
             false => Err(io::Error::new(io::ErrorKind::Other, "cargo rm failed"))

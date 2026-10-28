@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Map, Value};
 
 use crate::config::module::ModuleConfig;
+use crate::lang::DependencySpec;
 use crate::lang::cmake::DEPS_END;
 
 /// Which vcpkg manifest a cmake module's configure should use.
@@ -32,7 +33,7 @@ pub(crate) fn build_manifest(module: &ModuleConfig, build_dir: &Path) -> io::Res
     // Module refs are recorded in `deps` by module name, and gram's layout is flat, so a
     // referenced module lives next to this one; external dependencies have no such directory.
     let referenced: Vec<PathBuf> = module.deps.iter()
-        .map(|dep| module_dir.join("..").join(dep).join("vcpkg.json"))
+        .map(|dep| module_dir.join("..").join(dep.name()).join("vcpkg.json"))
         .filter(|path| path.exists())
         .collect();
 
@@ -105,8 +106,9 @@ fn merge_dependency(known: &mut Value, other: &Value) {
 /// managed CMakeLists.txt region. Like the FetchContent path, wiring `target_link_libraries`
 /// is left to you — the right target name varies per vcpkg port and isn't something gram can
 /// reliably guess.
-pub(crate) fn add_dependency(module: &mut ModuleConfig, dependency: &str) -> io::Result<()> {
-    println!("gram add (dependency={dependency}, src={}): adding vcpkg dependency", module.src);
+pub(crate) fn add_dependency(module: &mut ModuleConfig, dependency: &DependencySpec) -> io::Result<()> {
+    let name = dependency.name();
+    println!("gram add (dependency={name}, src={}): adding vcpkg dependency", module.src);
 
     let manifest_path = manifest_path(module);
     let mut manifest_deps = if manifest_path.exists() {
@@ -115,23 +117,23 @@ pub(crate) fn add_dependency(module: &mut ModuleConfig, dependency: &str) -> io:
         vec![]
     };
 
-    if !manifest_deps.iter().any(|d| d == dependency) {
-        manifest_deps.push(dependency.to_owned());
+    if !manifest_deps.iter().any(|d| *d == name) {
+        manifest_deps.push(name.clone());
         write_manifest(&manifest_path, &sanitize_name(&module.name), &manifest_deps)?;
     }
 
     let contents = fs::read_to_string(&module.src)?;
-    let begin_marker = format!("# gram:dep:{dependency} begin");
+    let begin_marker = format!("# gram:dep:{name} begin");
 
     if !contents.contains(&begin_marker) {
         let block = format!(
-            "{begin_marker}\nfind_package({dependency} CONFIG REQUIRED)\n# gram:dep:{dependency} end\n"
+            "{begin_marker}\nfind_package({name} CONFIG REQUIRED)\n# gram:dep:{name} end\n"
         );
         let contents = contents.replacen(DEPS_END, &format!("{block}{DEPS_END}"), 1);
         fs::write(&module.src, contents)?;
     }
 
-    module.deps.push(dependency.to_owned());
+    module.deps.push(dependency.clone());
     Ok(())
 }
 

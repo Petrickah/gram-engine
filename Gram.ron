@@ -9,9 +9,9 @@ BuildConfig(
             kind: "runtime",
             src: "gram/Cargo.toml",
             deps: [
-                "clap",
-                "serde",
-                "ron",
+                Registry(name: "clap"),
+                Registry(name: "serde"),
+                Registry(name: "ron"),
             ],
             targets: [
                 "linux",
@@ -25,11 +25,15 @@ BuildConfig(
             kind: "library",
             src: "GramEngine/CMakeLists.txt",
             deps: [
-                "vulkan",
-                "glfw3",
-                "glm",
-                "imgui",
-                "spdlog",
+                Vcpkg(name: "vulkan"),
+                Vcpkg(name: "glfw3"),
+                Vcpkg(name: "glm"),
+                Vcpkg(name: "imgui"),
+                Git(
+                    name: "spdlog",
+                    url: "https://github.com/gabime/spdlog.git",
+                    tag: "v1.17.0",
+                ),
             ],
             targets: [
                 "linux",
@@ -43,7 +47,7 @@ BuildConfig(
             kind: "runtime",
             src: "GramRuntime/CMakeLists.txt",
             deps: [
-                "GramEngine",
+                Module(name: "GramEngine"),
             ],
             targets: [
                 "windows",

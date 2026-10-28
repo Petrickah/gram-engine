@@ -7,7 +7,7 @@ use crate::commands::add::AddCommand;
 use crate::commands::remove::RemoveCommand;
 use crate::commands::run::RunCommand;
 use crate::directory::Directory;
-use crate::lang::backend_for;
+use crate::lang::{DependencySpec, backend_for};
 use crate::target::validate_targets;
 
 pub mod module;
@@ -23,9 +23,9 @@ pub enum AddOutcome {
     /// No dependency given; the existing module now declares these extra targets.
     TargetsAdded { module: String, targets: Vec<String> },
     /// The dependency was added (the module was created first if it didn't exist).
-    DependencyAdded { module: String, dependency: String },
+    DependencyAdded { module: String, dependency: DependencySpec },
     /// The module already had this dependency; nothing was run or written.
-    AlreadyPresent { module: String, dependency: String },
+    AlreadyPresent { module: String, dependency: DependencySpec },
     /// No dependency given, and the module already existed with every requested target.
     NothingToDo { module: String },
 }
@@ -134,12 +134,10 @@ impl BuildConfig {
     }
 
     pub fn add_dependency(&mut self, command: AddCommand) -> io::Result<AddOutcome> {
-        let project    = Directory::new(".")?;
-        let lang          = command.lang;
-        let targets  = command.target;
-        let module        = command.module;
-        let dependency    = command.name;
-
+        let project = Directory::new(".")?;
+        let lang = command.lang;
+        let targets = command.target;
+        let module = command.module;
         let created = !self.modules.iter().any(|m| m.name == module);
         let mut added_targets: Vec<String> = vec![];
 
@@ -162,7 +160,10 @@ impl BuildConfig {
             }
         }
 
-        if dependency.is_empty() {
+        let dependency = DependencySpec::new(&command.name, &command.url, &command.tag, command.vcpkg, command.module_ref)?;
+        let name = dependency.name();
+
+        if name.is_empty() {
             return Ok(if created {
                 AddOutcome::ModuleCreated { module }
             } else if !added_targets.is_empty() {
@@ -179,25 +180,19 @@ impl BuildConfig {
             return Ok(AddOutcome::AlreadyPresent { module, dependency });
         }
 
-        if command.module_ref {
-            if !command.url.is_empty() || !command.tag.is_empty() || command.vcpkg {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "--module-ref can't be combined with --url/--tag/--vcpkg (those are for external dependencies)",
-                ));
-            }
-            if dependency == module {
+        if let DependencySpec::Module { .. } = dependency {
+            if *name == module {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, "a module can't reference itself"));
             }
 
-            let dep = self.modules.iter().find(|m| m.name == dependency).ok_or_else(|| io::Error::new(
+            let dep = self.modules.iter().find(|m| *name == m.name).ok_or_else(|| io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("referenced module not found: {dependency} (create it first, e.g. `gram add --module {dependency} --lang ...`)"),
+                format!("referenced module not found: {name} (create it first, e.g. `gram add --module {name} --lang ...`)"),
             ))?;
             if dep.kind != "library" {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("referenced module {dependency} is a \"{}\" module, not a library — only library modules can be referenced", dep.kind),
+                    format!("referenced module {name} is a \"{}\" module, not a library — only library modules can be referenced", dep.kind),
                 ));
             }
             let dep_lang = dep.lang.clone();
@@ -207,7 +202,7 @@ impl BuildConfig {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
-                        "cross-language module references aren't supported yet ({module} is \"{}\", {dependency} is \"{dep_lang}\")",
+                        "cross-language module references aren't supported yet ({module} is \"{}\", {name} is \"{dep_lang}\")",
                         consumer.lang
                     ),
                 ));
@@ -216,12 +211,12 @@ impl BuildConfig {
             self.modules.iter_mut()
                 .find(|m| m.name == module)
                 .expect("checked above")
-                .add_module_ref(&dependency)?;
+                .add_module_ref(&dependency.clone())?;
         } else {
             self.modules.iter_mut()
                 .find(|m| m.name == module)
                 .expect("module was just created above, or already existed")
-                .add_dependency(&dependency, &command.url, &command.tag, command.vcpkg)?;
+                .add_dependency(&dependency.clone())?;
         }
 
         project.write_file("Gram.ron", self)?;

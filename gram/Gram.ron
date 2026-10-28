@@ -1,13 +1,13 @@
 BuildConfig(
     name: "gram",
     version: "0.1.0",
-    main: "cli",
+    main: "gram-cli",
     modules: [
         ModuleConfig(
-            name: "common",
+            name: "gram-common",
             lang: "cargo",
             kind: "library",
-            src: "common/Cargo.toml",
+            src: "gram-common/Cargo.toml",
             deps: [],
             targets: [
                 "linux",
@@ -16,11 +16,13 @@ BuildConfig(
             ],
         ),
         ModuleConfig(
-            name: "cli",
+            name: "gram-cli",
             lang: "cargo",
             kind: "runtime",
-            src: "cli/Cargo.toml",
-            deps: [],
+            src: "gram-cli/Cargo.toml",
+            deps: [
+                Module(name: "gram-common"),
+            ],
             targets: [
                 "linux",
                 "windows",

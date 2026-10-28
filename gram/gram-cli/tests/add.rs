@@ -92,7 +92,7 @@ fn adds_a_fetchcontent_dependency_to_a_cmake_module() {
     // `gram remove` can find and cut exactly this block later.
     let cmakelists = project.read("main/CMakeLists.txt");
     assert_contains(&cmakelists, "# gram:dep:fmt begin\nFetchContent_Declare(\n  fmt\n  GIT_REPOSITORY https://github.com/fmtlib/fmt\n  GIT_TAG 11.0.2\n)\nFetchContent_MakeAvailable(fmt)\n# gram:dep:fmt end\n# --- end gram dependencies ---");
-    assert_eq!(project.config().module("main").deps, ["fmt"]);
+    assert_eq!(project.config().module("main").deps, [git("fmt", "https://github.com/fmtlib/fmt", "11.0.2")]);
 }
 
 #[test]
@@ -104,6 +104,7 @@ fn the_tag_is_optional() {
     let cmakelists = project.read("main/CMakeLists.txt");
     assert_contains(&cmakelists, "GIT_REPOSITORY https://github.com/fmtlib/fmt\n)");
     assert_not_contains(&cmakelists, "GIT_TAG");
+    assert_eq!(project.config().module("main").deps, [git("fmt", "https://github.com/fmtlib/fmt", "")]);
 }
 
 #[test]
@@ -117,7 +118,7 @@ fn adding_a_dependency_the_module_already_has_only_warns() {
     assert!(run.printed("warning: module main already depends on fmt, nothing to do"));
     assert!(!run.printed("Added fmt"), "no success message for something that didn't happen");
     assert_eq!(project.read("main/CMakeLists.txt"), before, "nothing is written again");
-    assert_eq!(project.config().module("main").deps, ["fmt"], "recorded once in Gram.ron");
+    assert_eq!(project.config().module("main").deps, [git("fmt", "https://github.com/fmtlib/fmt", "")], "recorded once in Gram.ron");
 }
 
 #[test]
@@ -130,6 +131,7 @@ fn the_duplicate_check_is_by_name_whatever_the_source() {
 
     assert!(run.printed("already depends on glm"));
     assert_not_contains(&project.read("main/CMakeLists.txt"), "FetchContent_Declare(\n  glm");
+    assert_eq!(project.config().module("main").deps, [vcpkg("glm")], "the first source is kept");
 }
 
 #[test]
@@ -156,7 +158,7 @@ fn adds_a_vcpkg_dependency_to_a_cmake_module() {
     // target name varies per vcpkg port.
     assert_contains(&project.read("main/CMakeLists.txt"),
         "# gram:dep:glm begin\nfind_package(glm CONFIG REQUIRED)\n# gram:dep:glm end");
-    assert_eq!(project.config().module("main").deps, ["glm"]);
+    assert_eq!(project.config().module("main").deps, [vcpkg("glm")]);
 }
 
 #[test]
@@ -169,6 +171,7 @@ fn adds_more_vcpkg_dependencies_to_the_same_manifest() {
     let manifest = project.read("main/vcpkg.json");
     assert_contains(&manifest, r#""glm""#);
     assert_contains(&manifest, r#""glfw3""#);
+    assert_eq!(project.config().module("main").deps, [vcpkg("glm"), vcpkg("glfw3")]);
 }
 
 #[test]
@@ -191,7 +194,7 @@ fn adds_a_crates_io_dependency_to_a_cargo_module() {
     project.gram(&["add", "serde", "--module", "main"]).succeeds();
 
     assert_contains(&project.read("main/Cargo.toml"), "serde");
-    assert_eq!(project.config().module("main").deps, ["serde"]);
+    assert_eq!(project.config().module("main").deps, [registry("serde")]);
 }
 
 #[test]
@@ -221,7 +224,7 @@ fn links_a_cmake_module_to_a_cmake_library() {
     // This block goes after add_executable, since the target must exist first.
     assert_contains(&cmakelists,
         "add_executable(main src/main.cpp)\n\n# gram:link:engine begin\ntarget_link_libraries(main PRIVATE engine)\n# gram:link:engine end");
-    assert_eq!(project.config().module("main").deps, ["engine"]);
+    assert_eq!(project.config().module("main").deps, [module_ref("engine")]);
 }
 
 #[test]
@@ -233,7 +236,7 @@ fn links_a_cargo_module_to_a_cargo_library() {
 
     // A path dependency: no registry involved.
     assert_contains(&project.read("main/Cargo.toml"), r#"util = { version = "0.1.0", path = "../util" }"#);
-    assert_eq!(project.config().module("main").deps, ["util"]);
+    assert_eq!(project.config().module("main").deps, [module_ref("util")]);
 }
 
 #[test]
@@ -246,7 +249,7 @@ fn referencing_the_same_module_twice_only_warns() {
 
     assert!(run.printed("already depends on engine"));
     assert_eq!(project.read("main/CMakeLists.txt").matches("target_link_libraries(main PRIVATE engine)").count(), 1);
-    assert_eq!(project.config().module("main").deps, ["engine"]);
+    assert_eq!(project.config().module("main").deps, [module_ref("engine")]);
 }
 
 #[test]

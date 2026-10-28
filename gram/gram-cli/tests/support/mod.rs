@@ -210,8 +210,33 @@ pub struct ModuleConfig {
     #[serde(default)]
     pub kind: String,
     pub src: String,
-    pub deps: Vec<String>,
+    pub deps: Vec<DependencySpec>,
     pub targets: Vec<String>,
+}
+
+/// Where a dependency comes from, written into Gram.ron as e.g. `Git(name: "fmt", url: ..., tag: ...)`.
+#[derive(Debug, Deserialize, PartialEq)]
+pub enum DependencySpec {
+    Registry { name: String },
+    Git { name: String, url: String, tag: String },
+    Vcpkg { name: String },
+    Module { name: String },
+}
+
+pub fn registry(name: &str) -> DependencySpec {
+    DependencySpec::Registry { name: name.to_owned() }
+}
+
+pub fn git(name: &str, url: &str, tag: &str) -> DependencySpec {
+    DependencySpec::Git { name: name.to_owned(), url: url.to_owned(), tag: tag.to_owned() }
+}
+
+pub fn vcpkg(name: &str) -> DependencySpec {
+    DependencySpec::Vcpkg { name: name.to_owned() }
+}
+
+pub fn module_ref(name: &str) -> DependencySpec {
+    DependencySpec::Module { name: name.to_owned() }
 }
 
 impl BuildConfig {

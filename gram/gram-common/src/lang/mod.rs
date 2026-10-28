@@ -3,6 +3,9 @@
 //! Adding a language means a new file with `impl ModuleBackend` plus one line there.
 
 use std::io;
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::Directory;
 use crate::ModuleConfig;
 
@@ -12,6 +15,7 @@ pub mod vcpkg;
 
 /// Where a dependency comes from. Built from the `gram add` flags; each backend accepts
 /// the kinds it supports and rejects the rest.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum DependencySpec {
     /// The language's own package registry (crates.io for cargo).
     Registry { name: String },
@@ -19,6 +23,8 @@ pub enum DependencySpec {
     Git { name: String, url: String, tag: String },
     /// A vcpkg port, recorded in the module's vcpkg.json.
     Vcpkg { name: String },
+    /// Another module of the same project (`--module-ref`).
+    Module { name: String },
 }
 
 pub(crate) trait ModuleBackend {
@@ -37,7 +43,7 @@ pub(crate) trait ModuleBackend {
     // Default implementations: a backend only overrides what it supports.
 
     /// Depends on another module of the same project (same language, a library).
-    fn add_module_ref(&self, _module: &mut ModuleConfig, _dependency: &str) -> io::Result<()> {
+    fn add_module_ref(&self, _module: &mut ModuleConfig, _dependency: &DependencySpec) -> io::Result<()> {
         Err(io::Error::new(io::ErrorKind::InvalidInput, "module references aren't supported for this language"))
     }
     /// The manifest rust-analyzer should load for this module, if any (`.vscode/settings.json`).
@@ -61,5 +67,41 @@ pub(crate) fn backend_for(lang: &str) -> io::Result<&'static dyn ModuleBackend> 
 impl ModuleConfig {
     pub(crate) fn backend(&self) -> io::Result<&'static dyn ModuleBackend> {
         backend_for(&self.lang)
+    }
+}
+
+impl DependencySpec {
+    pub(crate) fn new(dependency: &str, url: &str, tag: &str, vcpkg: bool, module_ref: bool) -> io::Result<Self> {
+        let name = dependency.to_owned();
+        if module_ref {
+            if !url.is_empty() || !tag.is_empty() || vcpkg {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "--module-ref can't be combined with --url/--tag/--vcpkg (those are for external dependencies)",
+                ));
+            }
+            Ok(DependencySpec::Module { name })
+        } else if vcpkg {
+            if !url.is_empty() || !tag.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "--vcpkg can't be combined with --url/--tag (those are FetchContent-only)",
+                ));
+            }
+            Ok(DependencySpec::Vcpkg { name })
+        } else if url.is_empty() && tag.is_empty() {
+            Ok(DependencySpec::Registry { name })
+        } else {
+            Ok(DependencySpec::Git { name, url: url.to_owned(), tag: tag.to_owned() })
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            DependencySpec::Registry { name } => name.clone(),
+            DependencySpec::Git { name, .. } => name.clone(),
+            DependencySpec::Vcpkg { name } => name.clone(),
+            DependencySpec::Module { name } => name.clone(),
+        }
     }
 }

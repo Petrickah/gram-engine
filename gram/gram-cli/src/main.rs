@@ -31,10 +31,14 @@ fn main() {
             }
         Commands::Add(command) =>
             match add::module(command) {
-                Ok(AddOutcome::DependencyAdded { module, dependency }) =>
-                    println!("Added {dependency} to module {module}."),
-                Ok(AddOutcome::AlreadyPresent { module, dependency }) =>
-                    eprintln!("warning: module {module} already depends on {dependency}, nothing to do"),
+                Ok(AddOutcome::DependencyAdded { module, dependency }) => {
+                    let name = dependency.name();
+                    println!("Added {name} to module {module}.");
+                }
+                Ok(AddOutcome::AlreadyPresent { module, dependency }) => {
+                    let name = dependency.name();
+                    eprintln!("warning: module {module} already depends on {name}, nothing to do");
+                }
                 Ok(AddOutcome::ModuleCreated { module }) =>
                     println!("Module {module} created."),
                 Ok(AddOutcome::TargetsAdded { module, targets }) =>

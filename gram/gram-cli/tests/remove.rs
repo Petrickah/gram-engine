@@ -31,7 +31,7 @@ fn removes_a_vcpkg_dependency_from_cmake_and_the_manifest() {
     let manifest = project.read("main/vcpkg.json");
     assert_not_contains(&manifest, r#""glm""#);
     assert_contains(&manifest, r#""glfw3""#);
-    assert_eq!(project.config().module("main").deps, ["glfw3"]);
+    assert_eq!(project.config().module("main").deps, [vcpkg("glfw3")]);
 }
 
 #[test]

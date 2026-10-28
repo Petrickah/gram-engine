@@ -176,8 +176,9 @@ impl ModuleBackend for CMake {
         const NEEDS_SOURCE: &str = "cmake dependencies need --url (used as FetchContent's GIT_REPOSITORY), or pass --vcpkg to resolve from a vcpkg registry instead";
 
         match dep {
-            DependencySpec::Vcpkg { name } => vcpkg::add_dependency(module, name),
+            DependencySpec::Vcpkg { .. } => vcpkg::add_dependency(module, dep),
             DependencySpec::Registry { .. } => Err(io::Error::new(io::ErrorKind::InvalidInput, NEEDS_SOURCE)),
+            DependencySpec::Module { .. } => self.add_module_ref(module, dep),
             DependencySpec::Git { name, url, tag } => {
                 if url.is_empty() {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput, NEEDS_SOURCE));
@@ -196,7 +197,7 @@ impl ModuleBackend for CMake {
                     fs::write(&module.src, contents)?;
                 }
 
-                module.deps.push(name.to_owned());
+                module.deps.push(dep.clone());
                 Ok(())
             }
         }
@@ -233,20 +234,21 @@ impl ModuleBackend for CMake {
 
         vcpkg::remove_dependency(module, dependency)?;
 
-        match module.deps.iter().position(|dep| dep == dependency) {
-            Some(position) => Ok(module.deps.swap_remove(position)),
+        match module.deps.iter().position(|dep| dep.name() == dependency) {
+            Some(position) => Ok(module.deps.swap_remove(position).name()),
             None => Err(io::Error::new(io::ErrorKind::Other, "dependency not found in module config")),
         }
     }
     
-    fn add_module_ref(&self, module: &mut ModuleConfig, dependency: &str) -> io::Result<()> {
-        println!("gram add (dependency={dependency}, src={}): adding module reference (add_subdirectory)", module.src);
+    fn add_module_ref(&self, module: &mut ModuleConfig, dependency: &DependencySpec) -> io::Result<()> {
+        let name = dependency.name();
+        println!("gram add (dependency={name}, src={}): adding module reference (add_subdirectory)", module.src);
         let contents = fs::read_to_string(&module.src)?;
-        let begin_marker = format!("# gram:dep:{dependency} begin");
+        let begin_marker = format!("# gram:dep:{name} begin");
 
         let contents = if !contents.contains(&begin_marker) {
             let block = format!(
-                "{begin_marker}\nadd_subdirectory(${{CMAKE_CURRENT_SOURCE_DIR}}/../{dependency} ${{CMAKE_CURRENT_BINARY_DIR}}/{dependency})\n# gram:dep:{dependency} end\n"
+                "{begin_marker}\nadd_subdirectory(${{CMAKE_CURRENT_SOURCE_DIR}}/../{name} ${{CMAKE_CURRENT_BINARY_DIR}}/{name})\n# gram:dep:{name} end\n"
             );
             contents.replacen(DEPS_END, &format!("{block}{DEPS_END}"), 1)
         } else {
@@ -255,10 +257,10 @@ impl ModuleBackend for CMake {
 
         // target_link_libraries needs the target (add_executable/add_library) to already
         // exist, so it can't live in the DEPS region above — appended after it instead.
-        let link_marker = format!("# gram:link:{dependency} begin");
+        let link_marker = format!("# gram:link:{name} begin");
         let contents = if !contents.contains(&link_marker) {
             format!(
-                "{contents}\n{link_marker}\ntarget_link_libraries({} PRIVATE {dependency})\n# gram:link:{dependency} end\n",
+                "{contents}\n{link_marker}\ntarget_link_libraries({} PRIVATE {name})\n# gram:link:{name} end\n",
                 module.name
             )
         } else {
@@ -266,7 +268,7 @@ impl ModuleBackend for CMake {
         };
 
         fs::write(&module.src, contents)?;
-        module.deps.push(dependency.to_owned());
+        module.deps.push(dependency.clone());
         Ok(())
     }
 }
