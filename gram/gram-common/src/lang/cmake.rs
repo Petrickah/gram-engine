@@ -8,6 +8,8 @@ use crate::directory::Directory;
 use crate::lang::CMake;
 use crate::lang::DependencySpec;
 use crate::lang::ModuleBackend;
+use crate::lang::ResolvedModule;
+use crate::lang::slash_path;
 use crate::lang::vcpkg;
 
 // Marker lines bracketing the block of gram-managed FetchContent dependencies
@@ -56,7 +58,7 @@ impl ModuleBackend for CMake {
         }
     }
     
-    fn compile(&self, module: &ModuleConfig, out: &str, target: &str) -> io::Result<()> {
+    fn compile(&self, module: &ModuleConfig, refs: &[ResolvedModule], out: &str, target: &str) -> io::Result<()> {
         let manifest_dir = Path::new(&module.src).parent().unwrap_or_else(|| Path::new("."));
         let build_dir = manifest_dir.join(format!("build-{target}"));
         let build_dir = build_dir.to_str().expect("build dir path is not valid UTF-8");
@@ -72,7 +74,7 @@ impl ModuleBackend for CMake {
         // from gram's own build dir, without needing a separate IDE-driven configure.
         configure.arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
 
-        let vcpkg_manifest = vcpkg::build_manifest(module, Path::new(build_dir))?;
+        let vcpkg_manifest = vcpkg::build_manifest(module, refs, Path::new(build_dir))?;
         let has_vcpkg = vcpkg_manifest.is_some();
         if let Some(manifest) = &vcpkg_manifest {
             let vcpkg_root = std::env::var("VCPKG_ROOT").map_err(|_| io::Error::new(
@@ -178,7 +180,7 @@ impl ModuleBackend for CMake {
         match dep {
             DependencySpec::Vcpkg { .. } => vcpkg::add_dependency(module, dep),
             DependencySpec::Registry { .. } => Err(io::Error::new(io::ErrorKind::InvalidInput, NEEDS_SOURCE)),
-            DependencySpec::Module { .. } => self.add_module_ref(module, dep),
+            DependencySpec::Module { .. } => Err(io::Error::new(io::ErrorKind::InvalidInput, "module references go through add_module_ref (they need resolving against Gram.ron first)")),
             DependencySpec::Git { name, url, tag } => {
                 if url.is_empty() {
                     return Err(io::Error::new(io::ErrorKind::InvalidInput, NEEDS_SOURCE));
@@ -240,15 +242,16 @@ impl ModuleBackend for CMake {
         }
     }
     
-    fn add_module_ref(&self, module: &mut ModuleConfig, dependency: &DependencySpec) -> io::Result<()> {
-        let name = dependency.name();
+    fn add_module_ref(&self, module: &mut ModuleConfig, resolved: &ResolvedModule) -> io::Result<()> {
+        let name = &resolved.name;
         println!("gram add (dependency={name}, src={}): adding module reference (add_subdirectory)", module.src);
         let contents = fs::read_to_string(&module.src)?;
         let begin_marker = format!("# gram:dep:{name} begin");
 
         let contents = if !contents.contains(&begin_marker) {
+            let rel = slash_path(&resolved.rel_dir);
             let block = format!(
-                "{begin_marker}\nadd_subdirectory(${{CMAKE_CURRENT_SOURCE_DIR}}/../{name} ${{CMAKE_CURRENT_BINARY_DIR}}/{name})\n# gram:dep:{name} end\n"
+                "{begin_marker}\nadd_subdirectory(${{CMAKE_CURRENT_SOURCE_DIR}}/{rel} ${{CMAKE_CURRENT_BINARY_DIR}}/{name})\n# gram:dep:{name} end\n"
             );
             contents.replacen(DEPS_END, &format!("{block}{DEPS_END}"), 1)
         } else {
@@ -268,7 +271,7 @@ impl ModuleBackend for CMake {
         };
 
         fs::write(&module.src, contents)?;
-        module.deps.push(dependency.clone());
+        module.deps.push(DependencySpec::Module { name: resolved.name.clone() });
         Ok(())
     }
 }

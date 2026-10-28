@@ -253,6 +253,35 @@ fn referencing_the_same_module_twice_only_warns() {
 }
 
 #[test]
+fn a_module_reference_follows_the_referenced_modules_src() {
+    // gram creates modules at the project root, but where a module lives is whatever its `src`
+    // says: moved into libs/ by hand, the reference still has to find it.
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "--module", "engine", "--lang", "cmake", "--kind", "library"]).succeeds();
+    std::fs::create_dir_all(project.path("libs")).unwrap();
+    std::fs::rename(project.path("engine"), project.path("libs/engine")).unwrap();
+    project.edit("Gram.ron", r#"src: "engine/CMakeLists.txt""#, r#"src: "libs/engine/CMakeLists.txt""#);
+
+    project.gram(&["add", "engine", "--module", "main", "--module-ref"]).succeeds();
+
+    assert_contains(&project.read("main/CMakeLists.txt"),
+        "add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../libs/engine ${CMAKE_CURRENT_BINARY_DIR}/engine)");
+}
+
+#[test]
+fn a_cargo_module_reference_follows_the_referenced_modules_src() {
+    let project = Sandbox::project("demo", &[]);
+    project.gram(&["add", "--module", "util", "--lang", "cargo", "--kind", "library"]).succeeds();
+    std::fs::create_dir_all(project.path("libs")).unwrap();
+    std::fs::rename(project.path("util"), project.path("libs/util")).unwrap();
+    project.edit("Gram.ron", r#"src: "util/Cargo.toml""#, r#"src: "libs/util/Cargo.toml""#);
+
+    project.gram(&["add", "util", "--module", "main", "--module-ref"]).succeeds();
+
+    assert_contains(&project.read("main/Cargo.toml"), r#"path = "../libs/util""#);
+}
+
+#[test]
 fn a_module_ref_must_point_at_an_existing_module() {
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
 

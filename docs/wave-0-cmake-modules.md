@@ -81,9 +81,11 @@ Removing the module currently set as `main` (`gram remove --module <main-module>
 
 `gram add <module> --module <consumer> --module-ref` treats `<module>` as another module already in this project's `gram-build.ron`, not an external dependency:
 
-- **cargo → cargo**: `cargo add <dep> --path <dep> --manifest-path <consumer>/Cargo.toml`. The `--path` argument is just the dependency's own directory name, unqualified — gram's module layout is always flat (every module is a direct child of the project root, and gram already runs with cwd = project root), so no relative-path computation is needed.
-- **cmake → cmake**: inserts `add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../<dep> ${CMAKE_CURRENT_BINARY_DIR}/<dep>)` into the managed dependency region, **plus** `target_link_libraries(<consumer> PRIVATE <dep>)` — appended after the target declaration (in its own `# gram:link:<dep> begin/end` marker block, since `target_link_libraries` needs the target to already exist, unlike everything else that can live in the pre-target dependency region). Unlike FetchContent/vcpkg, gram *does* know the exact CMake target name here — it generated it — so it wires the link automatically instead of leaving it manual.
+- **cargo → cargo**: `cargo add <dep> --path <dep dir> --manifest-path <consumer>/Cargo.toml`. `--path` is the referenced module's directory relative to the project root (gram's cwd); cargo writes the consumer-relative path into `Cargo.toml` itself.
+- **cmake → cmake**: inserts `add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/<dep dir, relative to consumer> ${CMAKE_CURRENT_BINARY_DIR}/<dep>)` into the managed dependency region, **plus** `target_link_libraries(<consumer> PRIVATE <dep>)` — appended after the target declaration (in its own `# gram:link:<dep> begin/end` marker block, since `target_link_libraries` needs the target to already exist, unlike everything else that can live in the pre-target dependency region). Unlike FetchContent/vcpkg, gram *does* know the exact CMake target name here — it generated it — so it wires the link automatically instead of leaving it manual.
 - `gram remove` strips both blocks (dependency-region and the appended link block) if present — the link block is a no-op to look for on FetchContent/vcpkg dependencies, which never have one.
+
+Where the referenced module lives isn't assumed (an earlier version hardcoded a flat layout, `../<dep>`): `BuildConfig::resolve` looks the name up in Gram.ron and derives its directory from the module's `src`, giving a `ResolvedModule` (name, lang, kind, project-relative `dir`, consumer-relative `rel_dir`). It's computed on demand and never serialized — Gram.ron keeps only `Module(name: ...)`. The build uses the same lookup (`BuildConfig::module_refs`) to find referenced modules' `vcpkg.json`.
 
 Validated before touching anything: the referenced module must already exist, can't be the consumer itself, must be `kind: "library"` (a `"runtime"` module has nothing meaningful to link against), and must be the same `lang` as the consumer — cross-language references (cmake depending on a cargo module, or vice versa) are explicitly rejected with a clear error, not attempted.
 
@@ -105,12 +107,11 @@ Neither was reachable before `--module-ref` existed, since nothing had exercised
 
 Also added this session, smaller: `gram remove --module <m>` (no dependency name) stays config-only by default, matching prior behavior exactly — `--purge` additionally deletes the module's directory from disk. Deliberately opt-in, not opt-out: an ordinary `gram remove` should never be destructive to files you didn't ask it to touch.
 
-## Open question from `wave-0-self-hosting.md`, now partially answered
+## Open question from `wave-0-self-hosting.md`, now answered
 
-That doc flagged `ModuleConfig.deps` as ambiguous between "external crate dependency" and "inter-module dependency" — both now genuinely share the same field (a module-ref dependency's name is pushed into `deps` exactly like an external one's). The list still doesn't structurally distinguish the two kinds — telling them apart means cross-checking a `deps` entry against `self.modules`' names. Not a problem in practice yet (nothing currently needs to filter one kind out), but worth keeping in mind if that ever changes.
+That doc flagged `ModuleConfig.deps` as ambiguous between "external crate dependency" and "inter-module dependency". Both still share the field, but each entry now records its origin: `deps` is a list of `DependencySpec` — `Registry(name)`, `Git(name, url, tag)`, `Vcpkg(name)` or `Module(name)` — written as-is into Gram.ron, so a module reference is told apart by its variant, not by cross-checking names against `modules`. The duplicate check stays by name: a module depends on a given name at most once, whatever the source.
 
 ## What's next
 
 - **cmake ↔ cargo module references — deliberately not built here.** This is Wave 1's actual core problem (`gram-core` linked statically into the C++ runtime via `cxx` + Corrosion, per the project note's Wave 1 architecture), not a generalization of the same-language case above: it means bridging two different build systems with FFI codegen in between (`corrosion_import_crate` + `cxx_build`), not just linking two targets. Solving it now, generically, before there's a second concrete use case to generalize from, would be premature — it gets solved concretely when Wave 1 starts, in the exact `gram-core`/`gram-hot` shape already designed.
-- Decide `deps`' dual meaning (see above) before it actually causes a problem.
 - Task 0.5 (devlog Episode 0) is still the only original Wave 0 item left open.

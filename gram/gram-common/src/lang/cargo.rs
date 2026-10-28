@@ -8,6 +8,8 @@ use crate::directory::Directory;
 use crate::lang::Cargo;
 use crate::lang::DependencySpec;
 use crate::lang::ModuleBackend;
+use crate::lang::ResolvedModule;
+use crate::lang::slash_path;
 use crate::target::cargo_cross_triple;
 
 impl ModuleBackend for Cargo {
@@ -23,18 +25,17 @@ impl ModuleBackend for Cargo {
         "Cargo.toml"
     }
 
-    fn add_module_ref(&self, module: &mut ModuleConfig, dependency: &DependencySpec) -> io::Result<()> {
-        let name = dependency.name();
+    fn add_module_ref(&self, module: &mut ModuleConfig, resolved: &ResolvedModule) -> io::Result<()> {
+        let name = &resolved.name;
         println!("gram add (dependency={name}, src={}): adding module reference (cargo path dependency)", module.src);
         let mut command = Command::new("cargo");
-        // gram's own module layout is always flat (every module is a direct child
-        // of the project root), and gram already runs with cwd = project root, so
-        // the dependency module's own directory name is the correct --path as-is.
-        command.args(["add", &name.clone(), "--path", &name.clone(), "--manifest-path", &module.src.clone()]);
+        // cargo reads --path relative to its cwd, which for gram is the project root: hence
+        // `dir`, not `rel_dir` (cargo writes the consumer-relative path into Cargo.toml itself).
+        command.args(["add", name, "--path", &slash_path(&resolved.dir), "--manifest-path", &module.src]);
 
         let status = command.status()?;
         match status.success() {
-            true => Ok(module.deps.push(dependency.clone())),
+            true => Ok(module.deps.push(DependencySpec::Module { name: resolved.name.clone() })),
             false => Err(io::Error::new(io::ErrorKind::Other, "cargo add (path dependency) failed"))
         }
     }
@@ -71,7 +72,7 @@ impl ModuleBackend for Cargo {
         }
     }
     
-    fn compile(&self, module: &ModuleConfig, out: &str, target: &str) -> io::Result<()> {
+    fn compile(&self, module: &ModuleConfig, _refs: &[ResolvedModule], out: &str, target: &str) -> io::Result<()> {
         let mut command = Command::new("cargo");
         command.args(["build", "--manifest-path", &module.src.clone()]);
         if let Some(triple) = cargo_cross_triple(target)? {

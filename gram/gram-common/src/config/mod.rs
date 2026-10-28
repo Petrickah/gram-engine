@@ -181,42 +181,38 @@ impl BuildConfig {
         }
 
         if let DependencySpec::Module { .. } = dependency {
-            if *name == module {
+            if name == module {
                 return Err(io::Error::new(io::ErrorKind::InvalidInput, "a module can't reference itself"));
             }
 
-            let dep = self.modules.iter().find(|m| *name == m.name).ok_or_else(|| io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("referenced module not found: {name} (create it first, e.g. `gram add --module {name} --lang ...`)"),
-            ))?;
-            if dep.kind != "library" {
+            let resolved = self.resolve(&module, &name)?;
+            if resolved.kind != "library" {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("referenced module {name} is a \"{}\" module, not a library — only library modules can be referenced", dep.kind),
+                    format!("referenced module {name} is a \"{}\" module, not a library — only library modules can be referenced", resolved.kind),
                 ));
             }
-            let dep_lang = dep.lang.clone();
-
-            let consumer = self.modules.iter().find(|m| m.name == module).expect("module was just created above, or already existed");
-            if consumer.lang != dep_lang {
+            if consumer.lang != resolved.lang {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
-                        "cross-language module references aren't supported yet ({module} is \"{}\", {name} is \"{dep_lang}\")",
-                        consumer.lang
+                        "cross-language module references aren't supported yet ({module} is \"{}\", {name} is \"{}\")",
+                        consumer.lang, resolved.lang
                     ),
                 ));
             }
 
+            // `resolved` owns its data (no borrow into self.modules), so the consumer can be
+            // borrowed mutably here.
             self.modules.iter_mut()
                 .find(|m| m.name == module)
                 .expect("checked above")
-                .add_module_ref(&dependency.clone())?;
+                .add_module_ref(&resolved)?;
         } else {
             self.modules.iter_mut()
                 .find(|m| m.name == module)
                 .expect("module was just created above, or already existed")
-                .add_dependency(&dependency.clone())?;
+                .add_dependency(&dependency)?;
         }
 
         project.write_file("Gram.ron", self)?;

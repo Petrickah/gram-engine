@@ -10,6 +10,7 @@ use serde_json::{json, Map, Value};
 
 use crate::config::module::ModuleConfig;
 use crate::lang::DependencySpec;
+use crate::lang::ResolvedModule;
 use crate::lang::cmake::DEPS_END;
 
 /// Which vcpkg manifest a cmake module's configure should use.
@@ -27,13 +28,11 @@ pub(crate) enum BuildManifest {
 /// module's own into `<build dir>/vcpkg-manifest/vcpkg.json`. None: no vcpkg involved at all.
 ///
 /// Only direct references are followed (a referenced module's own refs aren't, yet).
-pub(crate) fn build_manifest(module: &ModuleConfig, build_dir: &Path) -> io::Result<Option<BuildManifest>> {
-    let module_dir = Path::new(&module.src).parent().unwrap_or_else(|| Path::new("."));
-    let own = module_dir.join("vcpkg.json");
-    // Module refs are recorded in `deps` by module name, and gram's layout is flat, so a
-    // referenced module lives next to this one; external dependencies have no such directory.
-    let referenced: Vec<PathBuf> = module.deps.iter()
-        .map(|dep| module_dir.join("..").join(dep.name()).join("vcpkg.json"))
+pub(crate) fn build_manifest(module: &ModuleConfig, refs: &[ResolvedModule], build_dir: &Path) -> io::Result<Option<BuildManifest>> {
+    let own = module.dir().join("vcpkg.json");
+    // `dir` is relative to the project root, which is gram's cwd.
+    let referenced: Vec<PathBuf> = refs.iter()
+        .map(|resolved| resolved.dir.join("vcpkg.json"))
         .filter(|path| path.exists())
         .collect();
 

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::BuildConfig;
 use crate::directory::Directory;
 use crate::lang::DependencySpec;
+use crate::lang::ResolvedModule;
 use crate::target::buildable_on_host;
 
 fn default_kind() -> String {
@@ -27,15 +28,15 @@ pub struct ModuleConfig {
 
 impl ModuleConfig {
     pub fn add_dependency(&mut self, dependency: &DependencySpec) -> io::Result<()> {
-        self.backend()?.add_dependency(self, &dependency)
+        self.backend()?.add_dependency(self, dependency)
     }
 
     /// Adds another module already in Gram.ron as a dependency (same-language only,
     /// enforced by the caller): a cargo path dependency, or a cmake add_subdirectory +
     /// target_link_libraries. Unlike an external dependency, gram knows the exact target
     /// name here (it generated it), so it can wire the link itself.
-    pub fn add_module_ref(&mut self, dependency: &DependencySpec) -> io::Result<()> {
-        self.backend()?.add_module_ref(self, &dependency)
+    pub(crate) fn add_module_ref(&mut self, resolved: &ResolvedModule) -> io::Result<()> {
+        self.backend()?.add_module_ref(self, resolved)
     }
 
     /// Whether the module already lists `dependency`, whatever its source (registry, git,
@@ -104,7 +105,8 @@ impl ModuleConfig {
         let (prefix, ext) = backend.artifact_naming(self, target);
         let out = format!("{builds}/{prefix}{name}{ext}");
 
-        backend.compile(self, &out, target)
+        let refs = project.module_refs(self)?;
+        backend.compile(self, &refs, &out, target)
     }
 
     pub fn run(&self, project: &str, target: &str, args: &[String]) -> io::Result<i32> {
