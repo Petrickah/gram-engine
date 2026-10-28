@@ -59,11 +59,10 @@ std::vector<std::string> GLFWApplicationSpecification::GetRequiredValidationLaye
 }
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
-GLFWApplication::GLFWApplication(const GLFWApplicationSpecification &appSpec) : m_AppSpec(appSpec)
+GLFWApplication::GLFWApplication(const GLFWApplicationSpecification &appSpec)
+    : m_AppSpec(appSpec)
 {
-#ifdef GRAM_VULKAN_RENDERER
-    glfwInitVulkanLoader(vkGetInstanceProcAddr);
-#endif // GRAM_VULKAN_RENDERER
+    GramVulkanOnly(glfwInitVulkanLoader(vkGetInstanceProcAddr));
 
     glfwSetErrorCallback([](int code, const char* msg) { GramError("GLFW error {}: {}", code, msg); });
 
@@ -102,6 +101,9 @@ GLFWApplication::GLFWApplication(const GLFWApplicationSpecification &appSpec) : 
             }
         }
     });
+
+    GramVulkanOnly(Gram::VulkanRendererSpecification vulkanSpecification(this, m_AppSpec));
+    GramVulkanOnly(GramCheckVoid(RegisterLayer<Gram::VulkanRenderer>(m_VulkanRenderer, &vulkanSpecification), "couldn't initialize the Vulkan Renderer framework"));
 }
 
 GLFWApplication::~GLFWApplication()

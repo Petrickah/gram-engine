@@ -38,6 +38,12 @@
 #endif // #ifndef GRAM_VULKAN_RENDERER
 
 #ifdef GRAM_VULKAN_RENDERER
+#define GramVulkanOnly(...) __VA_ARGS__
+#else
+#define GramVulkanOnly(...)
+#endif // #ifndef GRAM_VULKAN_RENDERER
+
+#ifdef GRAM_VULKAN_RENDERER
 // GLFW_INCLUDE_VULKAN only adds <vulkan/vulkan.h>; it does not stop glfw3.h
 // from also pulling in <GL/gl.h>. GLFW_INCLUDE_NONE does.
 #define GLFW_INCLUDE_NONE

@@ -43,43 +43,31 @@ FetchContent_MakeAvailable(spdlog)
 # --- end gram dependencies ---
 
 # --- Gram Engine ---
-add_library(GramLogger STATIC
-    src/Gram/Logging/GramLogger.cpp
-)
-target_include_directories(GramLogger PUBLIC include)
-target_link_libraries(GramLogger PUBLIC Vulkan::Vulkan spdlog::spdlog glm::glm)
-target_precompile_headers(GramLogger PUBLIC include/Gram/Common.hpp)
-
-add_library(GramGLFW STATIC
-    src/Gram/Application/GLFWApplication.cpp
-)
-target_include_directories(GramGLFW PUBLIC include)
-target_link_libraries(GramGLFW PUBLIC glfw GramLogger)
-target_precompile_headers(GramGLFW PUBLIC include/Gram/Common.hpp)
-
 add_library(GramRenderer STATIC
-    src/Gram/Renderer/VulkanRenderer.cpp
     src/Gram/Renderer/VulkanDevice.cpp
-    src/Gram/Renderer/VulkanInstance.cpp
-    src/Gram/Renderer/VulkanSurface.cpp
-    src/Gram/Renderer/VulkanSwapchain.cpp
-    src/Gram/Renderer/VulkanPipeline.cpp
-    src/Gram/Renderer/VulkanShader.cpp
     src/Gram/Renderer/VulkanFrame.cpp
     src/Gram/Renderer/VulkanImGui.cpp
+    src/Gram/Renderer/VulkanInstance.cpp
+    src/Gram/Renderer/VulkanPipeline.cpp
+    src/Gram/Renderer/VulkanRenderer.cpp
+    src/Gram/Renderer/VulkanShader.cpp
+    src/Gram/Renderer/VulkanSurface.cpp
+    src/Gram/Renderer/VulkanSwapchain.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
-target_link_libraries(GramRenderer PUBLIC Vulkan::Vulkan glm::glm imgui::imgui GramLogger)
+target_link_libraries(GramRenderer PUBLIC glfw Vulkan::Vulkan glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)
 
 # The engine as one target for runtime/editor modules: PUBLIC so whatever links GramEngine also
 # gets its headers and the component libraries (GramRuntime's main.cpp includes
 # Gram/EntryPoint.hpp, GLFWApplication and VulkanRenderer directly).
 add_library(GramEngine STATIC
+    src/Gram/Application/GLFWApplication.cpp
+    src/Gram/Logging/GramLogger.cpp
     src/Gram/Platform.cpp
 )
 target_include_directories(GramEngine PUBLIC include)
-target_link_libraries(GramEngine PUBLIC GramGLFW GramRenderer GramLogger)
+target_link_libraries(GramEngine PUBLIC GramRenderer)
 target_precompile_headers(GramEngine PUBLIC include/Gram/Common.hpp)
 
 # --- shaders ---

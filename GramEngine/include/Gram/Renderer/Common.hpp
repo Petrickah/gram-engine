@@ -30,14 +30,14 @@ struct VulkanRendererSpecification
     std::vector<std::string>                 m_DeviceExtensions = {};
     std::vector<std::string>                 m_ValidationLayers = {};
     
-    VulkanRendererSpecification(Gram::Application* application, const std::filesystem::path& projectWorkspace, const Gram::GLFWApplicationSpecification& spec, bool displayDebug)
-        : m_ProjectWorkspace(projectWorkspace)
-        , m_DisplayDebug(displayDebug)
-        , m_Application(application)
+    VulkanRendererSpecification(Gram::Application* application, const Gram::GLFWApplicationSpecification& spec)
+        : m_Application(application)
+        , m_ProjectWorkspace(spec.m_Workspace)
+        , m_DisplayDebug(spec.m_EnableLogging)
     {
-        m_ExtensionLayers  = spec.GetRequiredInstanceExtensions(this, m_RequiredExtensionsLayers.size(), m_RequiredExtensionsLayers.data(), displayDebug);
-        m_DeviceExtensions = spec.GetRequiredDeviceExtensions  (this, m_RequiredDeviceExtensions.size(), m_RequiredDeviceExtensions.data(), displayDebug);
-        m_ValidationLayers = spec.GetRequiredValidationLayers  (this, m_RequiredValidationLayers.size(), m_RequiredValidationLayers.data(), displayDebug);
+        m_ExtensionLayers  = spec.GetRequiredInstanceExtensions(this, m_RequiredExtensionsLayers.size(), m_RequiredExtensionsLayers.data(), m_DisplayDebug);
+        m_DeviceExtensions = spec.GetRequiredDeviceExtensions  (this, m_RequiredDeviceExtensions.size(), m_RequiredDeviceExtensions.data(), m_DisplayDebug);
+        m_ValidationLayers = spec.GetRequiredValidationLayers  (this, m_RequiredValidationLayers.size(), m_RequiredValidationLayers.data(), m_DisplayDebug);
     }
 
     bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const;
