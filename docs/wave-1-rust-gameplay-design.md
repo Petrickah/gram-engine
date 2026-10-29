@@ -128,6 +128,38 @@ Notes:
 - **Instances**: Rust can read an instance from a `.ron` file and hand it to C++ (`add_component(entity, component, const void* data)`, copied into host memory). From then on Rust only reaches it through an `ObjectId`, never a stored pointer: host storage may move when it grows.
 - Later, a file watcher triggers the reload; when there's an editor, it loads the game executable / the Rust library the same way. Not needed for the proof of concept.
 
+## Loading components from disk (Wave 3+, a map for later)
+
+Not needed until world serialization, but it uses the same descriptors as the inspector, so it shapes how they're designed now. This is the general pattern behind asset databases with versioned types: Anvil's single SQLite "Big File" with `PropertyDescriptor`s and a deprecation manager, Unreal's `.uasset` with property tags. It's a description of the pattern, not of how either engine implements it.
+
+A stored object goes through four stages before gameplay code can use it:
+
+1. **On disk: data plus its description.** An object is a blob (or rows) plus the version of its type when it was saved. Fields are identified by their descriptor (name or ID, type), never by a C++ offset. That's what lets a tool with no knowledge of the C++ class (an editor in another language, a migration script) read and write it.
+2. **Generic read, before the final object exists.** The loader doesn't know `Greeting`. It walks the saved descriptor and reads values into an intermediate form: an int, a `Str(N)`, a reference to another object (stored as an ID).
+3. **Into the object, migrating if the version changed.** Same version: the bytes can go straight into host storage. Older version: fields with the same name and type are copied automatically, and only what was renamed, split or retyped needs hand-written migration code. That code reads the old values through the old descriptor and writes the new layout. This is why a saved world must carry each component's descriptor, or at least its version and a way to find that descriptor. Saving only the struct's raw bytes makes migration impossible.
+4. **Post-load, strictly last.** References are only IDs when read, because the referenced object may not be loaded yet. They're resolved once everything they depend on is in memory. Derived values are computed and validation runs here too. Until this stage finishes, the object exists but isn't ready, and the API has to say so: a lookup returns `Loading` / `Ready` / `Failed`, never a half-built object that looks normal.
+
+Most of the hard bugs live between stages 2 and 4. Gameplay sees an object that looks fine while a reference is still unresolved, a field was just migrated or a derived value isn't computed yet. They depend on load order, and the logic causing them sits in the loading system, not in the class being debugged. Keeping the stages explicit, each in its own function, with the "not ready" state visible in the API, is the main defense.
+
+What already exists or is planned that this builds on:
+
+- **Descriptors** (the schema-generated table): used by the inspector now, by stages 1–3 later.
+- **The schema as the single source**: it can carry a `version`, generated into the descriptor.
+- **Generational `ObjectId`s**: a reference can be an ID before its object is ready, and stays safe to hold after the object is gone.
+- **"Schema change = rebuild + restart"**: in memory nothing is ever migrated; migration is only a disk → memory concern.
+
+### Related: who controls the shared layout
+
+Today Rust reads components through a mirrored `#[repr(C)]` struct, so the layout must be identical on both sides: no virtual functions, no C++-only fields. Two alternatives keep the same schema and only change what `gram build` generates on the Rust side:
+
+| Option | What Rust sees | C++-only fields | Cost |
+|---|---|---|---|
+| 1. Identical layout (current) | the whole struct, a plain slice | no; they go in a separate C++-only component of the same entity | simplest, fastest |
+| 2. Shared part first, plus a stride | `struct Greeting { GreetingShared shared; /* C++ fields */ };` Rust gets `(ptr, count, stride)` and reads only `shared` | yes, after the shared part | iteration with a variable stride, not a plain slice |
+| 3. Offsets from the descriptor | a generated view that takes field offsets from the host at `on_load` and reads `ptr + offset` | yes, anywhere | slightly slower; C++ alone owns the layout, as with an editor that only knows descriptors |
+
+Option 1 is enough for `Greeting` (Task 1.4). Option 3 is the closest to a descriptor-driven editor model, and reuses the table stages 1–3 need anyway.
+
 ## Platform pitfalls
 
 - **Windows locks a loaded DLL**, so the compiler can't overwrite it. Load a *copy* (`gram-hot-1.dll`, `gram-hot-2.dll`, …) and build over the original.
