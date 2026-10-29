@@ -26,7 +26,8 @@ docs/                 design notes per wave
 - Rust toolchain (stable, 2024 edition), plus the `x86_64-pc-windows-gnu` target for Windows cross-builds
 - CMake and a C++20 compiler; `mingw-w64` for Windows cross-builds (from Linux or macOS)
 - vcpkg, with `VCPKG_ROOT` set
-- Vulkan SDK (validation layers, `dxc` for the HLSL shaders; MoltenVK on macOS). On Linux, the Vulkan loader comes from the system.
+- Vulkan SDK (validation layers, `dxc` for the HLSL shaders; MoltenVK on macOS). The Vulkan loader the game links comes from vcpkg (built with xcb/xlib support on Linux, see `GramEngine/vcpkg.json`); it still finds the GPU drivers through the system's ICD files.
+- Linux system packages for vcpkg's GLFW and ImGui builds (verified on Ubuntu under WSL2, not a complete list for a bare machine): `libgl-dev` (the OpenGL headers `glfw3.h` includes), `libx11-dev`, `libxrandr-dev`, `libxinerama-dev`, `libxcursor-dev`, `libxi-dev`, `libwayland-dev`, `libxkbcommon-dev`
 
 Bootstrap `gram` once with cargo, then let it build everything (itself included):
 
