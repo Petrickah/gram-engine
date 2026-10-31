@@ -51,7 +51,7 @@ impl ModuleBackend for Cargo {
                     true => {
                         let mut command = Command::new("cargo");
                         command.args(["init", "--name", &module.name, "--vcs", "none", "--edition", "2024"]);
-                        if module.kind == "library" {
+                        if module.kind == "library" || module.kind == "dynamic" {
                             // Otherwise `cargo init` always scaffolds src/main.rs (a binary
                             // crate), which has no library target for another module to
                             // reference via --module-ref.
@@ -62,8 +62,14 @@ impl ModuleBackend for Cargo {
                     }
                     false => Err(io::Error::new(io::ErrorKind::AlreadyExists, "module already exists")),
                 };
-                
+
                 match status {
+                    // A cdylib is what the executable dlopen()s / LoadLibrary()s at runtime.
+                    Ok(_) if module.kind == "dynamic" => {
+                        let manifest = manifest_dir.join("Cargo.toml");
+                        let content = fs::read_to_string(&manifest)?;
+                        fs::write(&manifest, format!("{}\n\n[lib]\ncrate-type = [\"cdylib\"]\n", content.trim_end()))
+                    }
                     Ok(_) => Ok(()),
                     Err(_) => Err(io::Error::new(io::ErrorKind::Other, "cargo init failed")),
                 }
@@ -90,8 +96,8 @@ impl ModuleBackend for Cargo {
             };
         }
 
-        // Where the binary ends up isn't derivable from the module alone: a workspace member
-        // builds into the workspace root's target/, and the binary is named after the cargo
+        // Where the artifact ends up isn't derivable from the module alone: a workspace member
+        // builds into the workspace root's target/, and the artifact is named after the cargo
         // package, not the gram module. So ask cargo instead: with a JSON message format it
         // reports every artifact's real path on stdout, while compiler diagnostics stay
         // human-readable on stderr.
@@ -101,7 +107,15 @@ impl ModuleBackend for Cargo {
             return Err(io::Error::new(io::ErrorKind::Other, "cargo build failed"));
         }
 
-        let from = find_executable(&output.stdout, &module.name)?;
+        if module.kind == "dynamic" {
+            // Copied under its real file name (libgame_logic.dylib, game_logic.dll): that's
+            // the name the executable loads it by.
+            let from = find_artifact(&output.stdout, &module.name, "cdylib")?;
+            let to = Path::new(out).with_file_name(from.file_name().expect("cargo reports file paths"));
+            return fs::copy(from, to).map(|_| ());
+        }
+
+        let from = find_artifact(&output.stdout, &module.name, "bin")?;
         fs::copy(from, out).map(|_| ())
     }
     
@@ -139,34 +153,44 @@ impl ModuleBackend for Cargo {
     }
 }
 
-/// Picks the module's binary out of cargo's JSON build messages: the single executable it
-/// produced or, when a manifest builds several (a workspace, or a package with more than one
-/// `[[bin]]`), the one named like the module.
-fn find_executable(cargo_stdout: &[u8], module: &str) -> io::Result<PathBuf> {
-    let executables: Vec<(String, PathBuf)> = String::from_utf8_lossy(cargo_stdout)
+/// Picks the module's artifact of crate type `crate_type` ("bin" or "cdylib") out of cargo's
+/// JSON build messages: the single one it produced or, when a manifest builds several (a
+/// workspace, or a package with more than one `[[bin]]`), the one named like the module.
+fn find_artifact(cargo_stdout: &[u8], module: &str, crate_type: &str) -> io::Result<PathBuf> {
+    let what = if crate_type == "bin" { "executable" } else { "dynamic library" };
+    let artifacts: Vec<(String, PathBuf)> = String::from_utf8_lossy(cargo_stdout)
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .filter(|message| message["reason"] == "compiler-artifact")
-        .filter(|message| message["target"]["kind"].as_array().is_some_and(|kinds| kinds.iter().any(|kind| kind == "bin")))
-        .filter_map(|message| Some((
-            message["target"]["name"].as_str()?.to_owned(),
-            PathBuf::from(message["executable"].as_str()?),
-        )))
+        .filter(|message| message["target"]["kind"].as_array().is_some_and(|kinds| kinds.iter().any(|kind| kind == crate_type)))
+        .filter_map(|message| {
+            let path = match crate_type {
+                "bin" => message["executable"].as_str()?,
+                // filenames also lists side files (the mingw .dll.a import library, .pdb):
+                // keep only the library itself.
+                _ => message["filenames"].as_array()?.iter()
+                    .filter_map(|file| file.as_str())
+                    .find(|file| [".dylib", ".so", ".dll"].iter().any(|ext| file.ends_with(ext)))?,
+            };
+            Some((message["target"]["name"].as_str()?.to_owned(), PathBuf::from(path)))
+        })
         .collect();
 
-    match executables.as_slice() {
+    // A library target is named in snake_case (game_logic) even when the package isn't.
+    let named_like_module = |name: &str| name == module || name == module.replace('-', "_");
+    match artifacts.as_slice() {
         [(_, path)] => Ok(path.clone()),
         [] => Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("cargo build produced no executable for module {module}"),
+            format!("cargo build produced no {what} for module {module}"),
         )),
         several => several.iter()
-            .find(|(name, _)| name == module)
+            .find(|(name, _)| named_like_module(name))
             .map(|(_, path)| path.clone())
             .ok_or_else(|| io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
-                    "cargo build produced several executables ({}) and none is named like module {module}",
+                    "cargo build produced several {what} artifacts ({}) and none is named like module {module}",
                     several.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>().join(", ")
                 ),
             )),

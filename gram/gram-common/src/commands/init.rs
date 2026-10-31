@@ -10,7 +10,7 @@ pub struct InitCommand
     /// Language of the initial module: "cargo" or "cmake".
     #[arg(short, long, default_value = "cargo")]
     lang: String,
-    /// Kind of the initial module: "runtime" (executable) or "library" (dynamic). Only meaningful for --lang cmake.
+    /// Kind of the initial module: "runtime" (executable), "library" (linked into another module) or "dynamic" (cargo only: a cdylib loaded at runtime).
     #[arg(short, long, default_value = "runtime")]
     kind: String,
     /// Should new module be Git tracked

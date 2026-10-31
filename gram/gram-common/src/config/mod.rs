@@ -195,6 +195,18 @@ impl BuildConfig {
             slash_path(parent_module.dir())
         };
 
+        match (kind, lang) {
+            ("runtime" | "library", _) | ("dynamic", "cargo") => {}
+            ("dynamic", _) => return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "\"dynamic\" (a library loaded at runtime) is only supported for cargo modules (a cdylib)",
+            )),
+            _ => return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unknown module kind \"{kind}\": expected \"runtime\", \"library\" or \"dynamic\""),
+            )),
+        }
+
         let targets = if targets.is_empty() {
             vec![String::from(std::env::consts::OS)]
         } else {

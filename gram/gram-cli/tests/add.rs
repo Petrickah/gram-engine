@@ -47,6 +47,24 @@ fn rejects_an_unknown_language() {
     assert!(!project.config().has_module("bad"));
 }
 
+#[test]
+fn rejects_an_unknown_kind() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["add", "--module", "bad", "--kind", "plugin"])
+        .fails_with("unknown module kind \"plugin\"");
+    assert!(!project.config().has_module("bad"));
+}
+
+#[test]
+fn a_dynamic_module_must_be_cargo() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["add", "--module", "bad", "--lang", "cmake", "--kind", "dynamic"])
+        .fails_with("only supported for cargo modules");
+    assert!(!project.config().has_module("bad"));
+}
+
 // --- targets ------------------------------------------------------------------------------------
 
 #[test]

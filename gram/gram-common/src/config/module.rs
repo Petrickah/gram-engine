@@ -18,7 +18,9 @@ fn default_kind() -> String {
 pub struct ModuleConfig {
     pub(crate) name: String,
     pub(crate) lang: String,
-    /// "runtime" (executable) or "library" (dynamic). Only meaningful for lang == "cmake".
+    /// "runtime" (executable), "library" (linked into another module: a cmake library, or an
+    /// rlib for cargo) or "dynamic" (cargo only: a cdylib, loaded at runtime by the executable
+    /// and copied next to it).
     #[serde(default = "default_kind")]
     pub(crate) kind: String,
     pub(crate) src: String,

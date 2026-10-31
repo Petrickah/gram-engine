@@ -22,7 +22,7 @@ pub struct AddCommand {
     /// Language for --module if it needs to be created: "cargo", "cmake" or "gram" (a nested Gram project). Ignored if --module already exists.
     #[arg(long, default_value = "cargo")]
     pub(crate) lang: String,
-    /// Kind for --module if it needs to be created: "runtime" or "library". Ignored if --module already exists or --lang isn't cmake.
+    /// Kind for --module if it needs to be created: "runtime" (executable), "library" (linked into another module) or "dynamic" (cargo only: a cdylib loaded at runtime, copied next to the executable). Ignored if --module already exists.
     #[arg(long, default_value = "runtime")]
     pub(crate) kind: String,
     /// Git repository URL for the dependency (cmake FetchContent's GIT_REPOSITORY). Required when adding a dependency to a cmake module.

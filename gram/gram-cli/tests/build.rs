@@ -40,6 +40,20 @@ fn builds_a_cmake_shared_library() {
 }
 
 #[test]
+fn builds_a_cargo_dynamic_library_next_to_the_executable() {
+    // A "dynamic" cargo module is a cdylib the executable loads at runtime: it lands in the
+    // build directory under the name cargo gives it (snake_case), not the module's.
+    let project = Sandbox::project("demo", &[]);
+    project.gram(&["add", "--module", "game-logic", "--kind", "dynamic"]).succeeds();
+    assert_contains(&project.read("game-logic/Cargo.toml"), "crate-type = [\"cdylib\"]");
+
+    project.gram(&["build"]).succeeds();
+
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), shared_lib("game_logic"))));
+}
+
+#[test]
 fn finds_a_cmake_library_built_as_static() {
     // The CMakeLists decides SHARED vs STATIC, not gram; gram has to find whichever it is.
     let project = Sandbox::project("demo", &["--lang", "cmake", "--kind", "library"]);
