@@ -181,3 +181,14 @@ pub(crate) fn slash_path(path: &Path) -> String {
         .collect::<Vec<_>>()
         .join("/")
 }
+
+/// Copies a built artifact to its place under build/ as a *new* file: copied next to it, then
+/// renamed over it (atomic). Writing into the existing file instead breaks two things: macOS
+/// caches an executable's code signature per file and kills the next launch of one changed in
+/// place (gram replacing its own binary, or a running Game), and a game watching its library
+/// to reload it could read it half-written.
+pub(crate) fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
+    let partial = to.with_extension("partial");
+    std::fs::copy(from, &partial)?;
+    std::fs::rename(partial, to)
+}

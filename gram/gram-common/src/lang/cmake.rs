@@ -9,6 +9,7 @@ use crate::lang::CMake;
 use crate::lang::DependencySpec;
 use crate::lang::ModuleBackend;
 use crate::lang::ResolvedModule;
+use crate::lang::replace_file;
 use crate::lang::slash_path;
 use crate::lang::vcpkg;
 
@@ -148,7 +149,7 @@ impl ModuleBackend for CMake {
             "library" => Path::new(out).with_file_name(from.file_name().expect("artifact candidates are file names")),
             _ => Path::new(out).to_path_buf(),
         };
-        fs::copy(from, dest)?;
+        replace_file(&from, &dest)?;
 
         // Compiled shaders (SPIR-V) are runtime assets the executable loads from disk, so they
         // travel with it. Stopgap until shaders get their own module kind with N artifacts.

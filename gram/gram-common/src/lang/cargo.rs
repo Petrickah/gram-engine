@@ -9,6 +9,7 @@ use crate::lang::Cargo;
 use crate::lang::DependencySpec;
 use crate::lang::ModuleBackend;
 use crate::lang::ResolvedModule;
+use crate::lang::replace_file;
 use crate::lang::slash_path;
 use crate::target::cargo_cross_triple;
 
@@ -112,11 +113,11 @@ impl ModuleBackend for Cargo {
             // the name the executable loads it by.
             let from = find_artifact(&output.stdout, &module.name, "cdylib")?;
             let to = Path::new(out).with_file_name(from.file_name().expect("cargo reports file paths"));
-            return fs::copy(from, to).map(|_| ());
+            return replace_file(&from, &to);
         }
 
         let from = find_artifact(&output.stdout, &module.name, "bin")?;
-        fs::copy(from, out).map(|_| ())
+        replace_file(&from, Path::new(out))
     }
     
     fn add_dependency(&self, module: &mut ModuleConfig, dep: &DependencySpec) -> io::Result<()> {
