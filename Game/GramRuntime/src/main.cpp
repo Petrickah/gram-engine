@@ -2,65 +2,43 @@
 #include "Gram/Application/Common.hpp"
 #include "Gram/Application/GLFWApplication.hpp"
 
-#include "Gram/Scripting/HostAPI.hpp"
-
 #include "GameAPI.hpp"
 #include "Greeting.hpp"
 
 class RuntimeApplication : public Gram::GLFWApplication
 {
 public:
-    ~RuntimeApplication()
-    {
-        if (m_Game)
-        {
-            m_Game->OnUnload();
-            m_Game = nullptr;
-        }
-
-        m_GameLibrary.reset();
-    }
     RuntimeApplication(const Gram::GLFWApplicationSpecification& spec) : GLFWApplication(spec)
     {
         GramImGuiOnly(GramCheckVoid(m_VulkanRenderer->GetImGuiApplication().RegisterLayer<RuntimeApplication::UI>(m_UILayer, *this), "couldn't initialize the UI"));
-
-        m_GameLibrary = std::make_unique<Gram::DynamicLibrary>(spec.m_Workspace / Gram::GetDynamicLibraryFileName("game_logic"));
-        GramCheckVoid(m_GameLibrary->IsValid(), "error loading the game logic library");
-        
-        if (const Gram::GameAPI* gameAPI = m_GameLibrary->FindSymbol<Gram::GetGameAPIFunction>("game_get_api")())
-        {
-            GramCheckVoid(gameAPI->Version == Gram::GameAPIVersion, "no valid game api: version mismatch");
-            m_Game = gameAPI->OnLoad(&Gram::g_Host);
-        }
-
-        m_GreetingComponent = { .Text = "Hello, world!" };
+        GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, spec, "game_logic"), "Couldn't load the Game API: game_logic");
     }
 
 private:
-    Gram::Greeting m_GreetingComponent;
-    std::unique_ptr<Gram::DynamicLibrary> m_GameLibrary;
-    const Gram::GameAPI*                  m_Game = nullptr;
+    Gram::Greeting m_GreetingComponent = { .Text = "Hello world!" };
+    std::shared_ptr<Gram::GameAPILoader> m_GameAPI;
 
 #ifdef GRAM_IMGUI_ENABLED
     struct UI : Gram::ImGuiApplicationLayer
     {
-        RuntimeApplication& m_App;
-
         UI(RuntimeApplication& app) : m_App(app) { }
         
         bool OnDrawFrame() override
         {
             if (ImGui::Begin("Inspector", &m_IsOpen, ImGuiWindowFlags_None))
             {
-                ImGui::BeginDisabled(m_App.m_Game == nullptr);
-                if (ImGui::Button("Greet")) m_App.m_Game->Greet(&m_App.m_GreetingComponent);
+                if (ImGui::Button("Reload")) m_App.m_GameAPI->Reload();
+                
+                auto gameAPI = m_App.m_GameAPI->GetGameAPI();
+                
+                ImGui::BeginDisabled(gameAPI == nullptr);
+                if (ImGui::Button("Greet")) gameAPI->Greet(&m_App.m_GreetingComponent);
                 ImGui::EndDisabled();
-                //if (ImGui::Button("Greet")) gram_core_greet(&m_App.m_GreetingComponent);
+                
                 DrawComponent(Gram::GreetingDescriptor, &m_App.m_GreetingComponent);
             }
             
             ImGui::End();
-
             return m_IsOpen;
         }
 
@@ -81,8 +59,8 @@ private:
                 }
             }
         }
-
-    private:
+        
+        RuntimeApplication& m_App;
         bool m_IsOpen = true;
     };
     

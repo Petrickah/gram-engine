@@ -2,6 +2,8 @@
 
 GRAM_NAMESPACE_BEGIN
 
+struct Component {};
+
 struct FieldDescriptor
 {
 public:
