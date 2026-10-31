@@ -1,6 +1,6 @@
 # Wave 1 — Rust gameplay layer over a C++ engine (design)
 
-Status as of 2026-10-28: **adopted, nothing implemented yet.** Proposed 2026-10-21, adopted 2026-10-28 together with schema-driven components (see *Schema-driven components*) and a narrower Wave 1 proof of concept: one component with a text field, edited in ImGui, no sphere on screen. `CLAUDE.md` and Tasks 1.3/1.4 in `.gram.kanban.md` have been updated to match. Statements about third-party engines and platform behavior come from memory; re-check them before depending on them.
+Status as of 2026-10-31: **adopted, loader implemented, reload not yet** (see *Implemented so far*). Originally: Proposed 2026-10-21, adopted 2026-10-28 together with schema-driven components (see *Schema-driven components*) and a narrower Wave 1 proof of concept: one component with a text field, edited in ImGui, no sphere on screen. `CLAUDE.md` and Tasks 1.3/1.4 in `.gram.kanban.md` have been updated to match. Statements about third-party engines and platform behavior come from memory; re-check them before depending on them.
 
 ## The idea in one line
 
@@ -24,11 +24,26 @@ In the design below no Rust type crosses a reload: shared data is `#[repr(C)]`, 
 ```
 GramEngine (C++, static lib)   renderer, objects/ECS, assets, reference counts, ID table
 Game exe   (C++)               main(), links GramEngine, loads / reloads the Rust library
-gram-hot   (Rust cdylib)       stateless Object Manager + Handle/Reference + gameplay code
+game-logic (Rust cdylib)       stateless Object Manager + Handle/Reference + gameplay code
+gram-core  (Rust rlib)         the engine's side of the contract as Rust types (HostAPI, LogLevel)
 ```
+
+The library was called `gram-hot` while this was being designed; it's a game module, so it's named after the game (`game-logic`) and lives in the `Game` project. `gram-core` came back with a different job than in the original plan: types only, no state, no exported functions, linked into `game-logic` like any crate.
 
 - Matches the spirit of `CLAUDE.md` ("C++ owns `main()` and the renderer core ... Rust is the reloadable gameplay layer"). What changes: `gram-core` disappears, and the world's state moves from `bevy_ecs` to C++.
 - The boundary is plain `extern "C"` plus `#[repr(C)]` structs in both directions. No `cxx`, no Corrosion static link.
+
+## Implemented so far (2026-10-31)
+
+Built up in steps: C++ only, then a statically linked Rust `staticlib`, then the dynamic library. The FFI code is the same in the static and the dynamic case; only how C++ finds a function changes (the linker vs `dlsym`).
+
+- **Two tables, one symbol.** `HostAPI` is filled by C++ (`g_Host` in `Gram/Scripting/HostAPI.hpp`, today only `Log(LogLevel, const char*)`). `GameAPI` is a `static` in Rust (`version`, `on_load`, `on_unload`, `greet`). The library exports only `game_get_api() -> *const GameAPI`; the functions in the tables aren't `#[no_mangle]`, nobody looks them up by name.
+- **Load sequence** (`RuntimeApplication`): `DynamicLibrary` (`dlopen`/`LoadLibraryW`) on `<exe dir>/libgame_logic.dylib`, `FindSymbol("game_get_api")`, check `Version == GameAPIVersion`, `OnLoad(&g_Host)`, which stores a *copy* of the host table in the library's `OnceLock` and returns the `GameAPI` to use. Any failure leaves the game running without Rust logic (the Greet button is disabled). Exit: `OnUnload()`, drop the `GameAPI` pointer (it points into the library), then unload.
+- **Every loaded library has its own statics.** An `rlib` dependency is copied into each library that uses it, so a `static` in `gram-core` would exist once per library. Hence the host table is stored by `game-logic` itself, and initialized by calling *that* library's `on_load`. A reload works the same way: the new copy starts with empty statics and gets the table again. The `OnceLock<HostAPI>` doesn't break rule 2 below: it's a copy of host function pointers, rebuilt on every load, not game data.
+- **Data**: `Greeting` (`char[64]` / `[u8; 64]`) lives in `RuntimeApplication`; Rust only gets a pointer for the duration of a call. A hand-written `ComponentDescriptor` drives a generic ImGui inspector (one `switch` per field type, not per component).
+- **Fixed-size types only** across the boundary (`uint32_t`/`u32` for `LogLevel`, pointers, `bool`), so the layout is the same on every platform. `HostAPI` itself has nothing platform-specific; only `DynamicLibrary` does.
+
+Not done yet: copy-on-load and reload on change, `catch_unwind` around the exported functions, `ObjectId`/`Handle` (Rust still gets a raw pointer to the component).
 
 ## State ownership rules
 
@@ -168,7 +183,7 @@ Option 1 is enough for `Greeting` (Task 1.4). Option 3 is the closest to a descr
 
 ## Build
 
-- A single `cargo` module of kind `library` producing a `cdylib`. `gram` doesn't manage `crate-type` yet (`compile_cargo` notes that libraries default to `rlib` and nothing is copied to `build/`), so `gram` needs: `crate-type = ["cdylib"]` support and copying the `.dll`/`.so`/`.dylib` next to the executable, like it does for shaders today.
+- A single `cargo` module of kind `dynamic` (added 2026-10-31): `gram add --kind dynamic` scaffolds it with `crate-type = ["cdylib"]`, and `gram build` copies the `.dll`/`.so`/`.dylib` next to the executable under cargo's file name (`libgame_logic.dylib`).
 - Corrosion is no longer needed to link Rust into C++. The C++ side only `dlopen`s/`LoadLibrary`s the result.
 
 ## Open questions

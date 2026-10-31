@@ -4,6 +4,6 @@ name = "gram-core"
 version = "0.1.0"
 
 [lib]
-crate-type = ["staticlib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]

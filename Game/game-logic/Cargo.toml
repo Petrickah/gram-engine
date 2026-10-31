@@ -1,0 +1,10 @@
+[package]
+name = "game-logic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gram-core = { version = "0.1.0", path = "../../gram/gram-core" }
+
+[lib]
+crate-type = ["cdylib"]

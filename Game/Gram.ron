@@ -9,13 +9,23 @@ BuildConfig(
             kind: "runtime",
             src: "GramRuntime/CMakeLists.txt",
             deps: [
-                Module(
-                    name: "GramEngine",
-                ),
+                Module(name: "GramEngine"),
             ],
             targets: [
                 "windows",
                 "linux",
+                "macos",
+            ],
+        ),
+        ModuleConfig(
+            name: "game-logic",
+            lang: "cargo",
+            kind: "dynamic",
+            src: "game-logic/Cargo.toml",
+            deps: [
+                Module(name: "gram-core"),
+            ],
+            targets: [
                 "macos",
             ],
         ),

@@ -105,7 +105,6 @@ struct MoveObject
 GRAM_NAMESPACE_END
 
 #include "Gram/Application.hpp"
-#include "Gram/HostAPI.hpp"
 #include "Gram/Layer.hpp"
 #include "Gram/Logging/GramLogger.hpp"
 #include "Gram/Platform.hpp"

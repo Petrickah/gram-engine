@@ -1,11 +1,13 @@
-#include "Gram/Common.hpp"
+#include "Gram/Scripting/Common.hpp"
+#include "Gram/Scripting/ECS/Component.hpp"
+
 #include "Greeting.hpp"
 
 GRAM_NAMESPACE_BEGIN
 
-const FieldDescriptor GreetingFields[] =
+const Gram::FieldDescriptor GreetingFields[] =
 {
-    { "Text", FieldDescriptor::FieldType::Str, offsetof(Greeting, Text), sizeof(Greeting::Text) }
+    { "Text", Gram::FieldDescriptor::FieldType::Str, offsetof(Greeting, Text), sizeof(Greeting::Text) }
 };
 
 const ComponentDescriptor GreetingDescriptor =

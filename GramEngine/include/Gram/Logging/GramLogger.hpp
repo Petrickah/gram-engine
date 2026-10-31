@@ -14,6 +14,17 @@
 #define GramLoggerOnly(...)
 #endif // #ifdef GRAM_LOGGER_ENABLED
 
+GRAM_NAMESPACE_BEGIN
+enum class LogLevel : uint32_t
+{
+    Unknown = 0,
+    Trace,
+    Info,
+    Warning,
+    Error
+};
+GRAM_NAMESPACE_END
+
 #ifdef GRAM_LOGGER_ENABLED
 #include <spdlog/spdlog.h>
 

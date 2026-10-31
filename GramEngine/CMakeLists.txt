@@ -60,6 +60,14 @@ target_include_directories(GramRenderer PUBLIC include)
 target_link_libraries(GramRenderer PUBLIC glfw Vulkan::Vulkan glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)
 
+add_library(GramScripting STATIC
+    src/Gram/Scripting/ECS/Component.cpp
+    src/Gram/Scripting/HostAPI.cpp
+)
+target_include_directories(GramScripting PUBLIC include)
+target_link_libraries(GramScripting PUBLIC glm::glm imgui::imgui spdlog::spdlog)
+target_precompile_headers(GramScripting PUBLIC include/Gram/Scripting/Common.hpp)
+
 # The engine as one target for runtime/editor modules: PUBLIC so whatever links GramEngine also
 # gets its headers and the component libraries (GramRuntime's main.cpp includes
 # Gram/EntryPoint.hpp, GLFWApplication and VulkanRenderer directly).
@@ -69,5 +77,5 @@ add_library(GramEngine STATIC
     src/Gram/Platform.cpp
 )
 target_include_directories(GramEngine PUBLIC include)
-target_link_libraries(GramEngine PUBLIC GramRenderer)
+target_link_libraries(GramEngine PUBLIC GramScripting GramRenderer)
 target_precompile_headers(GramEngine PUBLIC include/Gram/Common.hpp)

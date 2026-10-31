@@ -2,13 +2,6 @@
 
 GRAM_NAMESPACE_BEGIN
 
-struct HostAPI
-{
-    void (*Log)(const char* message);
-};
-
-extern "C" bool gram_core_init(const HostAPI* host);
-
 struct FieldDescriptor
 {
 public:

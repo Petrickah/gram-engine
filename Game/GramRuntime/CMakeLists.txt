@@ -15,7 +15,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine ${CMAKE_CURRENT_BI
 # --- end gram dependencies ---
 
 add_executable(GramRuntime src/main.cpp src/Greeting.cpp)
-target_link_libraries(GramRuntime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../gram/target/debug/libgram_core.a)
+target_precompile_headers(GramRuntime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine/include/Gram/Application/Common.hpp)
 gram_add_hlsl_shader(GramRuntime Default)
 
 # gram:link:GramEngine begin

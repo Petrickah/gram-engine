@@ -21,10 +21,18 @@ BuildConfig(
             kind: "library",
             src: "GramEngine/CMakeLists.txt",
             deps: [
-                Vcpkg(name: "vulkan"),
-                Vcpkg(name: "glfw3"),
-                Vcpkg(name: "glm"),
-                Vcpkg(name: "imgui"),
+                Vcpkg(
+                    name: "vulkan",
+                ),
+                Vcpkg(
+                    name: "glfw3",
+                ),
+                Vcpkg(
+                    name: "glm",
+                ),
+                Vcpkg(
+                    name: "imgui",
+                ),
                 Git(
                     name: "spdlog",
                     url: "https://github.com/gabime/spdlog.git",
