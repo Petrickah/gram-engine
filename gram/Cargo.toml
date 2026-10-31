@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members  = ["gram-cli", "gram-common"]
+members  = ["gram-cli", "gram-common", "gram-core"]
 
 [workspace.dependencies]
 clap       = { version = "4.6.6",   features = ["derive"] }

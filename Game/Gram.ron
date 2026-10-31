@@ -9,7 +9,9 @@ BuildConfig(
             kind: "runtime",
             src: "GramRuntime/CMakeLists.txt",
             deps: [
-                Module(name: "GramEngine"),
+                Module(
+                    name: "GramEngine",
+                ),
             ],
             targets: [
                 "windows",

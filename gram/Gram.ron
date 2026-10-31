@@ -21,11 +21,23 @@ BuildConfig(
             kind: "runtime",
             src: "gram-cli/Cargo.toml",
             deps: [
-                Module(name: "gram-common"),
+                Module(
+                    name: "gram-common",
+                ),
             ],
             targets: [
                 "linux",
                 "windows",
+                "macos",
+            ],
+        ),
+        ModuleConfig(
+            name: "gram-core",
+            lang: "cargo",
+            kind: "library",
+            src: "gram-core/Cargo.toml",
+            deps: [],
+            targets: [
                 "macos",
             ],
         ),

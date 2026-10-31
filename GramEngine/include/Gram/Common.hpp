@@ -101,9 +101,11 @@ struct MoveObject
     MoveObject(MoveObject&&) noexcept = default;
     MoveObject& operator=(MoveObject&&) noexcept = default;
 };
+
 GRAM_NAMESPACE_END
 
 #include "Gram/Application.hpp"
+#include "Gram/HostAPI.hpp"
 #include "Gram/Layer.hpp"
 #include "Gram/Logging/GramLogger.hpp"
 #include "Gram/Platform.hpp"
