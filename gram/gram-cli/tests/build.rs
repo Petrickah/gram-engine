@@ -117,6 +117,25 @@ fn only_the_main_runtime_module_is_named_after_the_project() {
     assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("tool"))), "not the main module: keeps its name");
 }
 
+#[test]
+fn module_builds_only_that_module() {
+    // E.g. only the game's Rust library while the game runs: nothing else is rebuilt.
+    let project = Sandbox::project("demo", &[]);
+    project.gram(&["add", "--module", "tool"]).succeeds();
+
+    project.gram(&["build", "--module", "tool"]).succeeds();
+
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("tool"))));
+    assert!(!project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
+}
+
+#[test]
+fn module_must_exist() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--module", "nowhere"]).fails_with("module not found: nowhere");
+}
+
 // --- targets ------------------------------------------------------------------------------------
 
 #[test]

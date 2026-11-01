@@ -108,6 +108,17 @@ fn builds_a_nested_module_into_the_root_build_directory() {
 }
 
 #[test]
+fn building_a_gram_module_builds_everything_inside_it() {
+    let project = project_with_game();
+    project.gram(&["add", "--module", "app", "--lang", "cmake", "--parent", "game"]).succeeds();
+
+    project.gram(&["build", "--module", "game"]).succeeds();
+
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("app"))));
+    assert!(!project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))), "main is outside game");
+}
+
+#[test]
 fn a_nested_projects_main_module_is_named_after_the_nested_project() {
     let project = project_with_game();
     project.gram(&["add", "--module", "app", "--lang", "cmake", "--parent", "game"]).succeeds();

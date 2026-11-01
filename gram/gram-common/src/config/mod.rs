@@ -244,7 +244,7 @@ impl BuildConfig {
             .run(self, target, &command.args)
     }
 
-    pub fn build(&self, ci: &bool, target: &str) -> io::Result<()> {
+    pub fn build(&self, ci: &bool, target: &str, module: &str) -> io::Result<()> {
         if *ci && !target.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -255,9 +255,26 @@ impl BuildConfig {
             validate_targets(std::slice::from_ref(&target.to_string()))?;
         }
 
+        let modules: Vec<&ModuleConfig> = match module {
+            "" => self.modules.iter().collect(),
+            module => {
+                let selected = self.modules.iter()
+                    .find(|m| m.name == module)
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("module not found: {module}")))?;
+                match selected.lang.as_str() {
+                    // A nested project: everything inside it, nested projects included.
+                    "gram" => {
+                        let dir = slash_path(selected.dir());
+                        self.modules.iter().filter(|m| Path::new(&m.project).starts_with(&dir)).collect()
+                    }
+                    _ => vec![selected],
+                }
+            }
+        };
+
         let name = self.name.clone();
         println!("gram build (name={name}, ci={ci})");
-        for curr_module in &self.modules {
+        for curr_module in modules {
             curr_module.build(&self, &ci, target)?;
         }
         Ok(())
