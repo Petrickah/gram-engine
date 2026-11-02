@@ -9,7 +9,9 @@ BuildConfig(
             kind: "runtime",
             src: "Runtime/CMakeLists.txt",
             deps: [
-                Module(name: "GramEngine"),
+                Module(
+                    name: "GramEngine",
+                ),
             ],
             targets: [
                 "windows",
@@ -23,7 +25,9 @@ BuildConfig(
             kind: "dynamic",
             src: "Content/Cargo.toml",
             deps: [
-                Module(name: "gram-core"),
+                Module(
+                    name: "gram-core",
+                ),
             ],
             targets: [
                 "macos",

@@ -2,7 +2,7 @@
 
 GRAM_NAMESPACE_BEGIN
 
-struct Greeting : public Gram::Component
+struct Greeting
 {
     char Text[64];
 };

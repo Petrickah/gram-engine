@@ -12,7 +12,11 @@ const Gram::FieldDescriptor GreetingFields[] =
 
 const ComponentDescriptor GreetingDescriptor =
 {
-    "Greeting", GreetingFields, std::size(GreetingFields), sizeof(Greeting)
+    .Name   = "Greeting",
+    .ID     = ComponentIDFromName("Greeting"),
+    .Fields = GreetingFields,
+    .Count  = std::size(GreetingFields),
+    .Size   = sizeof(Greeting)
 };
 
 GRAM_NAMESPACE_END

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Gram/Scripting/ECS/World.hpp"
+
 GRAM_NAMESPACE_BEGIN
 
 class  GLFWApplication;
@@ -15,15 +17,21 @@ public:
         void           (*RunSystem)(uint32_t index, System::Context* ctx);
     };
 
-    static const uint32_t GameAPIVersion = 2;
+    struct PendingEvent
+    {
+        std::string Name;
+        ObjectID Target;
+    };
+
+    static const uint32_t GameAPIVersion = 3;
     using GetGameAPIFunction = const GameAPI* (*)();
 
 public:
     ~GameAPILoader();
-    GameAPILoader(const std::filesystem::path& workspace, const std::string& libraryName);
+    GameAPILoader(World& world, const std::filesystem::path& workspace, const std::string& libraryName);
 
     void Reload();
-    void Emit(std::string_view name);
+    void Emit(std::string_view name, ObjectID target = InvalidObjectID);
     const GameAPI* GetGameAPI() { return m_Game; }
     
 private:
@@ -33,13 +41,14 @@ private:
     virtual bool OnDrawFrame() override;
     
 private:
+    World&                                m_World;
     std::string                           m_Name;                  // the name of the loaded library
     std::filesystem::path                 m_Workspace;             // the workspace location given from the game
     std::chrono::steady_clock::time_point m_StartTime;             // for Context::Time
     std::chrono::steady_clock::time_point m_LastFrame;             // for Context::DeltaTime
     HostAPI                               m_Host;                  // the HostAPI object shared with Rust
-    
-    std::vector<std::string>              m_PendingEvents;
+
+    std::vector<PendingEvent>             m_PendingEvents;
     std::vector<System::Descriptor>       m_Systems;
     const GameAPI*                        m_Game        = nullptr;
     std::unique_ptr<Gram::DynamicLibrary> m_GameLibrary = nullptr;

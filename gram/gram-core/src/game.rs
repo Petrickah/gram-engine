@@ -9,4 +9,4 @@ pub struct GameAPI {
     pub run_system: extern "C" fn(index: u32, ctx: *mut system::Context)
 }
 
-pub const GAME_API_VERSION: u32 = 2;
+pub const GAME_API_VERSION: u32 = 3;

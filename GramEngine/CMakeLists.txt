@@ -63,6 +63,7 @@ target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)
 add_library(GramScripting STATIC
     src/Gram/Scripting/ECS/Component.cpp
     src/Gram/Scripting/ECS/System.cpp
+    src/Gram/Scripting/ECS/World.cpp
     src/Gram/Scripting/HostAPI.cpp
     src/Gram/Scripting/GameAPI.cpp
 )

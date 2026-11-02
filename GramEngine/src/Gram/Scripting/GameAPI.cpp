@@ -20,8 +20,9 @@ GameAPILoader::~GameAPILoader()
     GramCheckVoid(!error, "{}: couldn't remove the hot directory: {}", m_Name, error.message());
 }
 
-GameAPILoader::GameAPILoader(const std::filesystem::path& workspace, const std::string& libraryName)
-    : m_Name(libraryName)
+GameAPILoader::GameAPILoader(World& world, const std::filesystem::path& workspace, const std::string& libraryName)
+    : m_World(world)
+    , m_Name(libraryName)
     , m_Workspace(workspace)
     , m_StartTime(std::chrono::steady_clock::now())
     , m_LastFrame(std::chrono::steady_clock::now())
@@ -57,6 +58,11 @@ GameAPILoader::GameAPILoader(const std::filesystem::path& workspace, const std::
             copy.Name [sizeof(copy.Name)  - 1] = '\0'; // setup de null terminator, we can't trust Rust is giving it
             copy.Event[sizeof(copy.Event) - 1] = '\0'; // setup de null terminator, we can't trust Rust is giving it
             loader->m_Systems.push_back(copy);
+        },
+        .GetComponent = [](void* host, ObjectID entity, ComponentID component) -> void*
+        {
+            auto* loader = static_cast<Gram::GameAPILoader*>(host);
+            return loader ? loader->m_World.GetComponent(entity, component) : nullptr;
         }
     })
 {
@@ -86,7 +92,7 @@ bool GameAPILoader::OnDrawFrame()
 
     System::Context ctx {
         .DeltaTime = std::chrono::duration<float>(now - m_LastFrame).count(),
-        .Time      = std::chrono::duration<double>(now - m_StartTime).count()
+        .Time      = std::chrono::duration<double>(now - m_StartTime).count(),
     };
 
     m_LastFrame = now;
@@ -95,11 +101,22 @@ bool GameAPILoader::OnDrawFrame()
     if (m_Game)
     {
         for (const System::Descriptor& desc : m_Systems)
-            if (desc.Stage == System::Stage::Update) m_Game->RunSystem(desc.Index, &ctx);
+        {
+            if (desc.Stage != System::Stage::Update) continue;
 
-        for (const std::string& event : events)
+            m_Game->RunSystem(desc.Index, &ctx);
+        }
+
+        for (const PendingEvent& event : events)
+        {
             for (const System::Descriptor& desc : m_Systems)
-                if (desc.Stage == System::Stage::Event && event == desc.Event) m_Game->RunSystem(desc.Index, &ctx);
+            {
+                if (desc.Stage != System::Stage::Event || event.Name != desc.Event) continue;
+
+                ctx.EventTarget = event.Target;
+                m_Game->RunSystem(desc.Index, &ctx);
+            }
+        }
     }
 
     if (now - m_LastCheck < std::chrono::milliseconds(500)) return true;
@@ -123,9 +140,9 @@ void GameAPILoader::Reload()
     CopyOnLoad();
 }
 
-void GameAPILoader::Emit(std::string_view name)
+void GameAPILoader::Emit(std::string_view name, ObjectID target)
 {
-    m_PendingEvents.emplace_back(name);
+    m_PendingEvents.push_back(PendingEvent { .Name = std::string(name), .Target = target });
 }
 
 void GameAPILoader::CopyOnLoad()

@@ -1,6 +1,6 @@
 # Wave 1 — Systems: a generic GameAPI
 
-Status 2026-11-02: **adopted, steps 1–2 done** (registry + dispatcher, events; see *Steps*). Proposed 2026-11-01. Builds on `wave-1-rust-gameplay-design.md` (state in C++, a stateless Rust `cdylib`, `ObjectId`/`Handle`). Statements about Bevy come from memory; re-check them before depending on the details.
+Status 2026-11-02: **adopted, steps 1–3 done** (registry + dispatcher, events, `ObjectId` + component access; the schema generator is next; see *Steps*). Proposed 2026-11-01. Builds on `wave-1-rust-gameplay-design.md` (state in C++, a stateless Rust `cdylib`, `ObjectId`/`Handle`). Statements about Bevy come from memory; re-check them before depending on the details.
 
 ## The problem
 
@@ -218,6 +218,7 @@ A "Systems" panel reads the registry: name, stage, event, enabled checkbox, time
 2. **Events.** An event queue in C++, dispatched after the UI. The Greet button emits `"greet"`; `greet` becomes an event system. Still a raw pointer to `Greeting` in the context at this step if `ObjectId` isn't there yet.
    Done 2026-11-02: `GameAPILoader::Emit(name)` queues, `OnDrawFrame` takes the queue (`std::exchange`, so an event emitted while dispatching lands next frame) and runs every system registered for each event, then drops it, whether anyone listened or not. Two systems on `"greet"` both run once per click. `greet` doesn't touch `Greeting` yet: it has no way to reach it until step 3.
 3. **`ObjectId` + component IDs + `Context::with_mut`**, together with the schema generator (Task 1.4 steps 3 and 3b). The raw pointer disappears.
+   Done 2026-11-02 without the generator (hand-written on both sides): `World` in `GramEngine/Scripting/ECS/` (generational slots + free list; per-type packed storage with `Owners`/`SlotOf`, swap-remove), `ObjectID`, `ComponentID` = 64-bit FNV-1a of the component's name (`constexpr` in C++, `const fn` in Rust, checked with a `const` assert), `HostAPI::GetComponent`, `Context::EventTarget`, `GameAPIVersion` 3, and in `gram-core` `Context::with` / `with_mut` plus `system::text` (the inverse of `fixed`). Found on the way: a field left out of a designated initializer is silently zeroed, and a null `extern "C" fn` reaching Rust aborts the load (the panic hook now falls back to stderr before the host table is stored).
 4. **`export_game!`**, once the hand-written version has settled.
 5. **Systems panel** in the inspector.
 6. Later: parameters from types, ordering constraints.

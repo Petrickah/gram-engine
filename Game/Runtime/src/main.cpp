@@ -1,6 +1,7 @@
 #include "Gram/EntryPoint.hpp"
 #include "Gram/Application/Common.hpp"
 #include "Gram/Application/GLFWApplication.hpp"
+#include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Scripting/GameAPI.hpp"
 
 #include "Greeting.hpp"
@@ -11,12 +12,19 @@ public:
     RuntimeApplication(const Gram::GLFWApplicationSpecification& spec) : GLFWApplication(spec)
     {
         GramImGuiOnly(GramCheckVoid(m_VulkanRenderer->GetImGuiApplication().RegisterLayer<RuntimeApplication::UI>(m_UILayer, *this), "couldn't initialize the UI"));
-        GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, spec.m_Workspace, "GameLogic"), "Couldn't load the Game API: GameLogic");
+        GramCheckVoid(RegisterLayer<Gram::World>(m_World), "couldn't instantiate the Game World");
+        GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, *m_World, spec.m_Workspace, "GameLogic"), "couldn't load the Game API: GameLogic");
+    
+        const Gram::Greeting greeting = { .Text = "Hello world!" };
+        m_GreetingEntity = m_World->CreateEntity();
+        GramInfo("Greeting Entity: Index {}, Generation {}", m_GreetingEntity.Index, m_GreetingEntity.Generation);
+        m_World->AddComponent(m_GreetingEntity, &Gram::GreetingDescriptor, &greeting);
     }
 
 private:
-    Gram::Greeting m_GreetingComponent = { .Text = "Hello world!" };
+    Gram::ObjectID m_GreetingEntity = {};
     std::shared_ptr<Gram::GameAPILoader> m_GameAPI;
+    std::shared_ptr<Gram::World> m_World;
 
 #ifdef GRAM_IMGUI_ENABLED
     struct UI : Gram::ImGuiApplicationLayer
@@ -30,10 +38,13 @@ private:
                 if (ImGui::Button("Reload")) m_App.m_GameAPI->Reload();
                 
                 ImGui::BeginDisabled(m_App.m_GameAPI == nullptr);
-                if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet");
+                if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet", m_App.m_GreetingEntity);
                 ImGui::EndDisabled();
                 
-                DrawComponent(Gram::GreetingDescriptor, &m_App.m_GreetingComponent);
+                if (void* greeting = m_App.m_World->GetComponent(m_App.m_GreetingEntity, Gram::GreetingDescriptor.ID))
+                    DrawComponent(Gram::GreetingDescriptor, greeting);
+                else
+                    ImGui::TextDisabled("no entity with a Greeting");
             }
             
             ImGui::End();

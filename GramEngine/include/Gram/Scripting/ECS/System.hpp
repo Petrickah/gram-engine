@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Gram/Scripting/ECS/ObjectID.hpp"
+
 GRAM_NAMESPACE_BEGIN
 
 class System
@@ -23,11 +25,12 @@ public:
     {
         float DeltaTime;
         double Time;
+        ObjectID EventTarget;
     };
 };
 
 static_assert(sizeof(System::Stage) == 4);
 static_assert(sizeof(System::Descriptor) == 136);
-static_assert(sizeof(System::Context) == 16);
+static_assert(sizeof(System::Context) == 24);
 
 GRAM_NAMESPACE_END

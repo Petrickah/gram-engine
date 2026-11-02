@@ -1,9 +1,13 @@
 pub mod system;
-pub mod game_api;
+pub mod world;
+pub mod game;
+pub mod component;
 
 use std::ffi::{CString, c_char, c_void};
 use std::panic::UnwindSafe;
 use std::sync::OnceLock;
+
+use crate::world::ObjectID;
 
 #[repr(u32)]
 pub enum LogLevel
@@ -20,7 +24,8 @@ pub enum LogLevel
 pub struct HostAPI {
     pub host: *mut c_void,
     pub log: extern "C" fn(level: LogLevel, message: *const c_char),
-    pub register_system: extern "C" fn(host: *mut c_void, desc: *const system::Descriptor)
+    pub register_system: extern "C" fn(host: *mut c_void, desc: *const system::Descriptor),
+    pub get_component: extern "C" fn(host: *mut c_void, entity: ObjectID, component: u64) -> *mut c_void
 }
 
 // void* is a generic pointer to an object from C++, Rust just passes it by to the register_system;
@@ -32,8 +37,8 @@ static HOST: OnceLock<HostAPI> = OnceLock::new();
 
 fn host() -> Option<&'static HostAPI> { HOST.get() }
 
-pub fn init(host: *const HostAPI) -> bool {
-    let Some(host) = (unsafe { host.as_ref() }) else { return false; };
+pub fn init(api: *const HostAPI) -> bool {
+    let Some(api) = (unsafe { api.as_ref() }) else { return false; };
     std::panic::set_hook(Box::new(move |ph| {
         let msg = ph.payload().downcast_ref::<&'static str>().copied()
         .or_else(|| ph.payload().downcast_ref::<String>().map(String::as_str))
@@ -44,10 +49,11 @@ pub fn init(host: *const HostAPI) -> bool {
             None => "unknown file".to_string(),
         };
         
-        error!("{location}: {msg}");
+        let line = format!("{location}: {msg}");
+        if host().is_some() { error!("{line}"); } else { eprintln!("{line}"); }
     }));
 
-    if HOST.set(*host).is_err() {
+    if HOST.set(*api).is_err() {
         warn!("on_load called twice on the same library");
         return false
     }
