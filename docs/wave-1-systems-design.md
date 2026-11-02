@@ -1,6 +1,6 @@
 # Wave 1 — Systems: a generic GameAPI
 
-Status 2026-11-01: **proposed**, to discuss before Task 1.4's code. Builds on `wave-1-rust-gameplay-design.md` (state in C++, a stateless Rust `cdylib`, `ObjectId`/`Handle`). Statements about Bevy come from memory; re-check them before depending on the details.
+Status 2026-11-02: **adopted, steps 1–2 done** (registry + dispatcher, events; see *Steps*). Proposed 2026-11-01. Builds on `wave-1-rust-gameplay-design.md` (state in C++, a stateless Rust `cdylib`, `ObjectId`/`Handle`). Statements about Bevy come from memory; re-check them before depending on the details.
 
 ## The problem
 
@@ -214,7 +214,9 @@ A "Systems" panel reads the registry: name, stage, event, enabled checkbox, time
 ## Steps
 
 1. **Registry + dispatcher, by hand.** `register_system` in `HostAPI`; `run_system` in `GameAPI` (drop `greet`, bump `GameAPIVersion` one last time); the registry in `GameAPILoader`, cleared on reload. One `Update` system that logs once per second. Done when adding a second system to `SYSTEMS` shows up after a reload, with no C++ change.
+   Done 2026-11-02, with a few differences from the sketch above: the contract types live in `gram-core::system` (`Stage`, `Descriptor`, `Context`, `Entry` instead of tuples) and `gram-core::game_api` (`GameAPI`, `GAME_API_VERSION`), the systems take `&Context` (C++ owns the time), and `HostAPI` starts with an opaque `Host` pointer (the loader's `this`) that Rust hands back to `RegisterSystem`, the usual C-callback context. `tick` logs once per second without any state: it compares `floor(Time)` with `floor(Time - DeltaTime)`.
 2. **Events.** An event queue in C++, dispatched after the UI. The Greet button emits `"greet"`; `greet` becomes an event system. Still a raw pointer to `Greeting` in the context at this step if `ObjectId` isn't there yet.
+   Done 2026-11-02: `GameAPILoader::Emit(name)` queues, `OnDrawFrame` takes the queue (`std::exchange`, so an event emitted while dispatching lands next frame) and runs every system registered for each event, then drops it, whether anyone listened or not. Two systems on `"greet"` both run once per click. `greet` doesn't touch `Greeting` yet: it has no way to reach it until step 3.
 3. **`ObjectId` + component IDs + `Context::with_mut`**, together with the schema generator (Task 1.4 steps 3 and 3b). The raw pointer disappears.
 4. **`export_game!`**, once the hand-written version has settled.
 5. **Systems panel** in the inspector.

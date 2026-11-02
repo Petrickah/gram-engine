@@ -1,4 +1,7 @@
-use std::ffi::{CString, c_char};
+pub mod system;
+pub mod game_api;
+
+use std::ffi::{CString, c_char, c_void};
 use std::panic::UnwindSafe;
 use std::sync::OnceLock;
 
@@ -15,8 +18,15 @@ pub enum LogLevel
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct HostAPI {
+    pub host: *mut c_void,
     pub log: extern "C" fn(level: LogLevel, message: *const c_char),
+    pub register_system: extern "C" fn(host: *mut c_void, desc: *const system::Descriptor)
 }
+
+// void* is a generic pointer to an object from C++, Rust just passes it by to the register_system;
+// declaring the object static is not safe while holding onto the generic pointer from C++.
+unsafe impl Send for HostAPI {}
+unsafe impl Sync for HostAPI {}
 
 static HOST: OnceLock<HostAPI> = OnceLock::new();
 

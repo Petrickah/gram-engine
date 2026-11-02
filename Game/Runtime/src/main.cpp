@@ -1,8 +1,8 @@
 #include "Gram/EntryPoint.hpp"
 #include "Gram/Application/Common.hpp"
 #include "Gram/Application/GLFWApplication.hpp"
+#include "Gram/Scripting/GameAPI.hpp"
 
-#include "GameAPI.hpp"
 #include "Greeting.hpp"
 
 class RuntimeApplication : public Gram::GLFWApplication
@@ -11,7 +11,7 @@ public:
     RuntimeApplication(const Gram::GLFWApplicationSpecification& spec) : GLFWApplication(spec)
     {
         GramImGuiOnly(GramCheckVoid(m_VulkanRenderer->GetImGuiApplication().RegisterLayer<RuntimeApplication::UI>(m_UILayer, *this), "couldn't initialize the UI"));
-        GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, spec, "GameLogic"), "Couldn't load the Game API: GameLogic");
+        GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, spec.m_Workspace, "GameLogic"), "Couldn't load the Game API: GameLogic");
     }
 
 private:
@@ -29,10 +29,8 @@ private:
             {
                 if (ImGui::Button("Reload")) m_App.m_GameAPI->Reload();
                 
-                auto gameAPI = m_App.m_GameAPI->GetGameAPI();
-                
-                ImGui::BeginDisabled(gameAPI == nullptr);
-                if (ImGui::Button("Greet")) gameAPI->Greet(&m_App.m_GreetingComponent);
+                ImGui::BeginDisabled(m_App.m_GameAPI == nullptr);
+                if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet");
                 ImGui::EndDisabled();
                 
                 DrawComponent(Gram::GreetingDescriptor, &m_App.m_GreetingComponent);

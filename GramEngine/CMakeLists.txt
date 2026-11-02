@@ -62,7 +62,9 @@ target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)
 
 add_library(GramScripting STATIC
     src/Gram/Scripting/ECS/Component.cpp
+    src/Gram/Scripting/ECS/System.cpp
     src/Gram/Scripting/HostAPI.cpp
+    src/Gram/Scripting/GameAPI.cpp
 )
 target_include_directories(GramScripting PUBLIC include)
 target_link_libraries(GramScripting PUBLIC glm::glm imgui::imgui spdlog::spdlog)
