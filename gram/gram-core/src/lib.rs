@@ -38,7 +38,7 @@ pub fn init(host: *const HostAPI) -> bool {
     }));
 
     if HOST.set(*host).is_err() {
-        warn!("game_logic: on_load called twice on the same library");
+        warn!("on_load called twice on the same library");
         return false
     }
     true

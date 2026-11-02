@@ -42,15 +42,17 @@ fn builds_a_cmake_shared_library() {
 #[test]
 fn builds_a_cargo_dynamic_library_next_to_the_executable() {
     // A "dynamic" cargo module is a cdylib the executable loads at runtime: it lands in the
-    // build directory under the name cargo gives it (snake_case), not the module's.
+    // build directory named after the gram module, whatever the crate is called.
     let project = Sandbox::project("demo", &[]);
-    project.gram(&["add", "--module", "game-logic", "--kind", "dynamic"]).succeeds();
-    assert_contains(&project.read("game-logic/Cargo.toml"), "crate-type = [\"cdylib\"]");
+    project.gram(&["add", "--module", "GameLogic", "--kind", "dynamic"]).succeeds();
+    project.edit("GameLogic/Cargo.toml", "name = \"GameLogic\"", "name = \"game-logic\"");
+    assert_contains(&project.read("GameLogic/Cargo.toml"), "crate-type = [\"cdylib\"]");
 
     project.gram(&["build"]).succeeds();
 
     assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), shared_lib("game_logic"))));
+    assert!(project.exists(&format!("build/demo/{}/{}", host(), shared_lib("GameLogic"))));
+    assert!(!project.exists(&format!("build/demo/{}/{}", host(), shared_lib("game_logic"))));
 }
 
 #[test]

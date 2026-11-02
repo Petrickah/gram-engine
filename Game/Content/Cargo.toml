@@ -7,4 +7,7 @@ edition = "2024"
 gram-core = { version = "0.1.0", path = "../../gram/gram-core" }
 
 [lib]
+# The crate root sits at the top of Content/, so each script folder (greeter/, ...) is a
+# `mod` next to its schemas and assets.
+path = "lib.rs"
 crate-type = ["cdylib"]

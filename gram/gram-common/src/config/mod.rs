@@ -160,7 +160,7 @@ impl BuildConfig {
 
     /// File name (without platform prefix/extension) of `module`'s artifact under build/: the
     /// name of its project if it's that project's main runtime module (the game executable is
-    /// "Game", not "GramRuntime"), the module's own name otherwise.
+    /// "Game", not "Runtime"), the module's own name otherwise.
     pub(crate) fn artifact_name<'a>(&'a self, module: &'a ModuleConfig) -> &'a str {
         if module.kind != "runtime" || module.lang == "gram" {
             return &module.name;
@@ -396,6 +396,15 @@ impl BuildConfig {
 
         if command.purge {
             let module_dir = Path::new(&removed.src).parent().unwrap_or_else(|| Path::new("."));
+            // Two modules can share a directory (a CMakeLists.txt and a Cargo.toml side by side):
+            // purging one must not delete the other's sources.
+            if let Some(other) = self.modules.iter().find(|m| m.dir().starts_with(module_dir)) {
+                println!(
+                    "gram module (name={module}) removed; {} kept, module {} still uses it",
+                    module_dir.display(), other.name
+                );
+                return Ok(());
+            }
             fs::remove_dir_all(module_dir)?;
             println!("gram module (name={module}) removed, {} deleted", module_dir.display());
         } else {

@@ -24,11 +24,11 @@ In the design below no Rust type crosses a reload: shared data is `#[repr(C)]`, 
 ```
 GramEngine (C++, static lib)   renderer, objects/ECS, assets, reference counts, ID table
 Game exe   (C++)               main(), links GramEngine, loads / reloads the Rust library
-game-logic (Rust cdylib)       stateless Object Manager + Handle/Reference + gameplay code
+GameLogic  (Rust cdylib)       stateless Object Manager + Handle/Reference + gameplay code
 gram-core  (Rust rlib)         the engine's side of the contract as Rust types (HostAPI, LogLevel)
 ```
 
-The library was called `gram-hot` while this was being designed; it's a game module, so it's named after the game (`game-logic`) and lives in the `Game` project. `gram-core` came back with a different job than in the original plan: types only, no state, no exported functions, linked into `game-logic` like any crate.
+The library was called `gram-hot` while this was being designed; it's a game module, so it's named after the game (`game-logic`, since 2026-11-02 the gram module `GameLogic` built as `libGameLogic.dylib`, crate in `Game/Content/`) and lives in the `Game` project. `gram-core` came back with a different job than in the original plan: types only, no state, no exported functions, linked into `game-logic` like any crate.
 
 - Matches the spirit of `CLAUDE.md` ("C++ owns `main()` and the renderer core ... Rust is the reloadable gameplay layer"). What changes: `gram-core` disappears, and the world's state moves from `bevy_ecs` to C++.
 - The boundary is plain `extern "C"` plus `#[repr(C)]` structs in both directions. No `cxx`, no Corrosion static link.
@@ -38,7 +38,7 @@ The library was called `gram-hot` while this was being designed; it's a game mod
 Built up in steps: C++ only, then a statically linked Rust `staticlib`, then the dynamic library. The FFI code is the same in the static and the dynamic case; only how C++ finds a function changes (the linker vs `dlsym`).
 
 - **Two tables, one symbol.** `HostAPI` is filled by C++ (`g_Host` in `Gram/Scripting/HostAPI.hpp`, today only `Log(LogLevel, const char*)`). `GameAPI` is a `static` in Rust (`version`, `on_load`, `on_unload`, `greet`). The library exports only `game_get_api() -> *const GameAPI`; the functions in the tables aren't `#[no_mangle]`, nobody looks them up by name.
-- **Load sequence** (`GameAPILoader`, an application layer in `Game/GramRuntime/src/GameAPI.{hpp,cpp}`): copy `<exe dir>/libgame_logic.dylib` to `<exe dir>/hot/libgame_logic_<N>.dylib`, `DynamicLibrary` (`dlopen`/`LoadLibraryW`) on that copy, `FindSymbol("game_get_api")`, check `Version == GameAPIVersion`, `OnLoad(&g_Host)`, which stores a *copy* of the host table in the library's `OnceLock` and returns the `GameAPI` to use. Any failure leaves the game running without Rust logic (the Greet button is disabled). Exit: `OnUnload()`, drop the `GameAPI` pointer (it points into the library), then unload.
+- **Load sequence** (`GameAPILoader`, an application layer in `Game/Runtime/src/GameAPI.{hpp,cpp}`): copy `<exe dir>/libGameLogic.dylib` to `<exe dir>/hot/libGameLogic_<N>.dylib`, `DynamicLibrary` (`dlopen`/`LoadLibraryW`) on that copy, `FindSymbol("game_get_api")`, check `Version == GameAPIVersion`, `OnLoad(&g_Host)`, which stores a *copy* of the host table in the library's `OnceLock` and returns the `GameAPI` to use. Any failure leaves the game running without Rust logic (the Greet button is disabled). Exit: `OnUnload()`, drop the `GameAPI` pointer (it points into the library), then unload.
 - **Copy-on-load + reload.** The original is never loaded: on Windows a loaded DLL is locked and the build couldn't replace it, on macOS writing over a mapped library can crash the process. Each load uses a *new* name (`_1`, `_2`…) because macOS often doesn't really unload a Rust dylib on `dlclose`, and a `dlopen` of a path already in memory returns the old image (old statics, `HOST` already set). `Reload()`: `OnUnload()`, drop the `GameAPI` pointer, remove the previous copy, copy, unload the old library, load the new one, `game_get_api` → version check → `OnLoad`. Triggered by an Inspector button, and automatically: every 0.5 s `OnDrawFrame` compares the original's `last_write_time` with the one read before the last copy (read *before* copying, so a build landing mid-copy triggers one more reload). `hot/` is emptied at startup and exit. On gram's side every artifact is written as `<name>.partial` and renamed over the old one, so the watcher never reads a half-written library (and macOS doesn't kill a running `Game` or `gram` whose file was rewritten in place).
 - **Every loaded library has its own statics.** An `rlib` dependency is copied into each library that uses it, so a `static` in `gram-core` would exist once per library. That is exactly why the host table can live in `gram-core` (`static HOST: OnceLock<HostAPI>`, private, set only by `gram_core::init`): it ends up inside `game-logic`'s image, and is initialized by calling *that* library's `on_load`. A reload works the same way: the new copy starts with empty statics and gets the table again. The `OnceLock<HostAPI>` doesn't break rule 2 below: it's a copy of host function pointers, rebuilt on every load, not game data.
 - **Data**: `Greeting` (`char[64]` / `[u8; 64]`) lives in `RuntimeApplication`; Rust only gets a pointer for the duration of a call. A hand-written `ComponentDescriptor` drives a generic ImGui inspector (one `switch` per field type, not per component).
@@ -187,13 +187,13 @@ Option 1 is enough for `Greeting` (Task 1.4). Option 3 is the closest to a descr
 
 ## Build
 
-- A single `cargo` module of kind `dynamic` (added 2026-10-31): `gram add --kind dynamic` scaffolds it with `crate-type = ["cdylib"]`, and `gram build` copies the `.dll`/`.so`/`.dylib` next to the executable under cargo's file name (`libgame_logic.dylib`).
+- A single `cargo` module of kind `dynamic` (added 2026-10-31): `gram add --kind dynamic` scaffolds it with `crate-type = ["cdylib"]`, and `gram build` copies the `.dll`/`.so`/`.dylib` next to the executable, named after the gram module (`libGameLogic.dylib`; under cargo's file name until 2026-11-02).
 - Corrosion is no longer needed to link Rust into C++. The C++ side only `dlopen`s/`LoadLibrary`s the result.
 
 ## Open questions
 
 - **ECS in C++:** write a small one (component arrays + generational IDs), or use EnTT? Writing it is a real learning task; EnTT is a known quantity.
-- **Ergonomics vs `bevy_ecs`:** gameplay loses typed queries and system parameters. A thin query API over `HostApi` (for example "iterate all entities with component X") may be enough for Wave 1/2.
+- **Ergonomics vs `bevy_ecs`:** gameplay loses typed queries and system parameters. A thin query API over `HostApi` (for example "iterate all entities with component X") may be enough for Wave 1/2. Proposed answer (2026-11-01): a generic `GameAPI` with systems registered into a C++-owned schedule, see `wave-1-systems-design.md`.
 - **Threading:** assume single-threaded gameplay for now. Multi-threaded access changes the aliasing story.
 - **Is the original plan still preferable?** Yes, if writing gameplay with `bevy_ecs` in Rust is itself the goal. Then the rule is strict: every type in `gram-core`, nothing with `Drop` or a vtable defined in `gram-hot`.
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(GramRuntime)
+project(Runtime)
 
 # Pinned explicitly: Apple clang still defaults to C++14. C++20 for designated initializers,
 # the style the Khronos Vulkan tutorial uses.
@@ -14,10 +14,10 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine ${CMAKE_CURRENT_BI
 # gram:dep:GramEngine end
 # --- end gram dependencies ---
 
-add_executable(GramRuntime src/main.cpp src/Greeting.cpp src/GameAPI.cpp)
-target_precompile_headers(GramRuntime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine/include/Gram/Application/Common.hpp)
-gram_add_hlsl_shader(GramRuntime Default)
+add_executable(Runtime src/main.cpp src/Greeting.cpp src/GameAPI.cpp)
+target_precompile_headers(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine/include/Gram/Application/Common.hpp)
+gram_add_hlsl_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Default.hlsl)
 
 # gram:link:GramEngine begin
-target_link_libraries(GramRuntime PRIVATE GramEngine)
+target_link_libraries(Runtime PRIVATE GramEngine)
 # gram:link:GramEngine end

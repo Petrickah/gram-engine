@@ -103,6 +103,20 @@ fn purge_also_deletes_the_module_directory() {
 }
 
 #[test]
+fn purge_keeps_a_directory_another_module_still_uses() {
+    // A game can keep a CMakeLists.txt and a Cargo.toml side by side, as two modules.
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "--module", "logic"]).succeeds();
+    project.write("main/Cargo.toml", &project.read("logic/Cargo.toml"));
+    project.edit("Gram.ron", "src: \"logic/Cargo.toml\"", "src: \"main/Cargo.toml\"");
+
+    project.gram(&["remove", "--module", "logic", "--purge"]).succeeds();
+
+    assert!(!project.config().has_module("logic"));
+    assert!(project.exists("main/CMakeLists.txt"), "main's sources are still there");
+}
+
+#[test]
 fn removing_a_missing_module_fails() {
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
 

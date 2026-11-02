@@ -54,7 +54,7 @@ void GameAPILoader::CopyOnLoad()
 
     m_LoadedWriteTime = std::filesystem::last_write_time(original, error);
 
-    // libgame_logic.dylib → hot/libgame_logic_3.dylib
+    // libGameLogic.dylib → hot/libGameLogic_3.dylib
     const std::filesystem::path copy = hotDir / std::format("{}_{}{}",
         original.stem().string(), ++m_LoadCount, original.extension().string());
 

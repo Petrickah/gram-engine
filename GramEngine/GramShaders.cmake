@@ -13,13 +13,15 @@ find_program(GRAM_DXC_EXECUTABLE dxc
     REQUIRED
 )
 
-# gram_add_hlsl_shader(<target> <name>): called by the module that owns the shader (the game,
-# for its own content), after add_subdirectory(GramEngine). Compiles shaders/<name>.hlsl next to
-# the caller's CMakeLists, built before <target>.
-# One .hlsl file holds both stages (VSMain/PSMain), so it compiles to <name>.vert.spv and <name>.frag.spv.
-function(gram_add_hlsl_shader target name)
+# gram_add_hlsl_shader(<target> <source>): called by the module that owns the shader (the game,
+# for its own content), after add_subdirectory(GramEngine). Compiles <source> (a .hlsl path,
+# relative to the caller's CMakeLists or absolute: the game keeps its shaders in Content/),
+# built before <target>.
+# One .hlsl file holds both stages (VSMain/PSMain), so <name>.hlsl compiles to <name>.vert.spv and <name>.frag.spv.
+function(gram_add_hlsl_shader target source)
+    get_filename_component(source ${source} ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    get_filename_component(name ${source} NAME_WE)
     set(dir ${CMAKE_BINARY_DIR}/shaders)
-    set(source ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${name}.hlsl)
     set(vert ${dir}/${name}.vert.spv)
     set(frag ${dir}/${name}.frag.spv)
     add_custom_command(

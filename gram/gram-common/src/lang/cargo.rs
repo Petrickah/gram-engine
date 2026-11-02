@@ -14,8 +14,16 @@ use crate::lang::slash_path;
 use crate::target::cargo_cross_triple;
 
 impl ModuleBackend for Cargo {
-    fn artifact_naming(&self, _module: &ModuleConfig, target: &str) -> (&'static str, &'static str) {
-        if target == "windows" { ("", ".exe") } else { ("", "") }
+    fn artifact_naming(&self, module: &ModuleConfig, target: &str) -> (&'static str, &'static str) {
+        match (module.kind.as_str(), target) {
+            // A cdylib is named after the gram module (GameLogic → libGameLogic.dylib), not after
+            // the crate: the crate keeps Rust's snake_case, the artifact the project's naming.
+            ("dynamic", "windows") => ("", ".dll"),
+            ("dynamic", "macos") => ("lib", ".dylib"),
+            ("dynamic", _) => ("lib", ".so"),
+            (_, "windows") => ("", ".exe"),
+            _ => ("", ""),
+        }
     }
 
     fn rust_analyzer_manifest<'a>(&self, module: &'a ModuleConfig) -> Option<&'a str> {
@@ -109,11 +117,8 @@ impl ModuleBackend for Cargo {
         }
 
         if module.kind == "dynamic" {
-            // Copied under its real file name (libgame_logic.dylib, game_logic.dll): that's
-            // the name the executable loads it by.
             let from = find_artifact(&output.stdout, &module.name, "cdylib")?;
-            let to = Path::new(out).with_file_name(from.file_name().expect("cargo reports file paths"));
-            return replace_file(&from, &to);
+            return replace_file(&from, Path::new(out));
         }
 
         let from = find_artifact(&output.stdout, &module.name, "bin")?;
@@ -178,6 +183,7 @@ fn find_artifact(cargo_stdout: &[u8], module: &str, crate_type: &str) -> io::Res
         .collect();
 
     // A library target is named in snake_case (game_logic) even when the package isn't.
+    // (Only consulted when a manifest builds several artifacts of that type.)
     let named_like_module = |name: &str| name == module || name == module.replace('-', "_");
     match artifacts.as_slice() {
         [(_, path)] => Ok(path.clone()),

@@ -35,13 +35,13 @@ The split is by responsibility, not by command: `build`, `add` and `remove` all 
 BuildConfig(
     name: "Game",
     version: "0.1.0",
-    main: "GramRuntime",          // default for `gram run`; also names the main executable
+    main: "Runtime",              // default for `gram run`; also names the main executable
     modules: [
         ModuleConfig(
-            name: "GramRuntime",
+            name: "Runtime",
             lang: "cmake",            // "cargo" | "cmake" | "gram"
-            kind: "runtime",          // "runtime" | "library"
-            src: "GramRuntime/CMakeLists.txt",   // the module's manifest; its directory is the module's
+            kind: "runtime",          // "runtime" | "library" | "dynamic"
+            src: "Runtime/CMakeLists.txt",   // the module's manifest; its directory is the module's
             deps: [ Module(name: "GramEngine") ],
             targets: [ "windows", "linux", "macos" ],
         ),

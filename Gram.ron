@@ -1,7 +1,7 @@
 BuildConfig(
     name: "gram-engine",
     version: "0.1.0",
-    main: "GramRuntime",
+    main: "Runtime",
     modules: [
         ModuleConfig(
             name: "gram",

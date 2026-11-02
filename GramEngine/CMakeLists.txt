@@ -69,7 +69,7 @@ target_link_libraries(GramScripting PUBLIC glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramScripting PUBLIC include/Gram/Scripting/Common.hpp)
 
 # The engine as one target for runtime/editor modules: PUBLIC so whatever links GramEngine also
-# gets its headers and the component libraries (GramRuntime's main.cpp includes
+# gets its headers and the component libraries (the game's Runtime/src/main.cpp includes
 # Gram/EntryPoint.hpp, GLFWApplication and VulkanRenderer directly).
 add_library(GramEngine STATIC
     src/Gram/Application/GLFWApplication.cpp

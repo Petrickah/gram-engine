@@ -11,7 +11,7 @@ public:
     RuntimeApplication(const Gram::GLFWApplicationSpecification& spec) : GLFWApplication(spec)
     {
         GramImGuiOnly(GramCheckVoid(m_VulkanRenderer->GetImGuiApplication().RegisterLayer<RuntimeApplication::UI>(m_UILayer, *this), "couldn't initialize the UI"));
-        GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, spec, "game_logic"), "Couldn't load the Game API: game_logic");
+        GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, spec, "GameLogic"), "Couldn't load the Game API: GameLogic");
     }
 
 private:

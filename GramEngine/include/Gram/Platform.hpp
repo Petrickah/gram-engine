@@ -8,7 +8,7 @@ GRAM_NAMESPACE_BEGIN
 // Falls back to argv0's parent only if the OS query fails.
 std::filesystem::path GetExecutableDirectory(const char* argv0 = nullptr);
 
-// "game_logic" → libgame_logic.dylib / libgame_logic.so / game_logic.dll
+// "GameLogic" → libGameLogic.dylib / libGameLogic.so / GameLogic.dll
 std::string GetDynamicLibraryFileName(std::string_view name);
 
 // A shared library loaded for the lifetime of this object (dlopen / LoadLibrary).

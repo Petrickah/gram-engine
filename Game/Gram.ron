@@ -1,13 +1,13 @@
 BuildConfig(
     name: "Game",
     version: "0.1.0",
-    main: "GramRuntime",
+    main: "Runtime",
     modules: [
         ModuleConfig(
-            name: "GramRuntime",
+            name: "Runtime",
             lang: "cmake",
             kind: "runtime",
-            src: "GramRuntime/CMakeLists.txt",
+            src: "Runtime/CMakeLists.txt",
             deps: [
                 Module(name: "GramEngine"),
             ],
@@ -18,10 +18,10 @@ BuildConfig(
             ],
         ),
         ModuleConfig(
-            name: "game-logic",
+            name: "GameLogic",
             lang: "cargo",
             kind: "dynamic",
-            src: "game-logic/Cargo.toml",
+            src: "Content/Cargo.toml",
             deps: [
                 Module(name: "gram-core"),
             ],
