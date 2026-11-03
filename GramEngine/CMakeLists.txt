@@ -76,6 +76,8 @@ target_precompile_headers(GramScripting PUBLIC include/Gram/Scripting/Common.hpp
 # Gram/EntryPoint.hpp, GLFWApplication and VulkanRenderer directly).
 add_library(GramEngine STATIC
     src/Gram/Application/GLFWApplication.cpp
+    src/Gram/Editor/InspectorPanel.cpp
+    src/Gram/Editor/SystemsPanel.cpp
     src/Gram/Logging/GramLogger.cpp
     src/Gram/Platform.cpp
 )

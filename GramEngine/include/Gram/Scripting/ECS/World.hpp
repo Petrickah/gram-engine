@@ -23,6 +23,20 @@ public:
 
     void* AddComponent(ObjectID entity, const ComponentDescriptor* desc, const void* data);
     void* GetComponent(ObjectID entity, ComponentID component);
+
+    // Calls f(descriptor, data) for every component of `entity` (none if it's dead). Like
+    // GetComponent, the addresses are only valid during the call.
+    template<typename Function>
+    void ForEachComponent(ObjectID entity, Function&& f)
+    {
+        if (!IsAlive(entity)) return;
+        for (auto& [id, storage] : m_Components)
+        {
+            auto slot = storage.SlotOf.find(entity.Index);
+            if (slot != storage.SlotOf.end())
+                f(*storage.Descriptor, storage.Data.data() + slot->second * storage.Descriptor->Size);
+        }
+    }
     
 private:
     static void RemoveComponent(ComponentStorage& storage, uint32_t entityIndex);

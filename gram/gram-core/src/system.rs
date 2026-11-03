@@ -1,6 +1,6 @@
 use std::ffi::{c_double, c_float};
 
-use crate::{component::Component, host, types::Str, world::ObjectID};
+use crate::{borrow::BorrowGuard, component::Component, host, types::Str, world::ObjectID};
 
 #[repr(u32)]
 #[derive(Clone, Copy)]
@@ -44,19 +44,25 @@ impl Context {
     /// Lends `entity`'s `T` to `f`, read-only. `None` when the entity is gone or has no `T`.
     /// The reference can't outlive `f`: C++ only guarantees the component's address while a
     /// system runs.
+    #[track_caller]
     pub fn with<T: Component, R>(&self, entity: ObjectID, f: impl FnOnce(&T) -> R) -> Option<R> {
         let host = crate::host()?;
         let ptr = (host.get_component)(host.host, entity, T::ID) as *const T;
+        // Before the reference exists: a conflict must panic before there are two of them.
+        let _borrow = BorrowGuard::acquire(entity, T::ID, false);
         let component = unsafe { ptr.as_ref() }?;
         Some(f(component))
     }
 
     /// Like `with`, but `f` may change the component. Don't nest two `with_mut` on the same
     /// component: that would be two `&mut` to the same memory.
+    #[track_caller]
     pub fn with_mut<T: Component, R>(&self, entity: ObjectID, f: impl FnOnce(&mut T) -> R) -> Option<R> {
         let host = crate::host()?;
         let ptr = (host.get_component)(host.host, entity, T::ID) as *mut T;
-        let component = unsafe { ptr.as_mut() }?;   // null → None: entitatea a murit sau n-are componenta
+        // Before the reference exists: a conflict must panic before there are two of them.
+        let _borrow = BorrowGuard::acquire(entity, T::ID, true);
+        let component = unsafe { ptr.as_mut() }?;
         Some(f(component))
     }
 }

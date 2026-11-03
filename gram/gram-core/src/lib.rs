@@ -3,6 +3,7 @@ pub mod world;
 pub mod game;
 pub mod component;
 pub mod types;
+pub mod borrow;
 
 use std::ffi::{CString, c_char, c_void};
 use std::panic::UnwindSafe;

@@ -33,6 +33,7 @@ public:
     void Reload();
     void Emit(std::string_view name, ObjectID target = InvalidObjectID);
     const GameAPI* GetGameAPI() { return m_Game; }
+    std::span<const System::Descriptor> GetSystems() const { return m_Systems; }
     
 private:
     void CopyOnLoad();

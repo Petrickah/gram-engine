@@ -3,6 +3,8 @@
 #include "Gram/Application/GLFWApplication.hpp"
 #include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Scripting/GameAPI.hpp"
+#include "Gram/Editor/InspectorPanel.hpp"
+#include "Gram/Editor/SystemsPanel.hpp"
 
 #include "Components.generated.hpp"
 
@@ -11,7 +13,6 @@ class RuntimeApplication : public Gram::GLFWApplication
 public:
     RuntimeApplication(const Gram::GLFWApplicationSpecification& spec) : GLFWApplication(spec)
     {
-        GramImGuiOnly(GramCheckVoid(m_VulkanRenderer->GetImGuiApplication().RegisterLayer<RuntimeApplication::UI>(m_UILayer, *this), "couldn't initialize the UI"));
         GramCheckVoid(RegisterLayer<Gram::World>(m_World), "couldn't instantiate the Game World");
         GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, *m_World, spec.m_Workspace, "GameLogic"), "couldn't load the Game API: GameLogic");
     
@@ -19,6 +20,9 @@ public:
         m_GreetingEntity = m_World->CreateEntity();
         GramInfo("Greeting Entity: Index {}, Generation {}", m_GreetingEntity.Index, m_GreetingEntity.Generation);
         m_World->AddComponent(m_GreetingEntity, &Gram::GreetingDescriptor, &greeting);
+
+        // After the World and the loader: the panels keep references to them.
+        GramImGuiOnly(RegisterPanels());
     }
 
 private:
@@ -27,53 +31,39 @@ private:
     std::shared_ptr<Gram::World> m_World;
 
 #ifdef GRAM_IMGUI_ENABLED
-    struct UI : Gram::ImGuiApplicationLayer
+    // The game's own window: what only this game has (the Greet button).
+    struct GameUI : Gram::ImGuiApplicationLayer
     {
-        UI(RuntimeApplication& app) : m_App(app) { }
+        GameUI(RuntimeApplication& app) : m_App(app) { }
         
         bool OnDrawFrame() override
         {
-            if (ImGui::Begin("Inspector", &m_IsOpen, ImGuiWindowFlags_None))
+            if (ImGui::Begin("Game"))
             {
-                if (ImGui::Button("Reload")) m_App.m_GameAPI->Reload();
-                
-                ImGui::BeginDisabled(m_App.m_GameAPI == nullptr);
+                ImGui::BeginDisabled(m_App.m_GameAPI->GetGameAPI() == nullptr);
                 if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet", m_App.m_GreetingEntity);
                 ImGui::EndDisabled();
-                
-                if (void* greeting = m_App.m_World->GetComponent(m_App.m_GreetingEntity, Gram::GreetingDescriptor.ID))
-                    DrawComponent(Gram::GreetingDescriptor, greeting);
-                else
-                    ImGui::TextDisabled("no entity with a Greeting");
             }
             
             ImGui::End();
-            return m_IsOpen;
-        }
-
-        void DrawComponent(const Gram::ComponentDescriptor& desc, void* data)
-        {
-            if (!ImGui::CollapsingHeader(desc.Name, ImGuiTreeNodeFlags_DefaultOpen)) return;
-
-            for (const Gram::FieldDescriptor& field : std::span<const Gram::FieldDescriptor>(desc.Fields, desc.Count))
-            {
-                void* value = static_cast<std::byte*>(data) + field.Offset;
-                switch (field.Type)
-                {
-                    default: ImGui::TextDisabled("%s: unsupported type", field.Name); break;
-                    case Gram::FieldDescriptor::FieldType::Str: ImGui::InputText(field.Name, static_cast<char*>(value), field.Size); break;
-                    case Gram::FieldDescriptor::FieldType::F32: ImGui::DragFloat(field.Name, static_cast<float*>(value)); break;
-                    // case FieldType::Vec3:  ImGui::DragFloat3(field.Name, static_cast<float*>(value)); break;
-                    // un case pentru fiecare tip pe care îl acceptă schema
-                }
-            }
+            return true;
         }
         
         RuntimeApplication& m_App;
-        bool m_IsOpen = true;
     };
+
+    void RegisterPanels()
+    {
+        auto& ui = m_VulkanRenderer->GetImGuiApplication();
+        GramCheckVoid(ui.RegisterLayer<Gram::InspectorPanel>(m_Inspector, *m_World), "couldn't create the Inspector");
+        GramCheckVoid(ui.RegisterLayer<Gram::SystemsPanel>(m_Systems, *m_GameAPI), "couldn't create the Systems panel");
+        GramCheckVoid(ui.RegisterLayer<GameUI>(m_GameUI, *this), "couldn't create the game's UI");
+        m_Inspector->Select(m_GreetingEntity);
+    }
     
-    std::shared_ptr<UI> m_UILayer = nullptr;
+    std::shared_ptr<Gram::InspectorPanel> m_Inspector = nullptr;
+    std::shared_ptr<Gram::SystemsPanel>   m_Systems   = nullptr;
+    std::shared_ptr<GameUI>               m_GameUI    = nullptr;
 #endif // #ifdef GRAM_IMGUI_ENABLED
 };
 
