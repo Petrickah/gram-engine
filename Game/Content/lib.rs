@@ -1,10 +1,9 @@
-use std::ptr::null;
-
-use gram_core::HostAPI;
-use gram_core::game;
 use gram_core::system;
 
 use crate::scripts::greeter;
+
+#[path = "components.generated.rs"]
+pub mod components;
 
 mod scripts;
 
@@ -15,41 +14,7 @@ fn tick(ctx: &system::Context) {
     }
 }
 
-const SYSTEMS: &[system::Entry] = &[
-    system::Entry { stage: system::Stage::Update, name: "tick",   event: "",      run: tick },
-    system::Entry { stage: system::Stage::Event,  name: "greet1", event: "greet", run: greeter::greet1 },
-    system::Entry { stage: system::Stage::Event,  name: "greet2", event: "greet", run: greeter::greet2 }
-];
-
-extern "C" fn on_unload() {
-    gram_core::guard(|| { });
-}
-
-extern "C" fn on_load(host: *const HostAPI) -> *const game::GameAPI {
-    if !gram_core::init(host) { return null() }
-
-    gram_core::guard(std::panic::AssertUnwindSafe(|| {
-        system::register(SYSTEMS);
-        &GAME as *const game::GameAPI
-    })).unwrap_or(null())
-}
-
-extern "C" fn run_system(index: u32, ctx: *mut system::Context) {
-    gram_core::guard(std::panic::AssertUnwindSafe(|| {
-        let Some(entry) = SYSTEMS.get(index as usize) else { return };
-        let Some(ctx) = (unsafe { ctx.as_ref() }) else { return };
-        (entry.run)(ctx);
-    }));
-}
-
-static GAME: game::GameAPI = game::GameAPI {
-    version: gram_core::game::GAME_API_VERSION,
-    on_load,
-    on_unload,
-    run_system
-};
-
-#[unsafe(no_mangle)]
-pub extern "C" fn game_get_api() -> *const game::GameAPI {
-    &GAME as *const game::GameAPI
+gram_core::export_game! {
+    events: { "greet" => [greeter::greet1, greeter::greet2] },
+    update: [tick],
 }

@@ -4,7 +4,9 @@
 #include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Scripting/GameAPI.hpp"
 
-#include "Greeting.hpp"
+#ifdef GRAM_GENERATED_CODE
+#include "Components.generated.hpp"
+#endif // #ifdef GRAM_GENERATED_CODE
 
 class RuntimeApplication : public Gram::GLFWApplication
 {

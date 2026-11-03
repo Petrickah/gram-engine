@@ -1,26 +1,16 @@
-use gram_core::component;
-use gram_core::system;
+use gram_core::system::Context;
 
-#[repr(C)]
-pub struct Greeting {
-    pub text: [u8; 64],
-}
+use crate::components::Greeting;
 
-impl component::Component for Greeting {
-    const ID: component::ComponentID = component::component_id("Greeting");
-}
-
-const _: () = assert!(std::mem::size_of::<Greeting>() == 64);
-
-pub(crate) fn greet1(ctx: &system::Context) {
+pub(crate) fn greet1(ctx: &Context) {
     let Some(entity) = ctx.event_target() else { return };
     // ctx.with_mut(entity, |greeting: &mut Greeting| greeting.text = system::fixed("Hello world from Rust"));
     ctx.with(entity, |greeting: &Greeting| {
-        gram_core::info!("Greetings from Rust: {}!", system::text(&greeting.text));
+        gram_core::info!("Greetings from Rust: {}!", &greeting.text.as_str());
     });
 }
 
-pub(crate) fn greet2(_: &system::Context) {
+pub(crate) fn greet2(_: &Context) {
     //let Some(greeting) = (unsafe { greeting. }) else { return };
     gram_core::info!("Greetings from Rust, but from another system!");
     //let message = system::fixed::<64>("Hello world from Rust");

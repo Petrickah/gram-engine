@@ -1,6 +1,6 @@
 use std::ffi::{c_double, c_float};
 
-use crate::{component::Component, host, world::ObjectID};
+use crate::{component::Component, host, types::Str, world::ObjectID};
 
 #[repr(u32)]
 #[derive(Clone, Copy)]
@@ -13,9 +13,9 @@ const _: () = assert!(std::mem::size_of::<Stage>() == 4);
 
 #[repr(C)]
 pub struct Descriptor {
-    name: [u8; 64],
+    name: Str<64>,
     stage: Stage,
-    event: [u8; 64],
+    event: Str<64>,
     index: u32
 }
 
@@ -75,9 +75,9 @@ pub struct Entry {
 impl Entry {
     pub fn descriptor(&self, index: u32) -> Descriptor {
         Descriptor { 
-            name: fixed::<64>(self.name),
+            name: Str::<64>::new(self.name),
             stage: self.stage,
-            event: fixed::<64>(self.event),
+            event: Str::<64>::new(self.event),
             index
         }
     }
@@ -88,22 +88,4 @@ pub fn register(entries: &[Entry]) {
     entries.iter().enumerate().for_each(|(index, entry)| {
         (host.register_system)(host.host, &entry.descriptor(index as u32))
     });
-}
-
-pub fn fixed<const N: usize>(s: &str) -> [u8; N] {
-    let mut out = [0u8; N];
-    let len = s.len().min(N.saturating_sub(1));
-    out[..len].copy_from_slice(&s.as_bytes()[..len]);
-    out
-}
-
-/// The inverse of `fixed`: the text in a `\0`-terminated fixed buffer, up to the first `\0`
-/// (the whole buffer if there's none). Stops before the first invalid UTF-8 byte instead of
-/// failing, since C++ (an ImGui text field) may have written anything there.
-pub fn text(bytes: &[u8]) -> &str {
-    let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-    match std::str::from_utf8(&bytes[..len]) {
-        Ok(text) => text,
-        Err(error) => std::str::from_utf8(&bytes[..error.valid_up_to()]).unwrap_or_default(),
-    }
 }
