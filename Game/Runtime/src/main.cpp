@@ -3,8 +3,8 @@
 #include "Gram/Application/GLFWApplication.hpp"
 #include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Scripting/GameAPI.hpp"
+#include "Gram/Editor/Editor.hpp"
 #include "Gram/Editor/InspectorPanel.hpp"
-#include "Gram/Editor/SystemsPanel.hpp"
 
 #include "Components.generated.hpp"
 
@@ -32,21 +32,15 @@ private:
 
 #ifdef GRAM_IMGUI_ENABLED
     // The game's own window: what only this game has (the Greet button).
-    struct GameUI : Gram::ImGuiApplicationLayer
+    struct GameUI : Gram::EditorPanel
     {
-        GameUI(RuntimeApplication& app) : m_App(app) { }
+        GameUI(RuntimeApplication& app) : EditorPanel("Game"), m_App(app) { }
         
-        bool OnDrawFrame() override
+        void DrawContents() override
         {
-            if (ImGui::Begin("Game"))
-            {
-                ImGui::BeginDisabled(m_App.m_GameAPI->GetGameAPI() == nullptr);
-                if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet", m_App.m_GreetingEntity);
-                ImGui::EndDisabled();
-            }
-            
-            ImGui::End();
-            return true;
+            ImGui::BeginDisabled(m_App.m_GameAPI->GetGameAPI() == nullptr);
+            if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet", m_App.m_GreetingEntity);
+            ImGui::EndDisabled();
         }
         
         RuntimeApplication& m_App;
@@ -54,16 +48,12 @@ private:
 
     void RegisterPanels()
     {
-        auto& ui = m_VulkanRenderer->GetImGuiApplication();
-        GramCheckVoid(ui.RegisterLayer<Gram::InspectorPanel>(m_Inspector, *m_World), "couldn't create the Inspector");
-        GramCheckVoid(ui.RegisterLayer<Gram::SystemsPanel>(m_Systems, *m_GameAPI), "couldn't create the Systems panel");
-        GramCheckVoid(ui.RegisterLayer<GameUI>(m_GameUI, *this), "couldn't create the game's UI");
-        m_Inspector->Select(m_GreetingEntity);
+        m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI);
+        m_Editor->AddPanel<GameUI>(*this);
+        m_Editor->GetInspector().Select(m_GreetingEntity);
     }
     
-    std::shared_ptr<Gram::InspectorPanel> m_Inspector = nullptr;
-    std::shared_ptr<Gram::SystemsPanel>   m_Systems   = nullptr;
-    std::shared_ptr<GameUI>               m_GameUI    = nullptr;
+    std::unique_ptr<Gram::Editor> m_Editor = nullptr;
 #endif // #ifdef GRAM_IMGUI_ENABLED
 };
 

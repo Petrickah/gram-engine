@@ -5,51 +5,56 @@
 #ifdef GRAM_IMGUI_ENABLED
 GRAM_NAMESPACE_BEGIN
 
-// Always true, like InspectorPanel: a closed panel just stops drawing.
-bool SystemsPanel::OnDrawFrame()
+void SystemsPanel::DrawContents()
 {
-    if (!m_IsOpen) return true;
+    if (ImGui::Button("Reload")) m_Loader.Reload();
+    ImGui::SameLine();
+    ImGui::TextDisabled(m_Loader.GetGameAPI() ? "game loaded" : "no game loaded");
 
-    if (ImGui::Begin("Systems", &m_IsOpen, ImGuiWindowFlags_None))
+    const std::span<const GameAPILoader::RegisteredSystem> systems = m_Loader.GetSystems();
+    ImGui::Text("%zu system(s)", systems.size());
+
+    if (ImGui::BeginTable("systems", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
     {
-        if (ImGui::Button("Reload")) m_Loader.Reload();
-        ImGui::SameLine();
-        ImGui::TextDisabled(m_Loader.GetGameAPI() ? "game loaded" : "no game loaded");
-
-        const std::span<const System::Descriptor> systems = m_Loader.GetSystems();
-        ImGui::Text("%zu system(s)", systems.size());
-
-        if (ImGui::BeginTable("systems", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+        ImGui::TableSetupColumn("On", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Name");
+        ImGui::TableSetupColumn("Event");
+        ImGui::TableSetupColumn("Stage");
+        ImGui::TableSetupColumn("Last run");
+        ImGui::TableHeadersRow();
+        for (const GameAPILoader::RegisteredSystem& system : systems)
         {
-            ImGui::TableSetupColumn("Name");
-            ImGui::TableSetupColumn("Event");
-            ImGui::TableSetupColumn("Stage");
-            ImGui::TableHeadersRow();
-            for (const System::Descriptor& system : systems)
-            {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn(); ImGui::TextUnformatted(system.Name);
-                ImGui::TableNextColumn(); ImGui::TextUnformatted(system.Event);
-                ImGui::TableNextColumn();
-                switch (system.Stage)
-                {
-                    case Gram::System::Stage::Event:
-                        ImGui::TextUnformatted("Stage::Event");
-                        break;
-                    case Gram::System::Stage::Update:
-                        ImGui::TextUnformatted("Stage::Update");
-                        break;
-                    default:
-                        ImGui::TextUnformatted("Stage::Unknown");
-                        break;
-                }
-            }
-            ImGui::EndTable();
-        }
-    }
+            ImGui::PushID(system.Descriptor.Name);   // the checkboxes have no label: the name tells them apart
+            ImGui::TableNextRow();
 
-    ImGui::End();
-    return true;
+            ImGui::TableNextColumn();
+            bool enabled = system.Enabled;
+            if (ImGui::Checkbox("##enabled", &enabled)) m_Loader.SetSystemEnabled(system.Descriptor.Name, enabled);
+
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(system.Descriptor.Name);
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(system.Descriptor.Event);
+            ImGui::TableNextColumn();
+            switch (system.Descriptor.Stage)
+            {
+                case System::Stage::Event:
+                    ImGui::TextUnformatted("Stage::Event");
+                    break;
+                case System::Stage::Update:
+                    ImGui::TextUnformatted("Stage::Update");
+                    break;
+                default:
+                    ImGui::TextUnformatted("Stage::Unknown");
+                    break;
+            }
+
+            ImGui::TableNextColumn();
+            if (system.LastRunMs < 0.0f) ImGui::TextDisabled("never");
+            else                         ImGui::Text("%.3f ms", system.LastRunMs);
+
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
 }
 
 GRAM_NAMESPACE_END

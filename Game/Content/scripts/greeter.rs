@@ -1,6 +1,4 @@
-use gram_core::system::Context;
-
-use crate::components::Greeting;
+use crate::prelude::*;
 
 pub(crate) fn greet1(ctx: &Context) {
     let Some(entity) = ctx.event_target() else { return };

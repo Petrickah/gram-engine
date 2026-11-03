@@ -23,6 +23,14 @@ public:
         ObjectID Target;
     };
 
+    // A registered system plus what only C++ keeps about it.
+    struct RegisteredSystem
+    {
+        System::Descriptor Descriptor;
+        bool               Enabled   = true;
+        float              LastRunMs = -1.0f;  // how long its last run took; negative: never ran
+    };
+
     static const uint32_t GameAPIVersion = 3;
     using GetGameAPIFunction = const GameAPI* (*)();
 
@@ -33,10 +41,13 @@ public:
     void Reload();
     void Emit(std::string_view name, ObjectID target = InvalidObjectID);
     const GameAPI* GetGameAPI() { return m_Game; }
-    std::span<const System::Descriptor> GetSystems() const { return m_Systems; }
+    std::span<const RegisteredSystem> GetSystems() const { return m_Systems; }
+    // Kept by name, so a disabled system stays disabled across reloads.
+    void SetSystemEnabled(std::string_view name, bool enabled);
     
 private:
     void CopyOnLoad();
+    void Run(RegisteredSystem& system, System::Context& ctx);
     const GameAPI* FindGameAPI();
 
     virtual bool OnDrawFrame() override;
@@ -50,7 +61,8 @@ private:
     HostAPI                               m_Host;                  // the HostAPI object shared with Rust
 
     std::vector<PendingEvent>             m_PendingEvents;
-    std::vector<System::Descriptor>       m_Systems;
+    std::vector<RegisteredSystem>         m_Systems;
+    std::set<std::string, std::less<>>    m_DisabledSystems;       // by name, survives reloads
     const GameAPI*                        m_Game        = nullptr;
     std::unique_ptr<Gram::DynamicLibrary> m_GameLibrary = nullptr;
     std::chrono::steady_clock::time_point m_LastCheck;             // last check

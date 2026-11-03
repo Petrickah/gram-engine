@@ -5,27 +5,16 @@
 #ifdef GRAM_IMGUI_ENABLED
 GRAM_NAMESPACE_BEGIN
 
-// Always true: an ImGui layer returning false skips the layers after it, so a closed panel
-// just stops drawing.
-bool InspectorPanel::OnDrawFrame()
+void InspectorPanel::DrawContents()
 {
-    if (!m_IsOpen) return true;
-
-    if (ImGui::Begin("Inspector", &m_IsOpen, ImGuiWindowFlags_None))
+    if (!m_World.IsAlive(m_Selected))
     {
-        if (!m_World.IsAlive(m_Selected))
-        {
-            ImGui::TextDisabled("no entity selected");
-        }
-        else
-        {
-            ImGui::Text("Entity %u (generation %u)", m_Selected.Index, m_Selected.Generation);
-            m_World.ForEachComponent(m_Selected, [](const ComponentDescriptor& desc, void* data) { DrawComponent(desc, data); });
-        }
+        ImGui::TextDisabled("no entity selected");
+        return;
     }
 
-    ImGui::End();
-    return true;
+    ImGui::Text("Entity %u (generation %u)", m_Selected.Index, m_Selected.Generation);
+    m_World.ForEachComponent(m_Selected, [](const ComponentDescriptor& desc, void* data) { DrawComponent(desc, data); });
 }
 
 void InspectorPanel::DrawComponent(const ComponentDescriptor& desc, void* data)

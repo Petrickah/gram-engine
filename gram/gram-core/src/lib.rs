@@ -5,6 +5,15 @@ pub mod component;
 pub mod types;
 pub mod borrow;
 
+/// What a game script usually needs, in one line: `use gram_core::prelude::*;`.
+pub mod prelude {
+    pub use crate::component::Component;
+    pub use crate::system::Context;
+    pub use crate::types::Str;
+    pub use crate::world::ObjectID;
+    pub use crate::{error, export_game, info, trace, warn};
+}
+
 use std::ffi::{CString, c_char, c_void};
 use std::panic::UnwindSafe;
 use std::sync::OnceLock;

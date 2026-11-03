@@ -57,7 +57,7 @@ GameAPILoader::GameAPILoader(World& world, const std::filesystem::path& workspac
             System::Descriptor copy = *desc;           // borrow the descriptor from Rust over to C++ via copy
             copy.Name [sizeof(copy.Name)  - 1] = '\0'; // setup de null terminator, we can't trust Rust is giving it
             copy.Event[sizeof(copy.Event) - 1] = '\0'; // setup de null terminator, we can't trust Rust is giving it
-            loader->m_Systems.push_back(copy);
+            loader->m_Systems.push_back(RegisteredSystem { .Descriptor = copy, .Enabled = !loader->m_DisabledSystems.contains(copy.Name) });
         },
         .GetComponent = [](void* host, ObjectID entity, ComponentID component) -> void*
         {
@@ -100,21 +100,21 @@ bool GameAPILoader::OnDrawFrame()
 
     if (m_Game)
     {
-        for (const System::Descriptor& desc : m_Systems)
+        for (RegisteredSystem& system : m_Systems)
         {
-            if (desc.Stage != System::Stage::Update) continue;
+            if (system.Descriptor.Stage != System::Stage::Update) continue;
 
-            m_Game->RunSystem(desc.Index, &ctx);
+            Run(system, ctx);
         }
 
         for (const PendingEvent& event : events)
         {
-            for (const System::Descriptor& desc : m_Systems)
+            for (RegisteredSystem& system : m_Systems)
             {
-                if (desc.Stage != System::Stage::Event || event.Name != desc.Event) continue;
+                if (system.Descriptor.Stage != System::Stage::Event || event.Name != system.Descriptor.Event) continue;
 
                 ctx.EventTarget = event.Target;
-                m_Game->RunSystem(desc.Index, &ctx);
+                Run(system, ctx);
             }
         }
     }
@@ -127,6 +127,24 @@ bool GameAPILoader::OnDrawFrame()
     if (!error && writeTime != m_LoadedWriteTime) Reload();
 
     return true;
+}
+
+void GameAPILoader::Run(RegisteredSystem& system, System::Context& ctx)
+{
+    if (!system.Enabled) return;
+
+    const auto start = std::chrono::steady_clock::now();
+    m_Game->RunSystem(system.Descriptor.Index, &ctx);
+    system.LastRunMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start).count();
+}
+
+void GameAPILoader::SetSystemEnabled(std::string_view name, bool enabled)
+{
+    if (enabled) m_DisabledSystems.erase(std::string(name));
+    else         m_DisabledSystems.emplace(name);
+
+    for (RegisteredSystem& system : m_Systems)
+        if (name == system.Descriptor.Name) system.Enabled = enabled;
 }
 
 void GameAPILoader::Reload()

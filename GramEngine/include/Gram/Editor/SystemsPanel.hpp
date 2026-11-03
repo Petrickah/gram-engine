@@ -1,22 +1,23 @@
 #pragma once
 
+#include "Gram/Editor/EditorPanel.hpp"
+
 #ifdef GRAM_IMGUI_ENABLED
 GRAM_NAMESPACE_BEGIN
 
 class GameAPILoader;
 
 // The systems the loaded game registered (GameAPILoader's registry), and its Reload button.
-class SystemsPanel : public ImGuiApplicationLayer
+class SystemsPanel : public EditorPanel
 {
 public:
-    SystemsPanel(GameAPILoader& loader) : m_Loader(loader) { }
+    SystemsPanel(GameAPILoader& loader) : EditorPanel("Systems"), m_Loader(loader) { }
 
 private:
-    virtual bool OnDrawFrame() override;
+    void DrawContents() override;
 
 private:
     GameAPILoader& m_Loader;
-    bool           m_IsOpen = true;
 };
 
 GRAM_NAMESPACE_END

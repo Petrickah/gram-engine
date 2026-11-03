@@ -24,6 +24,14 @@ public:
     void* AddComponent(ObjectID entity, const ComponentDescriptor* desc, const void* data);
     void* GetComponent(ObjectID entity, ComponentID component);
 
+    // Calls f(entity) for every live entity, in slot order.
+    template<typename Function>
+    void ForEachEntity(Function&& f) const
+    {
+        for (uint32_t index = 0; index < m_Slots.size(); ++index)
+            if (m_Slots[index].Alive) f(ObjectID { .Index = index, .Generation = m_Slots[index].Generation });
+    }
+
     // Calls f(descriptor, data) for every component of `entity` (none if it's dead). Like
     // GetComponent, the addresses are only valid during the call.
     template<typename Function>
