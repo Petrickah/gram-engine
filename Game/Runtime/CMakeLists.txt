@@ -15,6 +15,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine ${CMAKE_CURRENT_BI
 # --- end gram dependencies ---
 
 add_executable(Runtime src/main.cpp)
+# Content/ holds the game's generated component header (Components.generated.hpp).
+target_include_directories(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Content)
 target_precompile_headers(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine/include/Gram/Application/Common.hpp)
 gram_add_hlsl_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Default.hlsl)
 

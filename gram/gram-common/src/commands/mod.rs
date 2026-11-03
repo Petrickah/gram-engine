@@ -2,12 +2,14 @@ use clap::Parser;
 use clap::Subcommand;
 use crate::commands::add::AddCommand;
 use crate::commands::build::BuildCommand;
+use crate::commands::generate::GenerateCommand;
 use crate::commands::init::InitCommand;
 use crate::commands::remove::RemoveCommand;
 use crate::commands::run::RunCommand;
 
 pub mod add;
 pub mod build;
+pub mod generate;
 pub mod init;
 pub mod remove;
 pub mod run;
@@ -33,5 +35,8 @@ pub enum Commands {
     /// exists; omit the dependency name to just remove the module.
     Remove(RemoveCommand),
     /// Run an already-built runtime module's binary from its build directory.
-    Run(RunCommand)
+    Run(RunCommand),
+    /// Generate the component code (components.generated.rs, Components.generated.hpp) of
+    /// each cargo module from the .ron schemas in its directory.
+    Generate(GenerateCommand)
 }

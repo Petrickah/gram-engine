@@ -4,9 +4,7 @@
 #include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Scripting/GameAPI.hpp"
 
-#ifdef GRAM_GENERATED_CODE
 #include "Components.generated.hpp"
-#endif // #ifdef GRAM_GENERATED_CODE
 
 class RuntimeApplication : public Gram::GLFWApplication
 {
@@ -62,9 +60,9 @@ private:
                 void* value = static_cast<std::byte*>(data) + field.Offset;
                 switch (field.Type)
                 {
-                    case Gram::FieldDescriptor::FieldType::Str: ImGui::InputText(field.Name, static_cast<char*>(value), field.Size); break;
                     default: ImGui::TextDisabled("%s: unsupported type", field.Name); break;
-                    // case FieldType::F32:   ImGui::DragFloat(field.Name, static_cast<float*>(value)); break;
+                    case Gram::FieldDescriptor::FieldType::Str: ImGui::InputText(field.Name, static_cast<char*>(value), field.Size); break;
+                    case Gram::FieldDescriptor::FieldType::F32: ImGui::DragFloat(field.Name, static_cast<float*>(value)); break;
                     // case FieldType::Vec3:  ImGui::DragFloat3(field.Name, static_cast<float*>(value)); break;
                     // un case pentru fiecare tip pe care îl acceptă schema
                 }

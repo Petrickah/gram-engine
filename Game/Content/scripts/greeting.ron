@@ -2,5 +2,6 @@ Component(
     name: "Greeting",
     fields: [
         Field(name: "text", ty: Str(64)),
+        Field(name: "scale", ty: F32),
     ],
 )

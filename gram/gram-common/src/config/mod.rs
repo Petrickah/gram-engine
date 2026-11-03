@@ -9,11 +9,21 @@ use crate::commands::remove::RemoveCommand;
 use crate::commands::run::RunCommand;
 use crate::directory::Directory;
 use crate::lang::{DependencySpec, backend_for, slash_path};
+use crate::schema;
 use crate::target::validate_targets;
 
 pub mod module;
 
 use module::ModuleConfig;
+
+/// What `gram generate` did for one cargo module: how many schemas it found and which
+/// generated files it (re)wrote; none when the code was already up to date.
+#[derive(Debug)]
+pub struct Generation {
+    pub module: String,
+    pub schemas: usize,
+    pub written: Vec<PathBuf>,
+}
 
 /// What a `gram add` actually did, so the CLI can say so (one command can create a module,
 /// add targets, add a dependency, or find there's nothing to do).
@@ -274,10 +284,59 @@ impl BuildConfig {
 
         let name = self.name.clone();
         println!("gram build (name={name}, ci={ci})");
+        // Always the whole tree, whatever module is built: a cmake module may include a cargo
+        // module's header (Runtime → GameLogic's Components.generated.hpp). Unchanged files
+        // aren't rewritten, so nothing recompiles for nothing.
+        for generation in self.generate("")? {
+            for path in &generation.written {
+                println!("gram generate (module={}): wrote {}", generation.module, path.display());
+            }
+        }
         for curr_module in modules {
             curr_module.build(&self, &ci, target)?;
         }
         Ok(())
+    }
+
+    /// Generates the component code of every cargo module that has schemas (or only `module`):
+    /// `components.generated.rs` and `Components.generated.hpp` next to its `Cargo.toml`.
+    pub fn generate(&self, module: &str) -> io::Result<Vec<Generation>> {
+        let modules: Vec<&ModuleConfig> = match module {
+            "" => self.modules.iter().filter(|m| m.lang == "cargo").collect(),
+            name => {
+                let selected = self.modules.iter()
+                    .find(|m| m.name == name)
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("module not found: {name}")))?;
+                if selected.lang != "cargo" {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("module {name} is a \"{}\" module: component code is generated for cargo modules", selected.lang),
+                    ));
+                }
+                vec![selected]
+            }
+        };
+
+        let mut generations = Vec::new();
+        for module in modules {
+            let dir = module.dir();
+            let schemas = schema::find(dir)?;
+            if schemas.is_empty() {
+                continue;
+            }
+            let generated = schema::generate(&schemas)
+                .map_err(|err| io::Error::new(err.kind(), format!("module {}: {err}", module.name)))?;
+
+            let mut written = Vec::new();
+            for (file, content) in [(schema::RUST_FILE, &generated.rust), (schema::CPP_FILE, &generated.cpp)] {
+                let path = dir.join(file);
+                if schema::write_if_changed(&path, content)? {
+                    written.push(path);
+                }
+            }
+            generations.push(Generation { module: module.name.clone(), schemas: schemas.len(), written });
+        }
+        Ok(generations)
     }
 
     pub fn add_dependency(&mut self, command: AddCommand) -> io::Result<AddOutcome> {

@@ -5,6 +5,7 @@ use gram_common::commands::Cli;
 use gram_common::commands::Commands;
 use gram_common::commands::add;
 use gram_common::commands::build;
+use gram_common::commands::generate;
 use gram_common::commands::init;
 use gram_common::commands::remove;
 use gram_common::commands::run;
@@ -53,6 +54,25 @@ fn main() {
         Commands::Remove(command) => 
             match remove::module(command) {
                 Ok(_) => println!("Module dependency removed successfully."),
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(1)
+                }
+            }
+        Commands::Generate(command) =>
+            match generate::project(command) {
+                Ok(generations) => {
+                    for generation in generations {
+                        match generation.written.as_slice() {
+                            [] => println!("{}: {} schema(s), generated code unchanged", generation.module, generation.schemas),
+                            written => println!(
+                                "{}: {} schema(s), wrote {}",
+                                generation.module, generation.schemas,
+                                written.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join(", ")
+                            ),
+                        }
+                    }
+                }
                 Err(err) => {
                     eprintln!("Error: {err}");
                     std::process::exit(1)
