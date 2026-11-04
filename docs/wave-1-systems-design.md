@@ -1,6 +1,6 @@
 # Wave 1 — Systems: a generic GameAPI
 
-Status 2026-11-02: **adopted, steps 1–3 done** (registry + dispatcher, events, `ObjectId` + component access; the schema generator is next; see *Steps*). Proposed 2026-11-01. Builds on `wave-1-rust-gameplay-design.md` (state in C++, a stateless Rust `cdylib`, `ObjectId`/`Handle`). Statements about Bevy come from memory; re-check them before depending on the details.
+Status 2026-11-04: **done** — every step, including parameters from types; what was built, and where it differs from this design: `wave-1-rust-interop.md`. Status 2026-11-02: **adopted, steps 1–3 done** (registry + dispatcher, events, `ObjectId` + component access; the schema generator is next; see *Steps*). Proposed 2026-11-01. Builds on `wave-1-rust-gameplay-design.md` (state in C++, a stateless Rust `cdylib`, `ObjectId`/`Handle`). Statements about Bevy come from memory; re-check them before depending on the details.
 
 ## The problem
 

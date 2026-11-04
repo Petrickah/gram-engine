@@ -1,6 +1,6 @@
 # Wave 1 — Rust gameplay layer over a C++ engine (design)
 
-Status as of 2026-10-31: **adopted, Task 1.3 done** (loader, automatic reload, panics caught at the boundary) (see *Implemented so far*). Originally: Proposed 2026-10-21, adopted 2026-10-28 together with schema-driven components (see *Schema-driven components*) and a narrower Wave 1 proof of concept: one component with a text field, edited in ImGui, no sphere on screen. `CLAUDE.md` and Tasks 1.3/1.4 in `.gram.kanban.md` have been updated to match. Statements about third-party engines and platform behavior come from memory; re-check them before depending on them.
+Status 2026-11-04: **implemented**, with `ObjectID` + `Query`/`BorrowGuard` in place of `Handle`/`Reference`/`ObjectManager`; the as-built description is `wave-1-rust-interop.md`. Status as of 2026-10-31: **adopted, Task 1.3 done** (loader, automatic reload, panics caught at the boundary) (see *Implemented so far*). Originally: Proposed 2026-10-21, adopted 2026-10-28 together with schema-driven components (see *Schema-driven components*) and a narrower Wave 1 proof of concept: one component with a text field, edited in ImGui, no sphere on screen. `CLAUDE.md` and Tasks 1.3/1.4 in `.gram.kanban.md` have been updated to match. Statements about third-party engines and platform behavior come from memory; re-check them before depending on them.
 
 ## The idea in one line
 
