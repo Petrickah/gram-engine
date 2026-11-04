@@ -1,6 +1,7 @@
 use std::ffi::{c_double, c_float};
 
-use crate::{borrow::BorrowGuard, component::Component, host, types::Str, world::ObjectID};
+use crate::interop::host::host;
+use crate::scripting::{types::Str, borrow::BorrowGuard, component::Component, world::ObjectID};
 
 #[repr(u32)]
 #[derive(Clone, Copy)]
@@ -22,6 +23,7 @@ pub struct Descriptor {
 const _: () = assert!(std::mem::size_of::<Descriptor>() == 136);
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct Context {
     delta_time: c_float,
     time: c_double,
@@ -29,6 +31,12 @@ pub struct Context {
 }
 
 impl Context {
+    /// Only C++ fills a real one; this is for tests.
+    #[cfg(test)]
+    pub(crate) fn new(delta_time: f32, time: f64, event_target: ObjectID) -> Self {
+        Context { delta_time, time, event_target }
+    }
+
     pub fn delta_time(&self) -> f32 {
         self.delta_time
     }
@@ -46,8 +54,7 @@ impl Context {
     /// system runs.
     #[track_caller]
     pub fn with<T: Component, R>(&self, entity: ObjectID, f: impl FnOnce(&T) -> R) -> Option<R> {
-        let host = crate::host()?;
-        let ptr = (host.get_component)(host.host, entity, T::ID) as *const T;
+        let ptr = super::query::component_ptr::<T>(entity)?;
         // Before the reference exists: a conflict must panic before there are two of them.
         let _borrow = BorrowGuard::acquire(entity, T::ID, false);
         let component = unsafe { ptr.as_ref() }?;
@@ -58,8 +65,7 @@ impl Context {
     /// component: that would be two `&mut` to the same memory.
     #[track_caller]
     pub fn with_mut<T: Component, R>(&self, entity: ObjectID, f: impl FnOnce(&mut T) -> R) -> Option<R> {
-        let host = crate::host()?;
-        let ptr = (host.get_component)(host.host, entity, T::ID) as *mut T;
+        let ptr = super::query::component_ptr::<T>(entity)? as *mut T;
         // Before the reference exists: a conflict must panic before there are two of them.
         let _borrow = BorrowGuard::acquire(entity, T::ID, true);
         let component = unsafe { ptr.as_mut() }?;

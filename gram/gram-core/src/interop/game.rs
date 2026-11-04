@@ -1,4 +1,4 @@
-use crate::{HostAPI, system};
+use crate::{interop::host::HostAPI, scripting::system};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -31,45 +31,45 @@ macro_rules! export_game {
             #[allow(unused_imports)]
             use super::*;   // the systems named in the macro call, as seen from lib.rs
 
-            const SYSTEMS: &[$crate::system::Entry] = &[
-                $( $crate::system::Entry {
-                    stage: $crate::system::Stage::Update,
+            const SYSTEMS: &[$crate::scripting::system::Entry] = &[
+                $( $crate::scripting::system::Entry {
+                    stage: $crate::scripting::system::Stage::Update,
                     name: stringify!($sys),
                     event: "",
-                    run: $sys,
+                    run: |ctx| $crate::scripting::system::IntoSystem::run(&$sys, ctx),
                 }, )*
                 // events: optional ($( )?), one entry per event ($( ),*), one per handler ($( ),*):
                 // three levels, so $handler is expanded three levels deep and $event two.
-                $( $( $( $crate::system::Entry {
-                    stage: $crate::system::Stage::Event,
+                $( $( $( $crate::scripting::system::Entry {
+                    stage: $crate::scripting::system::Stage::Event,
                     name: stringify!($handler),
                     event: $event,
-                    run: $handler,
+                    run: |ctx| $crate::scripting::system::IntoSystem::run(&$handler, ctx),
                 }, )* )* )?
             ];
 
-            static GAME: $crate::game::GameAPI = $crate::game::GameAPI {
-                version: $crate::game::GAME_API_VERSION,
+            static GAME: $crate::interop::game::GameAPI = $crate::interop::game::GameAPI {
+                version: $crate::interop::game::GAME_API_VERSION,
                 on_load,
                 on_unload,
                 run_system,
             };
 
-            extern "C" fn on_load(host: *const $crate::HostAPI) -> *const $crate::game::GameAPI {
-                if !$crate::init(host) { return ::core::ptr::null() }
+            extern "C" fn on_load(host: *const $crate::interop::host::HostAPI) -> *const $crate::interop::game::GameAPI {
+                if !$crate::interop::host::init(host) { return ::core::ptr::null() }
 
-                $crate::guard(|| {
-                    $crate::system::register(SYSTEMS);
-                    &GAME as *const $crate::game::GameAPI
+                $crate::interop::host::guard(|| {
+                    $crate::scripting::system::register(SYSTEMS);
+                    &GAME as *const $crate::interop::game::GameAPI
                 }).unwrap_or(::core::ptr::null())
             }
 
             extern "C" fn on_unload() {
-                $crate::guard(|| {});
+                $crate::interop::host::guard(|| {});
             }
 
-            extern "C" fn run_system(index: u32, ctx: *mut $crate::system::Context) {
-                $crate::guard(|| {
+            extern "C" fn run_system(index: u32, ctx: *mut $crate::scripting::system::Context) {
+                $crate::interop::host::guard(|| {
                     let Some(entry) = SYSTEMS.get(index as usize) else { return };
                     let Some(ctx) = (unsafe { ctx.as_ref() }) else { return };
                     (entry.run)(ctx);
@@ -77,8 +77,8 @@ macro_rules! export_game {
             }
 
             #[unsafe(no_mangle)]
-            pub extern "C" fn game_get_api() -> *const $crate::game::GameAPI {
-                &GAME as *const $crate::game::GameAPI
+            pub extern "C" fn game_get_api() -> *const $crate::interop::game::GameAPI {
+                &GAME as *const $crate::interop::game::GameAPI
             }
         }
     };

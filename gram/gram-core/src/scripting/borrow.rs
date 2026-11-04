@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
-use crate::component::ComponentID;
-use crate::world::ObjectID;
+use crate::scripting::component::ComponentID;
+use crate::scripting::world::ObjectID;
 
 struct Borrow { entity: ObjectID, component: ComponentID, mutable: bool }
 

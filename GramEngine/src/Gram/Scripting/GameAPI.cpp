@@ -92,7 +92,8 @@ bool GameAPILoader::OnDrawFrame()
 
     System::Context ctx {
         .DeltaTime = std::chrono::duration<float>(now - m_LastFrame).count(),
-        .Time      = std::chrono::duration<double>(now - m_StartTime).count(),
+        .Time        = std::chrono::duration<double>(now - m_StartTime).count(),
+        .EventTarget = InvalidObjectID,   // left out, it would be {0, 0}: a live entity for the Update systems
     };
 
     m_LastFrame = now;

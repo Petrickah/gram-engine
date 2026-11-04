@@ -1,4 +1,5 @@
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct Str<const N: usize>([u8; N]);
 
 impl<const N: usize> Str<N> {
