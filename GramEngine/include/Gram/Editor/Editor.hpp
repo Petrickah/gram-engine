@@ -8,6 +8,7 @@ GRAM_NAMESPACE_BEGIN
 class World;
 class GameAPILoader;
 class InspectorPanel;
+class LoggerPanel;
 class OutlinerPanel;
 class SystemsPanel;
 
@@ -50,6 +51,7 @@ private:
     std::shared_ptr<EditorMenuBar>     m_MenuBar;
     std::shared_ptr<OutlinerPanel>     m_Outliner;
     std::shared_ptr<InspectorPanel>    m_Inspector;
+    std::shared_ptr<LoggerPanel>       m_Logger;
     std::shared_ptr<SystemsPanel>      m_Systems;
 };
 

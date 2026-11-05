@@ -78,6 +78,7 @@ add_library(GramEngine STATIC
     src/Gram/Application/GLFWApplication.cpp
     src/Gram/Editor/Editor.cpp
     src/Gram/Editor/InspectorPanel.cpp
+    src/Gram/Editor/LoggerPanel.cpp
     src/Gram/Editor/OutlinerPanel.cpp
     src/Gram/Editor/SystemsPanel.cpp
     src/Gram/Logging/GramLogger.cpp

@@ -4,6 +4,10 @@
 
 GRAM_NAMESPACE_BEGIN
 
+// The name of the system Run is running, so HostAPI::Log (which gets no host pointer) can log
+// through that system's logger. nullptr between systems. Only the main thread runs systems.
+static const char* s_RunningSystem = nullptr;
+
 GameAPILoader::~GameAPILoader()
 {
     if (m_Game)
@@ -30,24 +34,23 @@ GameAPILoader::GameAPILoader(World& world, const std::filesystem::path& workspac
         .Host = this,
         .Log  = [](Gram::LogLevel level, const char* message)
         {
+#ifdef GRAM_LOGGER_ENABLED
+            // Inside a system, its own logger ("System.tick"); outside (on_load, the panic hook
+            // before any system ran), the editor's.
+            spdlog::logger* logger = s_RunningSystem ? GetSystemLogger(s_RunningSystem) : GetEditorLogger();
+            if (!logger) return;
+
             switch (level)
             {
-            case Gram::LogLevel::Info:
-                GramInfo(message);
-                break;
-            case Gram::LogLevel::Trace:
-                GramTrace(message);
-                break;
-            case Gram::LogLevel::Warning:
-                GramWarning(message);
-                break;
-            case Gram::LogLevel::Error:
-                GramError(message);
-                break;
-            default:
-                GramError("Unknown logging level for: {}", message);
-                break;
+            case Gram::LogLevel::Trace:   logger->log(spdlog::level::trace, message); break;
+            case Gram::LogLevel::Info:    logger->log(spdlog::level::info,  message); break;
+            case Gram::LogLevel::Warning: logger->log(spdlog::level::warn,  message); break;
+            case Gram::LogLevel::Error:   logger->log(spdlog::level::err,   message); break;
+            default:                      logger->error("Unknown logging level for: {}", message); break;
             }
+#else
+            (void)level; (void)message;
+#endif // #ifdef GRAM_LOGGER_ENABLED
         },
         .RegisterSystem = [](void* host, const System::Descriptor* desc)
         {
@@ -135,7 +138,9 @@ void GameAPILoader::Run(RegisteredSystem& system, System::Context& ctx)
     if (!system.Enabled) return;
 
     const auto start = std::chrono::steady_clock::now();
+    s_RunningSystem = system.Descriptor.Name;
     m_Game->RunSystem(system.Descriptor.Index, &ctx);
+    s_RunningSystem = nullptr;
     system.LastRunMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start).count();
 }
 

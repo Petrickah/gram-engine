@@ -1,6 +1,7 @@
 #include "Gram/Scripting/Common.hpp"
 #include "Gram/Editor/Editor.hpp"
 #include "Gram/Editor/InspectorPanel.hpp"
+#include "Gram/Editor/LoggerPanel.hpp"
 #include "Gram/Editor/OutlinerPanel.hpp"
 #include "Gram/Editor/SystemsPanel.hpp"
 
@@ -33,8 +34,11 @@ Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoade
     // The inspector first: the outliner selects into it.
     m_Inspector = AddPanel<InspectorPanel>(world);
     GramCheckVoid(m_Inspector, "couldn't create the Inspector");
-    m_Outliner = AddPanel<OutlinerPanel>(world, *m_Inspector);
-    m_Systems  = AddPanel<SystemsPanel>(loader);
+    m_Outliner  = AddPanel<OutlinerPanel>(world, *m_Inspector);
+    m_Systems   = AddPanel<SystemsPanel>(loader);
+#ifdef GRAM_LOGGER_ENABLED
+    m_Logger    = AddPanel<LoggerPanel>();
+#endif // #ifdef GRAM_LOGGER_ENABLED
 }
 
 GRAM_NAMESPACE_END

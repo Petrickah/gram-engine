@@ -36,8 +36,22 @@ void LoggerEntryPoint(bool loggingEnabled = false);
 
 // nullptr until LoggerEntryPoint has run.
 spdlog::logger* GetGramLogger();
+spdlog::logger* GetEditorLogger();
 spdlog::logger* GetVulkanLogger();
 spdlog::logger* GetVulkanListLogger();
+
+// The logger of one game system, "System.<name>", created on first use (nullptr before
+// LoggerEntryPoint). The loader sends what a system logs through it, so the console shows who
+// logged and the Log panel can group a system's consecutive messages.
+inline constexpr std::string_view SystemLoggerPrefix = "System.";
+spdlog::logger* GetSystemLogger(std::string_view system);
+
+// The last messages of every logger, for the editor's Log panel (empty before LoggerEntryPoint).
+std::vector<spdlog::details::log_msg_buffer> GetEditorMessages();
+
+// A list logger's name ends with this ("Vulkan.List"): the Log panel nests its items under the
+// message before them. The console never shows the name, so it doesn't change what's printed.
+inline constexpr std::string_view ListLoggerSuffix = ".List";
 
 GRAM_NAMESPACE_END
 
@@ -53,6 +67,11 @@ GRAM_NAMESPACE_END
 #define GramInfo(...)          GramLog_(GetGramLogger, info,  __VA_ARGS__)
 #define GramWarning(...)       GramLog_(GetGramLogger, warn,  __VA_ARGS__)
 #define GramError(...)         GramLog_(GetGramLogger, error, __VA_ARGS__)
+
+#define EditorTrace(...)       GramLog_(GetEditorLogger, trace, __VA_ARGS__)
+#define EditorInfo(...)        GramLog_(GetEditorLogger, info,  __VA_ARGS__)
+#define EditorWarning(...)     GramLog_(GetEditorLogger, warn,  __VA_ARGS__)
+#define EditorError(...)       GramLog_(GetEditorLogger, error, __VA_ARGS__)
 
 #define GramVulkanTrace(...)   GramLog_(GetVulkanLogger, trace, __VA_ARGS__)
 #define GramVulkanInfo(...)    GramLog_(GetVulkanLogger, info,  __VA_ARGS__)
