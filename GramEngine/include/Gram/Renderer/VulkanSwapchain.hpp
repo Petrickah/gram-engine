@@ -35,12 +35,12 @@ public:
 
     uint32_t GetImageCount() const { return static_cast<uint32_t>(m_SwapchainImages.size()); }
 
-    const vk::Extent2D& GetExtent2D() const { return m_Extent2D; }
-    const vk::SwapchainKHR& GetSwapchain() const { return m_Swapchain; }
-    const vk::PresentModeKHR& GetPresentMode() const  { return m_PresentMode; }
-    const vk::SurfaceFormatKHR& GetSurfaceFormat() const { return m_SurfaceFormat; }
-    const std::vector<vk::Image>& GetSwapchainImages() const { return m_SwapchainImages; }
-    const std::vector<vk::ImageView>& GetSwapchainImageViews() const { return m_SwapchainImageViews; }
+    const vk::Extent2D&         GetExtent2D()                               const { return m_Extent2D; }
+    const vk::SwapchainKHR&     GetSwapchain()                              const { return m_Swapchain; }
+    const vk::PresentModeKHR&   GetPresentMode()                            const { return m_PresentMode; }
+    const vk::SurfaceFormatKHR& GetSurfaceFormat()                          const { return m_SurfaceFormat; }
+    const vk::Image&            GetSwapchainImage(uint32_t imageIndex)      const { return m_SwapchainImages[imageIndex]; }
+    const vk::ImageView&        GetSwapchainImageView(uint32_t imageIndex)  const { return m_SwapchainImageViews[imageIndex]; }
     
 private:
     bool Build(bool showDebug);

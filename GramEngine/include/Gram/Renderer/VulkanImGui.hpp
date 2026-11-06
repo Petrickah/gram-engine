@@ -1,12 +1,15 @@
 #pragma once
 
+#include "Gram/Renderer/VulkanPass.hpp"
+
 GRAM_NAMESPACE_BEGIN
+
 struct ImGuiApplicationLayer;
 struct QueueFamilyIndices;
 struct VulkanRendererSpecification;
 
 #if defined(GRAM_VULKAN_RENDERER) && defined(GRAM_IMGUI_ENABLED)
-class VulkanImGui : public LayerOwner<ImGuiApplicationLayer>
+class VulkanImGui : public VulkanPass, public LayerOwner<ImGuiApplicationLayer>
 {
 public:
     VulkanImGui(
@@ -19,7 +22,8 @@ public:
         uint32_t                           imageCount
     );
 
-    void RenderFrame(const vk::CommandBuffer& commandBuffer);
+    bool Record(vk::CommandBuffer cmd, VulkanPass::Context ctx) override;
+    bool OnPresented() override;
     bool Finish() override;
 
 private:

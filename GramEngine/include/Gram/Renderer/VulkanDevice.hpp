@@ -6,13 +6,18 @@ GRAM_NAMESPACE_BEGIN
 class VulkanFrame;
 struct VulkanRendererSpecification;
 
+// One family does graphics and compute (the spec guarantees one exists on any device with
+// graphics), so compute work shares the graphics queue; present may be a separate family.
 struct QueueFamilyIndices
 {
-    std::map<std::string, std::optional<uint32_t>> m_QueueFamiliesIndices;
+    std::optional<uint32_t> m_GraphicsComputeFamily;
+    std::optional<uint32_t> m_PresentFamily;
 
-    bool TryGetDeviceIndices(std::vector<uint32_t>& indices) const;
-    bool TryGetDeviceQueue(vk::Queue& deviceQueue, const vk::Device& device, const std::string& queueFamily);
-    bool IsComplete();
+    bool IsComplete() const { return m_GraphicsComputeFamily.has_value() && m_PresentFamily.has_value(); }
+    bool IsShared() const   { return IsComplete() && *m_GraphicsComputeFamily == *m_PresentFamily; }
+
+    // The distinct families, for the device's queue create infos and a concurrent swapchain; empty if incomplete.
+    std::vector<uint32_t> GetUniqueFamilies() const;
 };
 
 class VulkanDevice : private UniqueObject
@@ -23,7 +28,7 @@ public:
 
 public:
     // Returns the present result as-is: eSuboptimalKHR / eErrorOutOfDateKHR mean "recreate the swapchain", not "failed".
-    vk::Result Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
+    vk::Result Submit(vk::Fence fence, const vk::Image& image, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
     bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec);
 
     QueueFamilyIndices& GetQueueFamilyIndices() { return m_QueueFamilyIndices; }

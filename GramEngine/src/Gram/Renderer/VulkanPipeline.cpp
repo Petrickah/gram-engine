@@ -7,14 +7,37 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
-VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D& extent, const vk::SurfaceFormatKHR& surfaceFormat)
-    : m_Device                       { device }
-    , m_Scissor                      { vk::Offset2D(0, 0), extent }
-    , m_DynamicStates                { vk::DynamicState::eViewport, vk::DynamicState::eScissor }
-    , m_Viewport                     { 0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f }
-    , m_InputAssemblyStateCreateInfo { .topology = vk::PrimitiveTopology::eTriangleList }
-    , m_VertexInputStateCreateInfo   { }
-    , m_ColorBlendAttachmentState    {
+VulkanPipeline VulkanPipeline::Graphics(
+    const vk::Device&                        device,
+    const VulkanShader&                      shader,
+    std::span<const vk::DescriptorSetLayout> setLayouts,
+    vk::Format                               colorFormat
+)
+{
+    GramCheck_(shader.IsValid(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eGraphics), "VulkanPipeline::Graphics: shader program creation failed");
+
+    std::vector<vk::DynamicState> dynamicStates
+    {
+        vk::DynamicState::eViewport,
+        vk::DynamicState::eScissor
+    };
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo
+    {
+        .setLayoutCount          = static_cast<uint32_t>(setLayouts.size()),
+        .pSetLayouts             = setLayouts.data()
+    };
+    vk::PipelineDynamicStateCreateInfo dynamicStateCreateInfo
+    {
+        .dynamicStateCount       = static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates          = dynamicStates.data()
+    };
+    vk::PipelineViewportStateCreateInfo viewportStateCreateInfo
+    {
+        .viewportCount           = 1,
+        .scissorCount            = 1,
+    };
+    vk::PipelineColorBlendAttachmentState colorBlendAttachmentState
+    {
         .blendEnable             = vk::True,
         .srcColorBlendFactor     = vk::BlendFactor::eSrcAlpha,
         .dstColorBlendFactor     = vk::BlendFactor::eOneMinusSrcAlpha,
@@ -23,24 +46,26 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
         .dstAlphaBlendFactor     = vk::BlendFactor::eZero,
         .alphaBlendOp            = vk::BlendOp::eAdd,
         .colorWriteMask          = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
-    }
-    , m_ColorBlendStateCreateInfo    {
+    };
+    vk::PipelineColorBlendStateCreateInfo colorBlendStateCreateInfo
+    {
         .logicOpEnable           = vk::False,
         .logicOp                 = vk::LogicOp::eCopy,
         .attachmentCount         = 1,
-        .pAttachments            = &m_ColorBlendAttachmentState
-    }
-    , m_DynamicStateCreateInfo       {
-        .dynamicStateCount       = static_cast<uint32_t>(m_DynamicStates.size()),
-        .pDynamicStates          = m_DynamicStates.data()
-    }
-    , m_ViewportStateCreateInfo      {
-        .viewportCount           = 1,
-        .pViewports              = &m_Viewport,
-        .scissorCount            = 1,
-        .pScissors               = &m_Scissor
-    }
-    , m_RasterizationStateCreateInfo {
+        .pAttachments            = &colorBlendAttachmentState
+    };
+    vk::PipelineMultisampleStateCreateInfo multisampleStateCreateInfo
+    {
+        .rasterizationSamples    = vk::SampleCountFlagBits::e1,
+        .sampleShadingEnable     = vk::False
+    };
+    vk::PipelineVertexInputStateCreateInfo vertexInputStateCreateInfo { };
+    vk::PipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo
+    {
+        .topology                = vk::PrimitiveTopology::eTriangleList
+    };
+    vk::PipelineRasterizationStateCreateInfo rasterizationStateCreateInfo
+    {
         .depthClampEnable        = vk::False,
         .rasterizerDiscardEnable = vk::False,
         .polygonMode             = vk::PolygonMode::eFill,
@@ -48,78 +73,71 @@ VulkanPipeline::VulkanPipeline(const VulkanRendererSpecification *rendererSpec, 
         .frontFace               = vk::FrontFace::eClockwise,
         .depthBiasEnable         = vk::False,
         .lineWidth               = 1.0f
-    }
-    , m_MultisampleStateCreateInfo   {
-        .rasterizationSamples    = vk::SampleCountFlagBits::e1,
-        .sampleShadingEnable     = vk::False
-    }
-{
-    if (!rendererSpec || !device) return;
-
-    GramCheckVoid(TryLoadShaderProgram(rendererSpec, device), "VulkanPipeline::VulkanPipeline: shader program creation failed");
-
-    vk::PipelineLayoutCreateInfo pipelineLayoutInfo
-    {
-        .setLayoutCount         = 0,
-        .pushConstantRangeCount = 0
     };
 
-    GramVulkanCheckVoid(device.createPipelineLayout(&pipelineLayoutInfo, nullptr, &m_PipelineLayout), "pipeline layout creation failed");
+    auto layout = device.createPipelineLayoutUnique(pipelineLayoutInfo);
+    GramCheck_(layout.result == vk::Result::eSuccess && layout.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eGraphics), "pipeline layout creation failed: {}", vk::to_string(layout.result));
 
-    vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain =
+    vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain 
     {
-        {
-            .stageCount          = static_cast<uint32_t>(m_ShaderStageCreateInfos.size()),
-            .pStages             = m_ShaderStageCreateInfos.data(),
-            .pVertexInputState   = &m_VertexInputStateCreateInfo,
-            .pInputAssemblyState = &m_InputAssemblyStateCreateInfo,
-            .pViewportState      = &m_ViewportStateCreateInfo,
-            .pRasterizationState = &m_RasterizationStateCreateInfo,
-            .pMultisampleState   = &m_MultisampleStateCreateInfo,
-            .pColorBlendState    = &m_ColorBlendStateCreateInfo,
-            .pDynamicState       = &m_DynamicStateCreateInfo,
-            .layout              = m_PipelineLayout,
+        vk::GraphicsPipelineCreateInfo {
+            .stageCount          = static_cast<uint32_t>(shader.size()),
+            .pStages             = shader.data(),
+            .pVertexInputState   = &vertexInputStateCreateInfo,
+            .pInputAssemblyState = &inputAssemblyStateCreateInfo,
+            .pViewportState      = &viewportStateCreateInfo,
+            .pRasterizationState = &rasterizationStateCreateInfo,
+            .pMultisampleState   = &multisampleStateCreateInfo,
+            .pColorBlendState    = &colorBlendStateCreateInfo,
+            .pDynamicState       = &dynamicStateCreateInfo,
+            .layout              = *layout.value,
             .renderPass          = nullptr
         },
-        {
+        vk::PipelineRenderingCreateInfo {
             .colorAttachmentCount = 1,
-            .pColorAttachmentFormats = &surfaceFormat.format
+            .pColorAttachmentFormats = &colorFormat
         }
     };
 
-    const vk::Result result = m_Device.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>(), nullptr, &m_Pipeline);
-    m_Shaders.clear();
-    m_ShaderStageCreateInfos.clear(); // their module handles are gone with m_Shaders
-    GramVulkanCheckVoid(result, "pipeline creation failed");
+    auto pipeline = device.createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
+    GramCheck_(pipeline.result == vk::Result::eSuccess && pipeline.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eGraphics), "pipeline creation failed: {}", vk::to_string(pipeline.result));
+
+    return VulkanPipeline(std::move(layout.value), std::move(pipeline.value), vk::PipelineBindPoint::eGraphics);
 }
 
-bool VulkanPipeline::TryLoadShaderProgram(const Gram::VulkanRendererSpecification *rendererSpec, const vk::Device &device)
+VulkanPipeline VulkanPipeline::Compute(
+    const vk::Device&                        device,
+    const VulkanShader&                      shader,
+    std::span<const vk::DescriptorSetLayout> setLayouts
+)
 {
-    // Kept in m_Shaders until createGraphicsPipelines (see the constructor). The handles are
-    // read right away, so a later emplace_back moving the vector's elements doesn't matter.
-    const VkShaderModule vertModule = m_Shaders.emplace_back(rendererSpec, std::format("shaders/{}.vert.spv", rendererSpec->m_ShaderProgram), device).GetShaderModule();
-    const VkShaderModule fragModule = m_Shaders.emplace_back(rendererSpec, std::format("shaders/{}.frag.spv", rendererSpec->m_ShaderProgram), device).GetShaderModule();
-    GramCheck(vertModule && fragModule, "VulkanPipeline::TryLoadShaderProgram: shader program creation failed");
+    GramCheck_(shader.IsValid() && shader.size() == 1, return VulkanPipeline({}, {}, vk::PipelineBindPoint::eCompute), "shader loading failed");
 
-    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo{
-        .stage = vk::ShaderStageFlagBits::eVertex,
-        .module = vertModule,
-        .pName = "VSMain"
-    });
-    m_ShaderStageCreateInfos.emplace_back(vk::PipelineShaderStageCreateInfo{
-        .stage = vk::ShaderStageFlagBits::eFragment,
-        .module = fragModule,
-        .pName = "PSMain"
-    });
-    
-    return true;
+    vk::PipelineLayoutCreateInfo pipelineLayoutInfo
+    {
+        .setLayoutCount          = static_cast<uint32_t>(setLayouts.size()),
+        .pSetLayouts             = setLayouts.data()
+    };
+
+    auto layout = device.createPipelineLayoutUnique(pipelineLayoutInfo);
+    GramCheck_(layout.result == vk::Result::eSuccess && layout.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eCompute), "pipeline layout creation failed: {}", vk::to_string(layout.result));
+
+    vk::ComputePipelineCreateInfo pipelineInfo {
+        .stage  = shader.data()[0],
+        .layout = *layout.value
+    };
+
+    auto pipeline = device.createComputePipelineUnique(VK_NULL_HANDLE, pipelineInfo);
+    GramCheck_(pipeline.result == vk::Result::eSuccess && pipeline.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eCompute), "pipeline creation failed: {}", vk::to_string(pipeline.result));
+
+    return VulkanPipeline(std::move(layout.value), std::move(pipeline.value), vk::PipelineBindPoint::eCompute);
 }
 
-VulkanPipeline::~VulkanPipeline()
-{
-    if (m_Pipeline) m_Device.destroyPipeline(m_Pipeline);
-    if (m_PipelineLayout) m_Device.destroyPipelineLayout(m_PipelineLayout);
-}
+VulkanPipeline::VulkanPipeline(vk::UniquePipelineLayout layout, vk::UniquePipeline pipeline, vk::PipelineBindPoint bindPoint)
+    : m_BindPoint(bindPoint)
+    , m_Layout(std::move(layout))
+    , m_Pipeline(std::move(pipeline))
+{ }
 
 GRAM_NAMESPACE_END
 #endif // #ifdef GRAM_VULKAN_RENDERER

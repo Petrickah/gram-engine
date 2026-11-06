@@ -12,7 +12,6 @@ struct GLFWApplicationSpecification
     bool                  m_EnableLogging = false;
     glm::vec2             m_WindowSize    = glm::vec2(800, 600);
     std::string           m_WindowTitle   = "Gram";
-    std::string           m_ShaderProgram = "Default";
     std::filesystem::path m_Workspace     = "";
     
 #ifdef GRAM_VULKAN_RENDERER

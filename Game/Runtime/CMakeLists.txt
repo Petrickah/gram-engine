@@ -14,11 +14,13 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine ${CMAKE_CURRENT_BI
 # gram:dep:GramEngine end
 # --- end gram dependencies ---
 
-add_executable(Runtime src/main.cpp)
+add_executable(Runtime src/main.cpp src/TrianglePass.cpp)
 # Content/ holds the game's generated component header (Components.generated.hpp).
 target_include_directories(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Content)
 target_precompile_headers(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine/include/Gram/Application/Common.hpp)
-gram_add_hlsl_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Default.hlsl)
+
+gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Default.hlsl)
+gram_add_hlsl_compute_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/RayTracer.hlsl)
 
 # gram:link:GramEngine begin
 target_link_libraries(Runtime PRIVATE GramEngine)

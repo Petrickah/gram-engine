@@ -56,11 +56,11 @@ VulkanImGui::VulkanImGui(
                                |  ImGuiConfigFlags_ViewportsEnable
                                ;
     
-    vk::Queue graphicsQueue;
-    if (!queueFamilyIndices.IsComplete() || !queueFamilyIndices.TryGetDeviceQueue(graphicsQueue, device, "m_GraphicsFamily"))
+    if (!queueFamilyIndices.IsComplete())
     {
         return;
     }
+    const vk::Queue graphicsQueue = device.getQueue(*queueFamilyIndices.m_GraphicsComputeFamily, 0);
     
     //this initializes imgui for Vulkan
     const VkFormat vkSwapChainFormat = static_cast<VkFormat>(swapChainFormat.format);
@@ -68,7 +68,7 @@ VulkanImGui::VulkanImGui(
         .Instance            = static_cast<VkInstance>(instance),
         .PhysicalDevice      = static_cast<VkPhysicalDevice>(physicalDevice),
         .Device              = static_cast<VkDevice>(device),
-        .QueueFamily         = queueFamilyIndices.m_QueueFamiliesIndices["m_GraphicsFamily"].value(),
+        .QueueFamily         = *queueFamilyIndices.m_GraphicsComputeFamily,
         .Queue               = static_cast<VkQueue>(graphicsQueue),
         .DescriptorPool      = static_cast<VkDescriptorPool>(*m_ImGuiPool),
         .MinImageCount       = imageCount,
@@ -111,8 +111,10 @@ VulkanImGui::VulkanImGui(
     }
 }
 
-void VulkanImGui::RenderFrame(const vk::CommandBuffer &commandBuffer)
+bool VulkanImGui::Record(vk::CommandBuffer cmd, VulkanPass::Context ctx)
 {
+    // Loads what the passes before this one rendered (or clears, if none did): ImGui draws on top.
+    BeginSwapchainRendering(ctx);
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
 
@@ -121,7 +123,10 @@ void VulkanImGui::RenderFrame(const vk::CommandBuffer &commandBuffer)
     DrawFrame();
     ImGui::Render();
     
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), static_cast<VkCommandBuffer>(commandBuffer));
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), static_cast<VkCommandBuffer>(cmd));
+    cmd.endRendering();
+
+    return true;
 }
 
 bool VulkanImGui::Finish()
@@ -136,6 +141,13 @@ bool VulkanImGui::Finish()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
+    return true;
+}
+
+bool VulkanImGui::OnPresented()
+{
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
     return true;
 }
 

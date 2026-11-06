@@ -5,7 +5,7 @@
 #include "Gram/Renderer/VulkanFrame.hpp"
 #include "Gram/Renderer/VulkanImGui.hpp"
 #include "Gram/Renderer/VulkanInstance.hpp"
-#include "Gram/Renderer/VulkanPipeline.hpp"
+#include "Gram/Renderer/VulkanPass.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
@@ -13,12 +13,19 @@
 GRAM_NAMESPACE_BEGIN
 
 class GLFWApplication;
-class ImGuiApplicationLayer;
+
+struct ImGuiApplicationLayer;
 
 class VulkanRenderer: public Renderer, public Layer<GLFWApplication>
 {
 public:
     VulkanRenderer(const VulkanRendererSpecification* rendererSpec);
+
+    template<std::derived_from<VulkanPass> T, typename... Args>
+    T& AddPass(Args&&... args)
+    {
+        return static_cast<T&>(*m_Passes.emplace_back(std::make_unique<T>(std::forward<Args>(args)...)));
+    }
 
 public:
     bool OnStart() override;
@@ -26,17 +33,14 @@ public:
     bool OnFinish() override;
     bool OnStop() override;
 
-    void OnResize() override { m_SwapchainStale = true; }
-    LayerOwner<ImGuiApplicationLayer>& GetImGuiApplication() { return m_VulkanImGui; }
+    void OnResize() override { m_VulkanFrame.MarkSwapchainStale(); }
+
+    // What a game needs to build its passes before handing them to AddPass.
+    VulkanDevice&          GetDevice()          { return m_VulkanDevice; }
+    const VulkanSwapchain& GetSwapchain() const { return m_VulkanSwapchain; }
+    GramImGuiOnly(LayerOwner<ImGuiApplicationLayer>& GetImGuiApplication() { return m_VulkanImGui; })
 
 private:
-    bool CreateRendererObjects();
-    bool CreateRenderFinishedSemaphores();
-    bool CreatePresentCompleteSemaphores();
-    bool CreateInFlightFences();
-    void DestroyRenderFinishedSemaphores();
-    void DestroyPresentCompleteSemaphores();
-    void DestroyInFlightFences();
     bool RecreateSwapchain();
 
 private:
@@ -45,17 +49,11 @@ private:
     VulkanSurface m_VulkanSurface;
     VulkanDevice m_VulkanDevice;
     VulkanSwapchain m_VulkanSwapchain;
-    VulkanPipeline m_VulkanPipeline;
     VulkanFrame m_VulkanFrame;
-    VulkanImGui m_VulkanImGui;
+    GramImGuiOnly(VulkanImGui m_VulkanImGui);
 
 private:
-    std::vector<vk::Fence> m_InFlightDrawFences;
-    std::vector<vk::Semaphore> m_PresentCompleteSemaphores;
-    std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
-    bool m_HasFrameStarted = false;
-    bool m_SwapchainStale  = false;
-    uint32_t m_FrameIndex  = 0;
+    std::vector<std::unique_ptr<VulkanPass>> m_Passes;
 };
 
 GRAM_NAMESPACE_END

@@ -1,45 +1,38 @@
 #pragma once
 
+#include "Gram/Renderer/VulkanShader.hpp"
+
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
-class VulkanShader;
-struct VulkanRendererSpecification;
-
-class VulkanPipeline : private UniqueObject
+class VulkanPipeline : private MoveObject
 {
 public:
-    VulkanPipeline(const VulkanRendererSpecification *rendererSpec, const vk::Device &device, const vk::Extent2D &extent, const vk::SurfaceFormatKHR &surfaceFormat);
-    ~VulkanPipeline();
-    
-public:
-    VkPipeline GetPipeline() const { return static_cast<VkPipeline>(m_Pipeline); }
+    static VulkanPipeline Graphics(
+        const vk::Device&                        device,
+        const VulkanShader&                      shader,
+        std::span<const vk::DescriptorSetLayout> setLayouts,
+        vk::Format                               colorFormat
+    );
+
+    static VulkanPipeline Compute(
+        const vk::Device&                        device,
+        const VulkanShader&                      shader,
+        std::span<const vk::DescriptorSetLayout> setLayouts
+    );
+    // static VulkanPipeline Compute(const vk::Device& device, const VulkanShader& shader,
+    //                               std::span<const vk::DescriptorSetLayout> setLayouts);
+
+    void Bind(vk::CommandBuffer cmd) const { cmd.bindPipeline(m_BindPoint, *m_Pipeline); }
+    void BindDescriptorSets(vk::CommandBuffer cmd, std::span<const vk::DescriptorSet> sets) const { cmd.bindDescriptorSets(m_BindPoint, *m_Layout, 0, sets, {}); }
+    bool IsValid() const { return m_Pipeline && m_Layout; }
 
 private:
-    bool TryLoadShaderProgram(const Gram::VulkanRendererSpecification *rendererSpec, const vk::Device &device);
+    VulkanPipeline(vk::UniquePipelineLayout layout, vk::UniquePipeline pipeline, vk::PipelineBindPoint bindPoint);
 
-private:
-    vk::Device m_Device;
-    vk::Rect2D m_Scissor;
-    vk::Viewport m_Viewport;
-    
-    std::vector<vk::DynamicState> m_DynamicStates;
-    // Loaded by TryLoadShaderProgram, alive only until createGraphicsPipelines: the pipeline
-    // keeps its own copy of the code, so the modules are released right after.
-    std::vector<VulkanShader> m_Shaders;
-
-    vk::Pipeline m_Pipeline = VK_NULL_HANDLE;
-    vk::PipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
-
-    vk::PipelineDynamicStateCreateInfo m_DynamicStateCreateInfo;
-    vk::PipelineViewportStateCreateInfo m_ViewportStateCreateInfo;
-    vk::PipelineColorBlendAttachmentState m_ColorBlendAttachmentState;
-    vk::PipelineColorBlendStateCreateInfo m_ColorBlendStateCreateInfo;
-    vk::PipelineMultisampleStateCreateInfo m_MultisampleStateCreateInfo;
-    vk::PipelineVertexInputStateCreateInfo m_VertexInputStateCreateInfo;
-    vk::PipelineInputAssemblyStateCreateInfo m_InputAssemblyStateCreateInfo;
-    vk::PipelineRasterizationStateCreateInfo m_RasterizationStateCreateInfo;
-    std::vector<vk::PipelineShaderStageCreateInfo> m_ShaderStageCreateInfos;
+    vk::PipelineBindPoint    m_BindPoint;
+    vk::UniquePipelineLayout m_Layout;
+    vk::UniquePipeline       m_Pipeline;
 };
 
 GRAM_NAMESPACE_END

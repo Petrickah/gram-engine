@@ -26,7 +26,6 @@ struct VulkanRendererSpecification
     bool                                     m_DisplayDebug     = false;
     Gram::Application*                       m_Application      = nullptr;
     std::filesystem::path                    m_ProjectWorkspace = "";
-    std::string                              m_ShaderProgram    = "";
     std::vector<std::string>                 m_ExtensionLayers  = {};
     std::vector<std::string>                 m_DeviceExtensions = {};
     std::vector<std::string>                 m_ValidationLayers = {};
@@ -35,7 +34,6 @@ struct VulkanRendererSpecification
         : m_Application(application)
         , m_ProjectWorkspace(spec.m_Workspace)
         , m_DisplayDebug(spec.m_EnableLogging)
-        , m_ShaderProgram(spec.m_ShaderProgram)
     {
         m_ExtensionLayers  = spec.GetRequiredInstanceExtensions(this, m_RequiredExtensionsLayers.size(), m_RequiredExtensionsLayers.data(), m_DisplayDebug);
         m_DeviceExtensions = spec.GetRequiredDeviceExtensions  (this, m_RequiredDeviceExtensions.size(), m_RequiredDeviceExtensions.data(), m_DisplayDebug);

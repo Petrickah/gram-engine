@@ -9,44 +9,11 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
-bool QueueFamilyIndices::TryGetDeviceIndices(std::vector<uint32_t> &indices) const
+std::vector<uint32_t> QueueFamilyIndices::GetUniqueFamilies() const
 {
-    for (std::map<std::string, std::optional<uint32_t>>::const_iterator it = m_QueueFamiliesIndices.begin(); it != m_QueueFamiliesIndices.end(); ++it)
-    {
-        if (!it->second.has_value())
-        {
-            return false;
-        }
-
-        indices.push_back(it->second.value());
-    }
-
-    return !indices.empty();
-}
-
-bool QueueFamilyIndices::TryGetDeviceQueue(vk::Queue &deviceQueue, const vk::Device &device, const std::string &queueFamily)
-{
-    const std::map<std::string, std::optional<uint32_t>>::iterator& it = m_QueueFamiliesIndices.find(queueFamily);
-    if (it != m_QueueFamiliesIndices.end())
-    {
-        deviceQueue = device.getQueue(it->second.value(), 0);
-        return true;
-    }
-
-    return false;
-}
-
-bool QueueFamilyIndices::IsComplete()
-{
-    for (std::map<std::string, std::optional<uint32_t>>::iterator it = m_QueueFamiliesIndices.begin(); it != m_QueueFamiliesIndices.end(); ++it)
-    {
-        if (!it->second.has_value())
-        {
-            return false;
-        }
-    }
-
-    return !m_QueueFamiliesIndices.empty();
+    if (!IsComplete()) return {};
+    if (IsShared())    return { *m_GraphicsComputeFamily };
+    return { *m_GraphicsComputeFamily, *m_PresentFamily };
 }
 
 bool VulkanRendererSpecification::AreDeviceExtensionsSupported(const std::vector<std::string> &extensions, bool displayDebug) const
@@ -92,29 +59,18 @@ VulkanDevice::~VulkanDevice()
     if (m_VkDevice) m_VkDevice.destroy();
 }
 
-vk::Result VulkanDevice::Submit(vk::Fence drawFence, uint32_t imageIndex, const std::vector<vk::Image>& images, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
+vk::Result VulkanDevice::Submit(vk::Fence fence, const vk::Image& image, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
 {
-    vk::Queue  graphicsQueue;
-    vk::Queue  presentQueue;
-
-    if (!m_QueueFamilyIndices.TryGetDeviceQueue(presentQueue, m_VkDevice, "m_PresentFamily"))
+    if (!m_QueueFamilyIndices.IsComplete())
     {
-        GramVulkanError("couldn't retrieve the present family queue");
+        GramVulkanError("couldn't retrieve the device queues: queue families are incomplete");
         return vk::Result::eErrorInitializationFailed;
     }
 
-    if (!m_QueueFamilyIndices.TryGetDeviceQueue(graphicsQueue, m_VkDevice, "m_GraphicsFamily"))
-    {
-        GramVulkanError("couldn't retrieve the graphics family queue");
-        return vk::Result::eErrorInitializationFailed;
-    }
-    
-    GramVulkanCheckResult(graphicsQueue.submit(1, &submitInfo, drawFence), "graphics request failed to submit");
+    const vk::Queue graphicsQueue = m_VkDevice.getQueue(*m_QueueFamilyIndices.m_GraphicsComputeFamily, 0);
+    const vk::Queue presentQueue  = m_VkDevice.getQueue(*m_QueueFamilyIndices.m_PresentFamily, 0);
 
-#ifdef GRAM_IMGUI_ENABLED
-    ImGui::UpdatePlatformWindows();
-    ImGui::RenderPlatformWindowsDefault();
-#endif // #ifdef GRAM_IMGUI_ENABLED
+    GramVulkanCheckResult(graphicsQueue.submit(1, &submitInfo, fence), "request failed to submit");
 
     // The C call on purpose: vk::Queue::presentKHR asserts on anything but success/suboptimal
     // under VULKAN_HPP_NO_EXCEPTIONS, and eErrorOutOfDateKHR is a normal outcome on resize
@@ -274,57 +230,47 @@ bool VulkanDevice::RatePhysicalDeviceSuitability(const VulkanRendererSpecificati
 
 bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*rendererSpec*/, const vk::PhysicalDevice &deviceInstance, QueueFamilyIndices& indices, bool showDebug)
 {
-    indices.m_QueueFamiliesIndices["m_PresentFamily"] = std::nullopt;
-    indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = std::nullopt;
+    indices = {};
+
+    // Both flags, not either: the comparison is on the masked flags, not on their truth value.
+    const vk::QueueFlags graphicsCompute = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute;
 
     uint32_t index = 0;
     for (const vk::QueueFamilyProperties& queueFamily: deviceInstance.getQueueFamilyProperties())
     {
-        if (!indices.m_QueueFamiliesIndices["m_GraphicsFamily"].has_value())
-        {
-            const bool hasGraphics = static_cast<bool>(queueFamily.queueFlags & vk::QueueFlagBits::eGraphics);
-            if (hasGraphics)
-            {
-                indices.m_QueueFamiliesIndices["m_GraphicsFamily"] = index;
-            }
+        const bool hasGraphicsCompute = (queueFamily.queueFlags & graphicsCompute) == graphicsCompute;
 
-            if (showDebug)
-            {
-                GramVulkanListItem(hasGraphics, "queue family {}: m_GraphicsFamily", index);
-            }
+        vk::Bool32 presentSupport = false;
+        vk::Result vkResult = deviceInstance.getSurfaceSupportKHR(index, m_VkSurface, &presentSupport);
+        if (vkResult != vk::Result::eSuccess)
+        {
+            GramVulkanWarning("queue family {}: present support query failed: {}", index, vk::to_string(vkResult));
+            presentSupport = false;
         }
 
-        if (!indices.m_QueueFamiliesIndices["m_PresentFamily"].has_value())
+        if (showDebug)
         {
-            vk::Bool32 presentSupport = false;
-            vk::Result vkResult = deviceInstance.getSurfaceSupportKHR(index, m_VkSurface, &presentSupport);
-    
-            if (vkResult != vk::Result::eSuccess)
-            {
-                GramVulkanWarning("queue family {}: present support query failed: {}", index, vk::to_string(vkResult));
-                presentSupport = false;
-            }
-    
-            if (presentSupport)
-            {
-                indices.m_QueueFamiliesIndices["m_PresentFamily"] = index;
-
-                if (showDebug)
-                {
-                    GramVulkanListSelected("queue family {}: m_PresentFamily", index);
-                }
-            }
+            GramVulkanListItem(hasGraphicsCompute, "queue family {}: graphics + compute", index);
+            GramVulkanListItem(presentSupport,     "queue family {}: present", index);
         }
 
-        if (indices.IsComplete())
+        // Best case, and the usual one: a single family for everything, so the swapchain
+        // stays exclusive and no work crosses families. It wins over earlier partial picks.
+        if (hasGraphicsCompute && presentSupport)
         {
+            indices.m_GraphicsComputeFamily = index;
+            indices.m_PresentFamily         = index;
             return true;
         }
+
+        if (hasGraphicsCompute && !indices.m_GraphicsComputeFamily) indices.m_GraphicsComputeFamily = index;
+        if (presentSupport     && !indices.m_PresentFamily)         indices.m_PresentFamily         = index;
 
         index++;
     }
 
-    return false;
+    // Fallback: graphics + compute and present in two different families.
+    return indices.IsComplete();
 }
 
 bool VulkanDevice::FindDeviceExtensions(const VulkanRendererSpecification* rendererSpec, const vk::PhysicalDevice &deviceInstance, std::vector<std::string> &extensions, bool showDebug)
@@ -355,11 +301,8 @@ bool VulkanDevice::CreateLogicalDevice(const VulkanRendererSpecification* render
     m_VkDevice = VK_NULL_HANDLE;
     m_QueueCreateInfos.clear();
 
-    std::set<uint32_t> uniqueFamilies;
-    for (std::map<std::string, std::optional<uint32_t>>::iterator it = m_QueueFamilyIndices.m_QueueFamiliesIndices.begin(); it != m_QueueFamilyIndices.m_QueueFamiliesIndices.end(); ++it)
-    {
-        uniqueFamilies.insert(it->second.value());
-    }
+    const std::vector<uint32_t> uniqueFamilies = m_QueueFamilyIndices.GetUniqueFamilies();
+    GramCheck(!uniqueFamilies.empty(), "queue families are incomplete");
 
     // The create infos keep a pointer to this, so it must outlive the loop.
     float queuePriority = 1.0f;

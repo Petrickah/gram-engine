@@ -7,6 +7,7 @@
 #include "Gram/Editor/InspectorPanel.hpp"
 
 #include "Components.generated.hpp"
+#include "TrianglePass.hpp"
 
 class RuntimeApplication : public Gram::GLFWApplication
 {
@@ -21,11 +22,25 @@ public:
         GramInfo("Greeting Entity: Index {}, Generation {}", m_GreetingEntity.Index, m_GreetingEntity.Generation);
         m_World->AddComponent(m_GreetingEntity, &Gram::GreetingDescriptor, &greeting);
 
+        GramVulkanOnly(RegisterPasses(spec));
+
         // After the World and the loader: the panels keep references to them.
         GramImGuiOnly(RegisterPanels());
     }
 
 private:
+#ifdef GRAM_VULKAN_RENDERER
+    // The game's render passes, drawn in the order they're added, before the editor's UI.
+    void RegisterPasses(const Gram::GLFWApplicationSpecification& spec)
+    {
+        GramCheckVoid(m_VulkanRenderer, "couldn't register the render passes: no Vulkan renderer");
+
+        Gram::VulkanDevice& device = m_VulkanRenderer->GetDevice();
+        const Gram::VulkanShader shader = Gram::VulkanShader::Graphics(spec.m_Workspace, "Default", static_cast<vk::Device>(device.GetLogicalDevice()));
+        m_VulkanRenderer->AddPass<TrianglePass>(device, m_VulkanRenderer->GetSwapchain(), shader);
+    }
+#endif // #ifdef GRAM_VULKAN_RENDERER
+
     Gram::ObjectID m_GreetingEntity = {};
     std::shared_ptr<Gram::GameAPILoader> m_GameAPI;
     std::shared_ptr<Gram::World> m_World;
@@ -68,9 +83,8 @@ std::shared_ptr<Gram::Application> Gram::CreateApplication(int argc, char** argv
     return std::make_shared<RuntimeApplication>(
         Gram::GLFWApplicationSpecification {
             .m_EnableLogging = enableLogging,
-            .m_WindowSize    = glm::vec2(1280, 720),
+            .m_WindowSize    = glm::vec2(1920, 1080),
             .m_WindowTitle   = "Gram Application with Vulkan",
-            .m_ShaderProgram = "Default",
             .m_Workspace     = Gram::GetExecutableDirectory(executableFile)
         }
     );

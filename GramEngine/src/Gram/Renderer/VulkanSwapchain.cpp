@@ -141,13 +141,11 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, Q
 
     // Images are shared between queue families only when graphics and present are different
     // families; otherwise exclusive ownership is faster and needs no index list. A concurrent
-    // swapchain requires unique indices, hence the set.
-    std::vector<uint32_t> queueFamilyIndices;
-    indices.TryGetDeviceIndices(queueFamilyIndices);
+    // swapchain requires unique indices.
+    const std::vector<uint32_t> uniqueIndices = indices.GetUniqueFamilies();
+    GramCheck(!uniqueIndices.empty(), "error reading the family indexes: queue families are incomplete");
 
-    const std::set<uint32_t> uniqueIndices(queueFamilyIndices.begin(), queueFamilyIndices.end());
     const bool concurrent = uniqueIndices.size() > 1;
-    queueFamilyIndices.assign(uniqueIndices.begin(), uniqueIndices.end());
 
     vk::SwapchainCreateInfoKHR swapchainCreateInfo {
         .surface               = m_Surface,
@@ -158,8 +156,8 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, Q
         .imageArrayLayers      = 1,
         .imageUsage            = vk::ImageUsageFlagBits::eColorAttachment,
         .imageSharingMode      = concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
-        .queueFamilyIndexCount = concurrent ? static_cast<uint32_t>(queueFamilyIndices.size()) : 0,
-        .pQueueFamilyIndices   = concurrent ? queueFamilyIndices.data() : nullptr,
+        .queueFamilyIndexCount = concurrent ? static_cast<uint32_t>(uniqueIndices.size()) : 0,
+        .pQueueFamilyIndices   = concurrent ? uniqueIndices.data() : nullptr,
         .preTransform          = m_SupportDetails.m_Capabilities.currentTransform,
         .compositeAlpha        = vk::CompositeAlphaFlagBitsKHR::eOpaque,
         .presentMode           = presentMode,
