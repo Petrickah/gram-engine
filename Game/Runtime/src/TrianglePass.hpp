@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanPass.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
@@ -26,10 +27,11 @@ public:
 
 private:
     void* m_TexturePixels = nullptr;
-    vk::DeviceSize m_TextureSize;
+    vk::DeviceSize m_TextureSize = 0;
 
     // The renderer's: its image is recreated on resize, so it's looked up every frame, never kept.
     Gram::VulkanRenderTarget& m_Target;
+    Gram::VulkanBuffer        m_VertexBuffer;
     Gram::VulkanPipeline      m_GraphicsPipeline;
 };
 

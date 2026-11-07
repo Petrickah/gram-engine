@@ -9,13 +9,14 @@ include(${CMAKE_CURRENT_LIST_DIR}/GramTextures.cmake)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# vulkan-hpp structs only become aggregates (so designated initializers work) without their
-# constructors. Must be identical in every translation unit that includes vulkan.hpp, hence global.
-add_compile_definitions(VULKAN_HPP_NO_CONSTRUCTORS)
-
-# Errors are reported through vk::Result instead of vk::SystemError exceptions: the enhanced
-# calls (createShaderModuleUnique & co.) return a vk::ResultValue{ result, value } to check.
-add_compile_definitions(VULKAN_HPP_NO_EXCEPTIONS)
+# How vulkan.hpp is compiled, for every translation unit that includes it: the engine's and
+# whatever links it (the game's Runtime includes engine headers with inline Vulkan code). Set on
+# the targets as PUBLIC below, not with add_compile_definitions, which only reaches targets in this
+# directory: the game, added from Game/Runtime, compiled vulkan.hpp without them.
+# - VULKAN_HPP_NO_CONSTRUCTORS: vk:: structs become aggregates, so designated initializers work.
+# - VULKAN_HPP_NO_EXCEPTIONS: errors come back as vk::Result; the enhanced calls (createShaderModuleUnique
+#   & co., mapMemory) return a vk::ResultValue{ result, value } to check.
+set(GRAM_VULKAN_HPP_DEFINITIONS VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
 
 # Disable ImGui Panels
 set(GRAM_IMGUI_ENABLED)
@@ -47,6 +48,7 @@ FetchContent_MakeAvailable(spdlog)
 
 # --- Gram Engine ---
 add_library(GramRenderer STATIC
+    src/Gram/Renderer/VulkanBuffer.cpp
     src/Gram/Renderer/VulkanDevice.cpp
     src/Gram/Renderer/VulkanFrame.cpp
     src/Gram/Renderer/VulkanImage.cpp
@@ -60,6 +62,7 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanSwapchain.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
+target_compile_definitions(GramRenderer PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS})
 target_link_libraries(GramRenderer PUBLIC glfw Vulkan::Vulkan glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)
 
@@ -71,6 +74,7 @@ add_library(GramScripting STATIC
     src/Gram/Scripting/GameAPI.cpp
 )
 target_include_directories(GramScripting PUBLIC include)
+target_compile_definitions(GramScripting PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS})
 target_link_libraries(GramScripting PUBLIC glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramScripting PUBLIC include/Gram/Scripting/Common.hpp)
 
@@ -89,5 +93,6 @@ add_library(GramEngine STATIC
     src/Gram/Platform.cpp
 )
 target_include_directories(GramEngine PUBLIC include)
+target_compile_definitions(GramEngine PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS})
 target_link_libraries(GramEngine PUBLIC GramScripting GramRenderer)
 target_precompile_headers(GramEngine PUBLIC include/Gram/Common.hpp)

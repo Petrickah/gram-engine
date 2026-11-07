@@ -11,7 +11,8 @@ VulkanPipeline VulkanPipeline::Graphics(
     const vk::Device&                        device,
     const VulkanShader&                      shader,
     std::span<const vk::DescriptorSetLayout> setLayouts,
-    vk::Format                               colorFormat
+    vk::Format                               colorFormat,
+    const vk::PipelineVertexInputStateCreateInfo& vertexInput
 )
 {
     GramCheck_(shader.IsValid(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eGraphics), "VulkanPipeline::Graphics: shader program creation failed");
@@ -59,7 +60,6 @@ VulkanPipeline VulkanPipeline::Graphics(
         .rasterizationSamples    = vk::SampleCountFlagBits::e1,
         .sampleShadingEnable     = vk::False
     };
-    vk::PipelineVertexInputStateCreateInfo vertexInputStateCreateInfo { };
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo
     {
         .topology                = vk::PrimitiveTopology::eTriangleList
@@ -83,7 +83,7 @@ VulkanPipeline VulkanPipeline::Graphics(
         vk::GraphicsPipelineCreateInfo {
             .stageCount          = static_cast<uint32_t>(shader.size()),
             .pStages             = shader.data(),
-            .pVertexInputState   = &vertexInputStateCreateInfo,
+            .pVertexInputState   = &vertexInput,
             .pInputAssemblyState = &inputAssemblyStateCreateInfo,
             .pViewportState      = &viewportStateCreateInfo,
             .pRasterizationState = &rasterizationStateCreateInfo,

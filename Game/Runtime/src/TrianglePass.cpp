@@ -14,8 +14,15 @@
 
 TrianglePass::TrianglePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::VulkanRenderTarget& target)
     : m_Target(target)
+    , m_VertexBuffer(Gram::VulkanBuffer::Vertex::Create(device, {
+        { .Position = {  0.0f, -0.5f }, .Color = { 1.0f, 0.0f, 0.0f } },
+        { .Position = {  0.5f,  0.5f }, .Color = { 0.0f, 1.0f, 0.0f } },
+        { .Position = { -0.5f,  0.5f }, .Color = { 0.0f, 0.0f, 1.0f } }
+    }))
     // Built for the target's format, not the swapchain's: that's what it renders into.
-    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(static_cast<vk::Device>(device.GetLogicalDevice()), shader, {}, target.GetFormat()))
+    // Its vertex input matches m_VertexBuffer's layout (Position, Color).
+    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(static_cast<vk::Device>(device.GetLogicalDevice()), shader, {}, target.GetFormat(),
+                                                        Gram::VulkanBuffer::Vertex::GetVertexInputInfo()))
 {}
 
 TrianglePass::~TrianglePass()
@@ -46,6 +53,7 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     // The image's own size, not the swapchain's: the triangle fills the target, whatever the window.
     const vk::Extent2D extent = scene.GetExtent();
     m_GraphicsPipeline.Bind(cmd);
+    m_VertexBuffer.BindVertex(cmd);
     cmd.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));
     cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), extent));
     cmd.draw(3, 1, 0, 0);

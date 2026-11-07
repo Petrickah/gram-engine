@@ -12,7 +12,11 @@ public:
         const vk::Device&                        device,
         const VulkanShader&                      shader,
         std::span<const vk::DescriptorSetLayout> setLayouts,
-        vk::Format                               colorFormat
+        vk::Format                               colorFormat,
+        // How vertex buffers are read (VulkanBuffer::Vertex::GetVertexInputInfo()); the default, empty,
+        // is for passes without one (vertices from SV_VertexID, a fullscreen triangle). The pointers in
+        // it only have to live until this call returns.
+        const vk::PipelineVertexInputStateCreateInfo& vertexInput = {}
     );
 
     static VulkanPipeline Compute(
