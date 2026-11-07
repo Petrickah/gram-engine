@@ -28,7 +28,7 @@ public:
 
 public:
     // Returns the present result as-is: eSuboptimalKHR / eErrorOutOfDateKHR mean "recreate the swapchain", not "failed".
-    vk::Result Submit(vk::Fence fence, const vk::Image& image, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
+    vk::Result Submit(vk::Fence fence, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
     bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec);
 
     QueueFamilyIndices& GetQueueFamilyIndices() { return m_QueueFamilyIndices; }

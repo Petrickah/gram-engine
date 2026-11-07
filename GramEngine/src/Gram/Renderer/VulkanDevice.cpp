@@ -59,7 +59,7 @@ VulkanDevice::~VulkanDevice()
     if (m_VkDevice) m_VkDevice.destroy();
 }
 
-vk::Result VulkanDevice::Submit(vk::Fence fence, const vk::Image& image, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
+vk::Result VulkanDevice::Submit(vk::Fence fence, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo)
 {
     if (!m_QueueFamilyIndices.IsComplete())
     {

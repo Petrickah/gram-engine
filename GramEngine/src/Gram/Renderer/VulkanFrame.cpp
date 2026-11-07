@@ -237,7 +237,7 @@ bool VulkanFrame::End(VulkanFrame::Active& frame, VulkanDevice& device, VulkanSw
         .pResults             = nullptr       // Optional
     };
 
-    const vk::Result result = device.Submit(static_cast<vk::Fence>(GetInFlightFence(frame.FrameIndex)), swapChain.GetSwapchainImage(frame.ImageIndex), submitInfo, presentInfo);
+    const vk::Result result = device.Submit(static_cast<vk::Fence>(GetInFlightFence(frame.FrameIndex)), submitInfo, presentInfo);
 
     // The member, not frame.FrameIndex: Active is this frame's copy, the next Begin reads m_FrameIndex.
     // Advanced on the stale path too: the submit happened, so this frame's fence is in use.
