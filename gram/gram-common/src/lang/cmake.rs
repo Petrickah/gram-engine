@@ -151,13 +151,19 @@ impl ModuleBackend for CMake {
         };
         replace_file(&from, &dest)?;
 
-        // Compiled shaders (SPIR-V) are runtime assets the executable loads from disk, so they
-        // travel with it. Stopgap until shaders get their own module kind with N artifacts.
-        let shaders = Path::new(build_dir).join("shaders");
-        if shaders.is_dir() {
-            let dest = Path::new(out).parent().unwrap_or_else(|| Path::new(".")).join("shaders");
+        // Runtime assets the executable loads from disk travel with it: compiled shaders (SPIR-V)
+        // and textures, each in its own folder of the build dir (see GramShaders.cmake /
+        // GramTextures.cmake). Stopgap until assets get their own module kind with N artifacts.
+        const ASSET_DIRS: [&str; 2] = ["shaders", "textures"];
+        let out_dir = Path::new(out).parent().unwrap_or_else(|| Path::new("."));
+        for asset_dir in ASSET_DIRS {
+            let source = Path::new(build_dir).join(asset_dir);
+            if !source.is_dir() {
+                continue;
+            }
+            let dest = out_dir.join(asset_dir);
             fs::create_dir_all(&dest)?;
-            for entry in fs::read_dir(&shaders)? {
+            for entry in fs::read_dir(&source)? {
                 let entry = entry?;
                 if entry.file_type()?.is_file() {
                     fs::copy(entry.path(), dest.join(entry.file_name()))?;

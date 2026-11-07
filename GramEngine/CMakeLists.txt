@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(GramEngine)
 
 include(${CMAKE_CURRENT_LIST_DIR}/GramShaders.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/GramTextures.cmake)
 
 # Pinned explicitly: Apple clang still defaults to C++14. C++20 for designated initializers
 # (vk::...CreateInfo{ .field = ... }), the style the Khronos Vulkan tutorial uses.
@@ -48,10 +49,12 @@ FetchContent_MakeAvailable(spdlog)
 add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanDevice.cpp
     src/Gram/Renderer/VulkanFrame.cpp
+    src/Gram/Renderer/VulkanImage.cpp
     src/Gram/Renderer/VulkanImGui.cpp
     src/Gram/Renderer/VulkanInstance.cpp
     src/Gram/Renderer/VulkanPipeline.cpp
     src/Gram/Renderer/VulkanRenderer.cpp
+    src/Gram/Renderer/VulkanRenderTarget.cpp
     src/Gram/Renderer/VulkanShader.cpp
     src/Gram/Renderer/VulkanSurface.cpp
     src/Gram/Renderer/VulkanSwapchain.cpp
@@ -81,6 +84,7 @@ add_library(GramEngine STATIC
     src/Gram/Editor/LoggerPanel.cpp
     src/Gram/Editor/OutlinerPanel.cpp
     src/Gram/Editor/SystemsPanel.cpp
+    src/Gram/Editor/ViewportPanel.cpp
     src/Gram/Logging/GramLogger.cpp
     src/Gram/Platform.cpp
 )

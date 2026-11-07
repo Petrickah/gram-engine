@@ -31,6 +31,8 @@ public:
     vk::Result Submit(vk::Fence fence, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
     bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec);
 
+    std::optional<uint32_t> FindMemoryType(uint32_t typeBits, vk::MemoryPropertyFlags properties) const;
+
     QueueFamilyIndices& GetQueueFamilyIndices() { return m_QueueFamilyIndices; }
     const QueueFamilyIndices& GetQueueFamilyIndices() const { return m_QueueFamilyIndices; }
 

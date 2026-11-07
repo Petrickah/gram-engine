@@ -37,10 +37,12 @@ private:
 
         Gram::VulkanDevice& device = m_VulkanRenderer->GetDevice();
         const Gram::VulkanShader shader = Gram::VulkanShader::Graphics(spec.m_Workspace, "Default", static_cast<vk::Device>(device.GetLogicalDevice()));
-        m_VulkanRenderer->AddPass<TrianglePass>(device, m_VulkanRenderer->GetSwapchain(), shader);
+        m_TrianglePass = &m_VulkanRenderer->AddPass<TrianglePass>(device, shader, m_VulkanRenderer->GetSceneTarget());
+        GramCheckVoid(m_TrianglePass->LoadTexture(spec.m_Workspace, "textures/texture.jpg"), "TrianglePass::LoadTexture: loading the image texture failed");
     }
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
+    TrianglePass*   m_TrianglePass  = nullptr;
     Gram::ObjectID m_GreetingEntity = {};
     std::shared_ptr<Gram::GameAPILoader> m_GameAPI;
     std::shared_ptr<Gram::World> m_World;
@@ -50,20 +52,21 @@ private:
     struct GameUI : Gram::EditorPanel
     {
         GameUI(RuntimeApplication& app) : EditorPanel("Game"), m_App(app) { }
-        
+
         void DrawContents() override
         {
             ImGui::BeginDisabled(m_App.m_GameAPI->GetGameAPI() == nullptr);
             if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet", m_App.m_GreetingEntity);
             ImGui::EndDisabled();
         }
-        
+
         RuntimeApplication& m_App;
     };
 
     void RegisterPanels()
     {
-        m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI);
+        // The scene target: the editor's Viewport shows what TrianglePass renders into it.
+        m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI, &m_VulkanRenderer->GetSceneTarget());
         m_Editor->AddPanel<GameUI>(*this);
         m_Editor->GetInspector().Select(m_GreetingEntity);
     }

@@ -85,6 +85,18 @@ bool VulkanDevice::AreExtensionsSupported(const VulkanRendererSpecification *ren
     return m_QueueFamilyIndices.IsComplete() && !rendererSpec->m_DeviceExtensions.empty() && rendererSpec->AreDeviceExtensionsSupported(m_DeviceExtensions);
 }
 
+std::optional<uint32_t> VulkanDevice::FindMemoryType(uint32_t typeBits, vk::MemoryPropertyFlags properties) const
+{
+    const vk::PhysicalDeviceMemoryProperties memoryProperties = m_VkPhysicalDevice.getMemoryProperties();
+    for (uint32_t index = 0; index < memoryProperties.memoryTypeCount; index++)
+    {
+        const bool allowed = typeBits & (1u << index);
+        const bool matches = (memoryProperties.memoryTypes[index].propertyFlags & properties) == properties;
+        if (allowed && matches) return index;
+    }
+    return std::nullopt;
+}
+
 VulkanDevice::VulkanDevice(const VulkanRendererSpecification* rendererSpec, const vk::Instance& instance, const vk::SurfaceKHR& surface)
     : m_VkInstance(instance)
     , m_VkSurface(surface)

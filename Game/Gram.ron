@@ -12,6 +12,9 @@ BuildConfig(
                 Module(
                     name: "GramEngine",
                 ),
+                Vcpkg(
+                    name: "stb",
+                ),
             ],
             targets: [
                 "windows",

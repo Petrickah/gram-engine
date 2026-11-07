@@ -26,6 +26,7 @@ VulkanImGui::VulkanImGui(
     std::vector<vk::DescriptorPoolSize> poolSizes
     {
         vk::DescriptorPoolSize { .type = vk::DescriptorType::eSampler             , .descriptorCount = 1000 },
+        vk::DescriptorPoolSize { .type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1000 },   // ImGui_ImplVulkan_AddTexture
         vk::DescriptorPoolSize { .type = vk::DescriptorType::eSampledImage        , .descriptorCount = 1000 },
         vk::DescriptorPoolSize { .type = vk::DescriptorType::eStorageImage        , .descriptorCount = 1000 },
         vk::DescriptorPoolSize { .type = vk::DescriptorType::eUniformTexelBuffer  , .descriptorCount = 1000 },
@@ -34,7 +35,8 @@ VulkanImGui::VulkanImGui(
         vk::DescriptorPoolSize { .type = vk::DescriptorType::eStorageBuffer       , .descriptorCount = 1000 },
         vk::DescriptorPoolSize { .type = vk::DescriptorType::eUniformBufferDynamic, .descriptorCount = 1000 },
         vk::DescriptorPoolSize { .type = vk::DescriptorType::eStorageBufferDynamic, .descriptorCount = 1000 },
-        vk::DescriptorPoolSize { .type = vk::DescriptorType::eInputAttachment     , .descriptorCount = 1000 }
+        vk::DescriptorPoolSize { .type = vk::DescriptorType::eInputAttachment     , .descriptorCount = 1000 },
+        vk::DescriptorPoolSize { .type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1000 }
     };
 
     vk::DescriptorPoolCreateInfo poolInfo {

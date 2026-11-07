@@ -6,6 +6,7 @@
 #include "Gram/Renderer/VulkanImGui.hpp"
 #include "Gram/Renderer/VulkanInstance.hpp"
 #include "Gram/Renderer/VulkanPass.hpp"
+#include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
@@ -38,6 +39,8 @@ public:
     // What a game needs to build its passes before handing them to AddPass.
     VulkanDevice&          GetDevice()          { return m_VulkanDevice; }
     const VulkanSwapchain& GetSwapchain() const { return m_VulkanSwapchain; }
+    // The image a game renders its scene into, shown by the editor's viewport panel.
+    VulkanRenderTarget&    GetSceneTarget()     { return m_SceneTarget; }
     GramImGuiOnly(LayerOwner<ImGuiApplicationLayer>& GetImGuiApplication() { return m_VulkanImGui; })
 
 private:
@@ -50,6 +53,7 @@ private:
     VulkanDevice m_VulkanDevice;
     VulkanSwapchain m_VulkanSwapchain;
     VulkanFrame m_VulkanFrame;
+    VulkanRenderTarget m_SceneTarget;
     GramImGuiOnly(VulkanImGui m_VulkanImGui);
 
 private:

@@ -10,7 +10,7 @@ GRAM_NAMESPACE_BEGIN
 VulkanSwapchain::~VulkanSwapchain()
 {
     vk::Device device = m_Device;
-    for (vk::ImageView view : m_SwapchainImageViews) device.destroyImageView(view);
+    for (VulkanImage::State& image : m_SwapchainImages) device.destroyImageView(image.View);
     
     if (m_Swapchain) device.destroySwapchainKHR(m_Swapchain);
 }
@@ -84,25 +84,13 @@ bool VulkanSwapchain::Build(bool showDebug)
     }
 
     vk::Device device = m_Device;
-    for (vk::ImageView view : m_SwapchainImageViews) device.destroyImageView(view);
-    m_SwapchainImageViews.clear();
+    for (VulkanImage::State image : m_SwapchainImages) device.destroyImageView(image.View);
     m_SwapchainImages.clear();
 
     m_Extent2D = extent;
     if (!CreateSwapchain(m_SwapchainImages, *m_Indices, m_ImageCount, m_SurfaceFormat, m_Extent2D, m_PresentMode))
     {
         return false;
-    }
-
-    for (const vk::Image& image: m_SwapchainImages)
-    {
-        vk::ImageView imageView;
-        if (!CreateSwapchainImageView(imageView, image, m_SurfaceFormat))
-        {
-            return false; // IsValid() reports the mismatch; the views created so far are freed by the destructor.
-        }
-
-        m_SwapchainImageViews.push_back(imageView);
     }
 
     return true;
@@ -135,7 +123,7 @@ bool VulkanSwapchain::CreateSwapchainImageView(vk::ImageView& imageView, const v
     return true;
 }
 
-bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, QueueFamilyIndices& indices, uint32_t requestedImageCount, const vk::SurfaceFormatKHR& surfaceFormat, const vk::Extent2D& extent, const vk::PresentModeKHR& presentMode)
+bool VulkanSwapchain::CreateSwapchain(std::vector<VulkanImage::State>& swapchainImages, QueueFamilyIndices& indices, uint32_t requestedImageCount, const vk::SurfaceFormatKHR& surfaceFormat, const vk::Extent2D& extent, const vk::PresentModeKHR& presentMode)
 {
     vk::Device vkDevice = m_Device;
 
@@ -175,8 +163,22 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<vk::Image>& swapchainImages, Q
     uint32_t imageCount = 0;
     GramVulkanCheck(vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, nullptr), "swapchain surface images not found");
     
-    swapchainImages.resize(imageCount);
-    GramVulkanCheck(vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, swapchainImages.data()), "swapchain surface images not found");
+    std::vector<vk::Image> images(imageCount); // swapchainImages.resize(imageCount);
+    GramVulkanCheck(vkDevice.getSwapchainImagesKHR(m_Swapchain, &imageCount, images.data()), "swapchain surface images not found");
+
+    for (const vk::Image& image: images)
+    {
+        vk::ImageView imageView;
+        if (!CreateSwapchainImageView(imageView, image, m_SurfaceFormat))
+        {
+            return false; // IsValid() reports the mismatch; the views created so far are freed by the destructor.
+        }
+
+        swapchainImages.push_back(VulkanImage::State { 
+            .Image  = image, 
+            .View   = imageView
+        });
+    }
 
     return true;
 }

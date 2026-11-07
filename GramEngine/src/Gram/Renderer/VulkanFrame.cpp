@@ -70,41 +70,6 @@ void VulkanFrame::DestroyFences(vk::Device device)
     m_InFlightFences.clear();
 }
 
-void VulkanFrame::TransitionImageLayout(
-    vk::CommandBuffer             cmd,
-    const vk::Image               image,
-    const vk::ImageLayout         old_layout,
-    const vk::ImageLayout         new_layout,
-    const vk::AccessFlags2        src_access_mask,
-    const vk::AccessFlags2        dst_access_mask,
-    const vk::PipelineStageFlags2 src_stage_mask,
-    const vk::PipelineStageFlags2 dst_stage_mask)
-{
-    vk::ImageMemoryBarrier2 barrier {
-        .srcStageMask        = src_stage_mask,
-        .srcAccessMask       = src_access_mask,
-        .dstStageMask        = dst_stage_mask,
-        .dstAccessMask       = dst_access_mask,
-        .oldLayout           = old_layout,
-        .newLayout           = new_layout,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image               = image,
-        .subresourceRange    = {
-            .aspectMask      = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel    = 0,
-            .levelCount      = 1,
-            .baseArrayLayer  = 0,
-            .layerCount      = 1
-        }
-    };
-
-    cmd.pipelineBarrier2(vk::DependencyInfo {
-        .imageMemoryBarrierCount  = 1,
-        .pImageMemoryBarriers     = &barrier
-    });
-}
-
 bool VulkanFrame::OnStop(vk::Device device)
 {
     DestroyFinishedSemaphores(device);
@@ -144,23 +109,20 @@ std::optional<VulkanFrame::Active> VulkanFrame::Begin(vk::Device device, VulkanS
     vk::CommandBufferBeginInfo beginInfo {};
     GramVulkanCheck_(m_CommandBuffers[m_FrameIndex]->begin(&beginInfo), "starting the frame failed", return std::nullopt);
 
-    // Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
-    TransitionImageLayout(
-        *m_CommandBuffers[m_FrameIndex],
-        swapChain.GetSwapchainImage(m_ImageIndex),
-        vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::AccessFlags2 {},                                       // srcAccessMask (no need to wait for previous operations)
-        vk::AccessFlagBits2::eColorAttachmentWrite,                // dstAccessMask
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,        // srcStage
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput         // dstStage
-    );
+    // A new frame for this image: what it held doesn't matter (eUndefined discards it). The stage is
+    // the one the acquire semaphore is waited at (pWaitDstStageMask in End), so the first transition
+    // of the frame chains to the acquire and can't run before the image is ours.
+    VulkanImage::State& swapchainImage = swapChain.GetSwapchainImageState(m_ImageIndex);
+    swapchainImage.Layout = vk::ImageLayout::eUndefined;
+    swapchainImage.Stage  = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+    swapchainImage.Access = vk::AccessFlagBits2::eNone;
 
     return Active { 
         .CommandBuffer = *m_CommandBuffers[m_FrameIndex],
         .Frame         = *this,
         .FrameIndex    = m_FrameIndex,
-        .ImageIndex    = m_ImageIndex
+        .ImageIndex    = m_ImageIndex,
+        .SwapchainImage = swapchainImage
     };
 }
 
@@ -169,9 +131,16 @@ void VulkanFrame::BeginSwapchainRendering(VulkanFrame::Active& frame, const Vulk
     const vk::AttachmentLoadOp loadOp = frame.SwapchainRendered ? vk::AttachmentLoadOp::eLoad : vk::AttachmentLoadOp::eClear;
     frame.SwapchainRendered = true;
 
+    // From whatever the previous pass left (eUndefined at the start of the frame), with a barrier
+    // between two passes that both write the attachment.
+    frame.SwapchainImage.Transition(frame.CommandBuffer, vk::ImageLayout::eColorAttachmentOptimal,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::AccessFlagBits2::eColorAttachmentWrite);
+
     // Ignored unless loadOp is eClear.
+    // The background behind the editor's windows: a gray with a slight blue tint. Linear values:
+    // the swapchain is sRGB, so they show brighter, about (90, 93, 100) out of 255.
     vk::ClearColorValue clearColor {};
-    clearColor.setFloat32({ 0.0f, 0.0f, 0.0f, 1.0f });
+    clearColor.setFloat32({ 0.10f, 0.11f, 0.13f, 1.0f });
 
     vk::RenderingAttachmentInfo attachmentInfo {
         .imageView   = swapChain.GetSwapchainImageView(frame.ImageIndex),
@@ -201,17 +170,10 @@ bool VulkanFrame::End(VulkanFrame::Active& frame, VulkanDevice& device, VulkanSw
         frame.CommandBuffer.endRendering();
     }
 
-    // After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR
-    TransitionImageLayout(
-        *m_CommandBuffers[frame.FrameIndex],
-        swapChain.GetSwapchainImage(frame.ImageIndex),
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageLayout::ePresentSrcKHR,
-        vk::AccessFlagBits2::eColorAttachmentWrite,             // srcAccessMask
-        vk::AccessFlags2 {},                                    // dstAccessMask
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,     // srcStage
-        vk::PipelineStageFlagBits2::eBottomOfPipe               // dstStage
-    );
+    // To present, from the layout the last pass left: a color attachment (a pass, ImGui, the clear
+    // above) today, a transfer destination once a pass blits into the swapchain.
+    frame.SwapchainImage.Transition(frame.CommandBuffer, vk::ImageLayout::ePresentSrcKHR,
+        vk::PipelineStageFlagBits2::eBottomOfPipe, vk::AccessFlagBits2::eNone);
 
     GramVulkanCheck(m_CommandBuffers[frame.FrameIndex]->end(), "finishing the frame failed");
 

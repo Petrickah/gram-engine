@@ -22,6 +22,7 @@ public:
     };
 
 public:
+    VulkanPass() = default;
     virtual ~VulkanPass() = default;
     virtual bool Record(vk::CommandBuffer cmd, VulkanPass::Context ctx) = 0;
     virtual bool OnPresented() { return true; };

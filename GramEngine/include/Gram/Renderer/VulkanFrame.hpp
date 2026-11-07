@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Gram/Renderer/VulkanImage.hpp"
+
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
@@ -14,12 +16,15 @@ class VulkanFrame: private UniqueObject
 public:
     struct Active
     {
-        vk::CommandBuffer CommandBuffer = {};
-        VulkanFrame&      Frame;
-        uint32_t          FrameIndex    = 0;
-        uint32_t          ImageIndex    = 0;
+        vk::CommandBuffer   CommandBuffer = {};
+        VulkanFrame&        Frame;
+        uint32_t            FrameIndex    = 0;
+        uint32_t            ImageIndex    = 0;
+        // The acquired swapchain image's state (owned by the swapchain): every transition of it goes
+        // through here, so End knows the layout the last pass left it in.
+        VulkanImage::State& SwapchainImage;
         // Set by BeginSwapchainRendering. Still false in End means nothing drew this frame: End clears the image.
-        bool              SwapchainRendered = false;
+        bool                SwapchainRendered = false;
     };
 
 public:
@@ -27,7 +32,7 @@ public:
     std::optional<VulkanFrame::Active> Begin(vk::Device device, VulkanSwapchain& swapChain);
     bool End(VulkanFrame::Active& frame, VulkanDevice& device, VulkanSwapchain& swapChain);
 
-    // Begins dynamic rendering into the acquired swapchain image (already in eColorAttachmentOptimal, see Begin).
+    // Moves the acquired swapchain image to eColorAttachmentOptimal and begins dynamic rendering into it.
     // The first call of the frame clears the image (it comes from eUndefined); the later ones load, drawing on top.
     // The caller ends it with endRendering.
     void BeginSwapchainRendering(VulkanFrame::Active& frame, const VulkanSwapchain& swapChain) const;
@@ -57,27 +62,14 @@ private:
     void DestroyFences(vk::Device device);
 
 private:
-    void TransitionImageLayout(
-        vk::CommandBuffer             cmd,
-        const vk::Image               image,
-        const vk::ImageLayout         old_layout,
-        const vk::ImageLayout         new_layout,
-        const vk::AccessFlags2        src_access_mask,
-        const vk::AccessFlags2        dst_access_mask,
-        const vk::PipelineStageFlags2 src_stage_mask,
-        const vk::PipelineStageFlags2 dst_stage_mask
-    );
-
-private:
-    vk::UniqueCommandPool m_CommandPool;
-    std::vector<vk::UniqueCommandBuffer> m_CommandBuffers;
-
-    std::vector<vk::Fence>     m_InFlightFences     = {};
-    std::vector<vk::Semaphore> m_CompleteSemaphores = {};
-    std::vector<vk::Semaphore> m_FinishedSemaphores = {};
-    uint32_t                   m_FrameIndex         = 0;
-    uint32_t                   m_ImageIndex         = 0;
-    bool                       m_SwapchainStale     = false;
+                vk::UniqueCommandPool    m_CommandPool        = {};
+    std::vector<vk::UniqueCommandBuffer> m_CommandBuffers     = {};
+    std::vector<vk::Fence>               m_InFlightFences     = {};
+    std::vector<vk::Semaphore>           m_CompleteSemaphores = {};
+    std::vector<vk::Semaphore>           m_FinishedSemaphores = {};
+                uint32_t                 m_FrameIndex         = 0;
+                uint32_t                 m_ImageIndex         = 0;
+                bool                     m_SwapchainStale     = false;
 };
 
 GRAM_NAMESPACE_END

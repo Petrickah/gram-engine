@@ -11,6 +11,8 @@ class InspectorPanel;
 class LoggerPanel;
 class OutlinerPanel;
 class SystemsPanel;
+class ViewportPanel;
+class VulkanRenderTarget;
 
 // The main menu bar; its Window menu closes and reopens every panel added to the editor.
 class EditorMenuBar : public ImGuiApplicationLayer
@@ -26,11 +28,12 @@ private:
 };
 
 // The editor every game gets: the menu bar plus the Outliner, Inspector and Systems panels, as
-// ImGui layers of `ui`. Create it after the World and the loader: the panels keep references.
+// ImGui layers of `ui`, and a Viewport showing `sceneTarget` when one is given. Create it after
+// the World and the loader: the panels keep references.
 class Editor : private UniqueObject
 {
 public:
-    Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader);
+    Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, VulkanRenderTarget* sceneTarget = nullptr);
 
     // A game's own panel, listed in the Window menu like the editor's.
     template<class Panel, class... Args>
@@ -53,6 +56,7 @@ private:
     std::shared_ptr<InspectorPanel>    m_Inspector;
     std::shared_ptr<LoggerPanel>       m_Logger;
     std::shared_ptr<SystemsPanel>      m_Systems;
+    std::shared_ptr<ViewportPanel>     m_Viewport;
 };
 
 GRAM_NAMESPACE_END

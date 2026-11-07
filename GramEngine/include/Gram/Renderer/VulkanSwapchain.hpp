@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Gram/Renderer/VulkanImage.hpp"
+
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
@@ -31,7 +33,7 @@ public:
 
 public:
     // m_ImageCount is only what we asked for; the driver may create more, so compare against the real images.
-    bool IsValid() const { return m_Swapchain && !m_SwapchainImages.empty() && m_SwapchainImages.size() == m_SwapchainImageViews.size(); }
+    bool IsValid() const { return m_Swapchain && !m_SwapchainImages.empty() && m_SwapchainImages.size() == m_ImageCount; }
 
     uint32_t GetImageCount() const { return static_cast<uint32_t>(m_SwapchainImages.size()); }
 
@@ -39,12 +41,14 @@ public:
     const vk::SwapchainKHR&     GetSwapchain()                              const { return m_Swapchain; }
     const vk::PresentModeKHR&   GetPresentMode()                            const { return m_PresentMode; }
     const vk::SurfaceFormatKHR& GetSurfaceFormat()                          const { return m_SurfaceFormat; }
-    const vk::Image&            GetSwapchainImage(uint32_t imageIndex)      const { return m_SwapchainImages[imageIndex]; }
-    const vk::ImageView&        GetSwapchainImageView(uint32_t imageIndex)  const { return m_SwapchainImageViews[imageIndex]; }
+    const vk::Image&            GetSwapchainImage(uint32_t imageIndex)      const { return m_SwapchainImages[imageIndex].Image; }
+    const vk::ImageView&        GetSwapchainImageView(uint32_t imageIndex)  const { return m_SwapchainImages[imageIndex].View; }
+    // How the image was last used, for VulkanFrame's transitions. Rebuilt with the images in Recreate().
+    VulkanImage::State&         GetSwapchainImageState(uint32_t imageIndex)       { return m_SwapchainImages[imageIndex]; }
     
 private:
     bool Build(bool showDebug);
-    bool CreateSwapchain(std::vector<vk::Image>& swapchainImages, QueueFamilyIndices& indices, uint32_t requestedImageCount, const vk::SurfaceFormatKHR& surfaceFormat, const vk::Extent2D& extent, const vk::PresentModeKHR& presentMode);
+    bool CreateSwapchain(std::vector<VulkanImage::State>& swapchainImages, QueueFamilyIndices& indices, uint32_t requestedImageCount, const vk::SurfaceFormatKHR& surfaceFormat, const vk::Extent2D& extent, const vk::PresentModeKHR& presentMode);
     bool CreateSwapchainImageView(vk::ImageView& imageView, const vk::Image& image, const vk::SurfaceFormatKHR& surfaceFormat);
     bool QuerySwapchainSupport(const vk::PhysicalDevice& device, SwapChainSupportDetails& supportDetails, bool extensionsSupported);
 
@@ -59,8 +63,7 @@ private:
     vk::SurfaceFormatKHR m_SurfaceFormat;
 
     uint32_t m_ImageCount = 0;
-    std::vector<vk::Image> m_SwapchainImages;
-    std::vector<vk::ImageView> m_SwapchainImageViews;
+    std::vector<VulkanImage::State> m_SwapchainImages;
 
     VkDevice m_Device = VK_NULL_HANDLE;
     VkSurfaceKHR m_Surface = VK_NULL_HANDLE;

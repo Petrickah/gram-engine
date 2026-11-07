@@ -41,6 +41,12 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
         , m_VulkanDevice.GetQueueFamilyIndices()
         , static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
     )
+    , m_SceneTarget(
+        m_VulkanDevice
+        , vk::Extent2D { 1280, 720 }     // until the viewport panel asks for its own size
+        , vk::Format::eR16G16B16A16Sfloat
+        , vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage
+    )
     GramImGuiOnly(, m_VulkanImGui(
         & m_RendererSpec
         , static_cast<vk::Instance>(m_VulkanInstance.GetInstance())
@@ -60,6 +66,9 @@ bool VulkanRenderer::OnDrawFrame()
     // is not fatal: it is a minimized window (or a build error already logged), so skip the
     // frame and retry on the next one.
     if (m_VulkanFrame.IsSwapchainStale() && !RecreateSwapchain()) return true;
+
+    // The size the viewport panel asked for last frame, before any pass renders into the scene.
+    m_SceneTarget.ApplyRequestedExtent();
 
     std::optional<VulkanFrame::Active> frame = m_VulkanFrame.Begin(static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()), m_VulkanSwapchain);
     if (!frame) return true;

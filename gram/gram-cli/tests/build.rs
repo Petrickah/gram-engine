@@ -94,6 +94,18 @@ fn copies_compiled_shaders_next_to_the_executable() {
 }
 
 #[test]
+fn copies_textures_next_to_the_executable() {
+    // Same for <build dir>/textures/: the images the game loads at runtime.
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    let cmakelists = project.read("main/CMakeLists.txt");
+    project.write("main/CMakeLists.txt", &format!("{cmakelists}\nfile(WRITE ${{CMAKE_BINARY_DIR}}/textures/texture.jpg \"pixels\")\n"));
+
+    project.gram(&["build"]).succeeds();
+
+    assert_eq!(project.read(&format!("build/demo/{}/textures/texture.jpg", host())), "pixels");
+}
+
+#[test]
 fn builds_a_cargo_workspace_member() {
     // A workspace builds into *its* target/ directory and names the binary after the package,
     // not after the gram module. gram asks cargo where the binary is instead of guessing.
