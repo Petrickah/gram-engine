@@ -79,6 +79,48 @@ vk::Result VulkanDevice::Submit(vk::Fence fence, const vk::SubmitInfo& submitInf
     return static_cast<vk::Result>(vkQueuePresentKHR(static_cast<VkQueue>(presentQueue), &rawPresentInfo));
 }
 
+vk::Result VulkanDevice::Submit(std::function<vk::Result(vk::CommandBuffer)> callback)
+{
+    if (!callback) return vk::Result::eErrorInitializationFailed;
+
+    if (!m_QueueFamilyIndices.IsComplete())
+    {
+        GramVulkanError("couldn't retrieve the device queues: queue families are incomplete");
+        return vk::Result::eErrorInitializationFailed;
+    }
+
+    vk::CommandPoolCreateInfo poolInfo {
+        .flags            = vk::CommandPoolCreateFlagBits::eTransient,
+        .queueFamilyIndex = *m_QueueFamilyIndices.m_GraphicsComputeFamily,
+    };
+
+    // Create a temporary Command Pool; one time submit
+    auto commandPool = m_VkDevice.createCommandPoolUnique(poolInfo);
+    GramVulkanCheckResult(commandPool.result, "command pool creation failed");
+
+    vk::CommandBufferAllocateInfo allocInfo {
+        .commandPool        = *commandPool.value,
+        .level              = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1
+    };
+
+    // Create a temporary Command Buffer; one time submit
+    auto commandBuffers = m_VkDevice.allocateCommandBuffersUnique(allocInfo);
+    GramVulkanCheckResult(commandBuffers.result, "command buffer allocation failed");
+
+    auto commandBuffer = *commandBuffers.value[0];
+
+    GramVulkanCheckResult(commandBuffer.begin({ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit }), "begin recording failed");
+    GramVulkanCheckResult(callback(commandBuffer), "recording failed");
+    GramVulkanCheckResult(commandBuffer.end(), "end recording failed");
+
+    vk::SubmitInfo submitInfo {.commandBufferCount = 1, .pCommandBuffers = &commandBuffer};
+    const vk::Queue graphicsQueue = m_VkDevice.getQueue(*m_QueueFamilyIndices.m_GraphicsComputeFamily, 0);
+    GramVulkanCheckResult(graphicsQueue.submit(1, &submitInfo, nullptr), "submission failed");
+    GramVulkanCheckResult(graphicsQueue.waitIdle(), "waiting for syncronization failed");
+    return vk::Result::eSuccess;
+}
+
 bool VulkanDevice::AreExtensionsSupported(const VulkanRendererSpecification *rendererSpec)
 {
     // Only ask for extensions if the device actually offers all of them;

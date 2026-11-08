@@ -1,15 +1,16 @@
 #pragma once
 
-#include "Gram/Renderer/VulkanShader.hpp"
-
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
+
+class VulkanDevice;
+class VulkanShader;
 
 class VulkanPipeline : private MoveObject
 {
 public:
     static VulkanPipeline Graphics(
-        const vk::Device&                        device,
+        const VulkanDevice&                      device,
         const VulkanShader&                      shader,
         std::span<const vk::DescriptorSetLayout> setLayouts,
         vk::Format                               colorFormat,
@@ -20,7 +21,7 @@ public:
     );
 
     static VulkanPipeline Compute(
-        const vk::Device&                        device,
+        const VulkanDevice&                      device,
         const VulkanShader&                      shader,
         std::span<const vk::DescriptorSetLayout> setLayouts
     );

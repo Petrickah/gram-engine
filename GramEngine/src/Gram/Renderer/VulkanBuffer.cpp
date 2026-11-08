@@ -4,12 +4,21 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
-VulkanBuffer VulkanBuffer::Vertex::Create(VulkanDevice& device, std::vector<VulkanBuffer::Vertex> vertices)
+VulkanBuffer VulkanBuffer::CreateVertex(VulkanDevice& device, std::vector<VulkanBuffer::Vertex> vertices)
 {
-    return VulkanBuffer::Create(device, vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, static_cast<vk::DeviceSize>(sizeof(Vertex) * vertices.size()), reinterpret_cast<void*>(vertices.data()));
+    auto staging = VulkanBuffer::Create(device, sizeof(Vertex) * vertices.size(), vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
+    staging.Map<VulkanBuffer::Vertex, Access::Write>().Write(vertices.data(), 0, vertices.size());
+    auto vertex  = VulkanBuffer::Create(device, sizeof(Vertex) * vertices.size(), vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer);
+    auto result  = device.Submit([&](vk::CommandBuffer cmd) {
+        cmd.copyBuffer(staging.Get(), vertex.Get(), vk::BufferCopy { .size = sizeof(Vertex) * vertices.size() });
+        return vk::Result::eSuccess;
+    });
+
+    GramVulkanCheck_(result, "error transfering vertex data to GPU", return VulkanBuffer());
+    return vertex;
 }
 
-VulkanBuffer VulkanBuffer::Create(VulkanDevice &device, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::DeviceSize size, void* data)
+VulkanBuffer VulkanBuffer::Create(VulkanDevice &device, vk::DeviceSize size, vk::MemoryPropertyFlags properties, vk::BufferUsageFlags usage)
 {
     vk::BufferCreateInfo bufferInfo {
         .size        = size,
@@ -35,11 +44,7 @@ VulkanBuffer VulkanBuffer::Create(VulkanDevice &device, vk::BufferUsageFlags usa
     GramVulkanCheck_(memory.result, "error allocating the buffer memory", return VulkanBuffer());
     GramVulkanCheck_(logicalDevice.bindBufferMemory(*buffer.value, *memory.value, 0), "error binding the buffer memory", return VulkanBuffer());
 
-    VulkanBuffer::Mapping mapping = {};
-    bool isMappable = static_cast<bool>((properties & vk::MemoryPropertyFlagBits::eHostVisible) == vk::MemoryPropertyFlagBits::eHostVisible);
-    if (isMappable) mapping = VulkanBuffer::Mapping::Map(logicalDevice, *memory.value, size, data);
-
-    return VulkanBuffer(device, std::move(buffer.value), std::move(memory.value), mapping);
+    return VulkanBuffer(device, size, std::move(buffer.value), std::move(memory.value), properties, usage);
 }
 
 GRAM_NAMESPACE_END

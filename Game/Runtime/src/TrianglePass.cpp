@@ -14,15 +14,14 @@
 
 TrianglePass::TrianglePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::VulkanRenderTarget& target)
     : m_Target(target)
-    , m_VertexBuffer(Gram::VulkanBuffer::Vertex::Create(device, {
+    // Built for the target's format, not the swapchain's: that's what it renders into.
+    // Its vertex input matches m_VertexBuffer's layout (Position, Color).
+    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, {}, target.GetFormat(), Gram::VulkanBuffer::Vertex::GetVertexInputInfo()))
+    , m_VertexBuffer(Gram::VulkanBuffer::CreateVertex(device, {
         { .Position = {  0.0f, -0.5f }, .Color = { 1.0f, 0.0f, 0.0f } },
         { .Position = {  0.5f,  0.5f }, .Color = { 0.0f, 1.0f, 0.0f } },
         { .Position = { -0.5f,  0.5f }, .Color = { 0.0f, 0.0f, 1.0f } }
     }))
-    // Built for the target's format, not the swapchain's: that's what it renders into.
-    // Its vertex input matches m_VertexBuffer's layout (Position, Color).
-    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(static_cast<vk::Device>(device.GetLogicalDevice()), shader, {}, target.GetFormat(),
-                                                        Gram::VulkanBuffer::Vertex::GetVertexInputInfo()))
 {}
 
 TrianglePass::~TrianglePass()

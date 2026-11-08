@@ -29,6 +29,7 @@ public:
 public:
     // Returns the present result as-is: eSuboptimalKHR / eErrorOutOfDateKHR mean "recreate the swapchain", not "failed".
     vk::Result Submit(vk::Fence fence, const vk::SubmitInfo& submitInfo, const vk::PresentInfoKHR& presentInfo);
+    vk::Result Submit(std::function<vk::Result(vk::CommandBuffer)> callback);
     bool AreExtensionsSupported(const VulkanRendererSpecification* rendererSpec);
 
     std::optional<uint32_t> FindMemoryType(uint32_t typeBits, vk::MemoryPropertyFlags properties) const;

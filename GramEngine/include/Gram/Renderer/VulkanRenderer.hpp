@@ -7,6 +7,7 @@
 #include "Gram/Renderer/VulkanInstance.hpp"
 #include "Gram/Renderer/VulkanPass.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
+#include "Gram/Renderer/VulkanShader.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 

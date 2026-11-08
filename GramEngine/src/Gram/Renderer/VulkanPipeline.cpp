@@ -1,4 +1,5 @@
 #include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
 
@@ -8,7 +9,7 @@
 GRAM_NAMESPACE_BEGIN
 
 VulkanPipeline VulkanPipeline::Graphics(
-    const vk::Device&                        device,
+    const VulkanDevice&                      device,
     const VulkanShader&                      shader,
     std::span<const vk::DescriptorSetLayout> setLayouts,
     vk::Format                               colorFormat,
@@ -74,8 +75,9 @@ VulkanPipeline VulkanPipeline::Graphics(
         .depthBiasEnable         = vk::False,
         .lineWidth               = 1.0f
     };
-
-    auto layout = device.createPipelineLayoutUnique(pipelineLayoutInfo);
+    
+    auto logicalDevice = static_cast<vk::Device>(device.GetLogicalDevice());
+    auto layout = logicalDevice.createPipelineLayoutUnique(pipelineLayoutInfo);
     GramCheck_(layout.result == vk::Result::eSuccess && layout.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eGraphics), "pipeline layout creation failed: {}", vk::to_string(layout.result));
 
     vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain 
@@ -99,14 +101,14 @@ VulkanPipeline VulkanPipeline::Graphics(
         }
     };
 
-    auto pipeline = device.createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
+    auto pipeline = logicalDevice.createGraphicsPipelineUnique(VK_NULL_HANDLE, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
     GramCheck_(pipeline.result == vk::Result::eSuccess && pipeline.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eGraphics), "pipeline creation failed: {}", vk::to_string(pipeline.result));
 
     return VulkanPipeline(std::move(layout.value), std::move(pipeline.value), vk::PipelineBindPoint::eGraphics);
 }
 
 VulkanPipeline VulkanPipeline::Compute(
-    const vk::Device&                        device,
+    const VulkanDevice&                      device,
     const VulkanShader&                      shader,
     std::span<const vk::DescriptorSetLayout> setLayouts
 )
@@ -119,7 +121,8 @@ VulkanPipeline VulkanPipeline::Compute(
         .pSetLayouts             = setLayouts.data()
     };
 
-    auto layout = device.createPipelineLayoutUnique(pipelineLayoutInfo);
+    auto logicalDevice = static_cast<vk::Device>(device.GetLogicalDevice());
+    auto layout = logicalDevice.createPipelineLayoutUnique(pipelineLayoutInfo);
     GramCheck_(layout.result == vk::Result::eSuccess && layout.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eCompute), "pipeline layout creation failed: {}", vk::to_string(layout.result));
 
     vk::ComputePipelineCreateInfo pipelineInfo {
@@ -127,7 +130,7 @@ VulkanPipeline VulkanPipeline::Compute(
         .layout = *layout.value
     };
 
-    auto pipeline = device.createComputePipelineUnique(VK_NULL_HANDLE, pipelineInfo);
+    auto pipeline = logicalDevice.createComputePipelineUnique(VK_NULL_HANDLE, pipelineInfo);
     GramCheck_(pipeline.result == vk::Result::eSuccess && pipeline.has_value(), return VulkanPipeline({}, {}, vk::PipelineBindPoint::eCompute), "pipeline creation failed: {}", vk::to_string(pipeline.result));
 
     return VulkanPipeline(std::move(layout.value), std::move(pipeline.value), vk::PipelineBindPoint::eCompute);

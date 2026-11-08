@@ -31,8 +31,8 @@ private:
 
     // The renderer's: its image is recreated on resize, so it's looked up every frame, never kept.
     Gram::VulkanRenderTarget& m_Target;
-    Gram::VulkanBuffer        m_VertexBuffer;
     Gram::VulkanPipeline      m_GraphicsPipeline;
+    Gram::VulkanBuffer        m_VertexBuffer;
 };
 
 #endif // #ifdef GRAM_VULKAN_RENDERER

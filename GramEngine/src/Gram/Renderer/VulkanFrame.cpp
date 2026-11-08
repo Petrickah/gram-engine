@@ -16,18 +16,18 @@ VulkanFrame::VulkanFrame(const VulkanRendererSpecification *rendererSpec, const 
     };
     
     auto commandPool = device.createCommandPoolUnique(poolInfo);
-    GramCheckVoid(commandPool.result == vk::Result::eSuccess && commandPool.has_value(), "command pool creation failed: {}", vk::to_string(commandPool.result));
+    GramVulkanCheckVoid(commandPool.result, "command pool creation failed");
 
     m_CommandPool = std::move(commandPool.value);
 
     vk::CommandBufferAllocateInfo allocInfo {
-        .commandPool = *m_CommandPool,
-        .level = vk::CommandBufferLevel::ePrimary,
+        .commandPool        = *m_CommandPool,
+        .level              = vk::CommandBufferLevel::ePrimary,
         .commandBufferCount = Gram::vkMaxFramesInFlight
     };
 
     auto commandBuffers = device.allocateCommandBuffersUnique(allocInfo);
-    GramCheckVoid(commandBuffers.result == vk::Result::eSuccess && commandBuffers.has_value(), "command buffer allocation failed: {}", vk::to_string(commandBuffers.result));
+    GramVulkanCheckVoid(commandBuffers.result, "command buffer allocation failed");
     m_CommandBuffers = std::move(commandBuffers.value);
 }
 
