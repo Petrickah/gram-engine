@@ -18,9 +18,13 @@ TrianglePass::TrianglePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
     // Its vertex input matches m_VertexBuffer's layout (Position, Color).
     , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, {}, target.GetFormat(), Gram::VulkanBuffer::Vertex::GetVertexInputInfo()))
     , m_VertexBuffer(Gram::VulkanBuffer::CreateVertex(device, {
-        { .Position = {  0.0f, -0.5f }, .Color = { 1.0f, 0.0f, 0.0f } },
-        { .Position = {  0.5f,  0.5f }, .Color = { 0.0f, 1.0f, 0.0f } },
-        { .Position = { -0.5f,  0.5f }, .Color = { 0.0f, 0.0f, 1.0f } }
+        { .Position = { -1.0f, -1.0f }, .Color = { 1.0f, 1.0f, 1.0f } },
+        { .Position = {  1.0f, -1.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
+        { .Position = {  1.0f,  1.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
+        { .Position = { -1.0f,  1.0f }, .Color = { 0.0f, 0.0f, 1.0f } }
+    }))
+    , m_IndexBuffer(Gram::VulkanBuffer::CreateIndex(device, {
+        0, 1, 2, 2, 3, 0
     }))
 {}
 
@@ -52,10 +56,20 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     // The image's own size, not the swapchain's: the triangle fills the target, whatever the window.
     const vk::Extent2D extent = scene.GetExtent();
     m_GraphicsPipeline.Bind(cmd);
-    m_VertexBuffer.BindVertex(cmd);
+
+    m_VertexBuffer.Send(cmd, [](vk::CommandBuffer cmd, vk::Buffer buffer) {
+        const vk::DeviceSize offset = 0;
+        cmd.bindVertexBuffers(0, 1, &buffer, &offset);
+    });
+
+    m_IndexBuffer.Send(cmd, [](vk::CommandBuffer cmd, vk::Buffer buffer) {
+        const vk::DeviceSize offset = 0;
+        cmd.bindIndexBuffer(buffer, offset, vk::IndexType::eUint16);
+    });
+
     cmd.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));
     cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), extent));
-    cmd.draw(3, 1, 0, 0);
+    cmd.drawIndexed(static_cast<uint32_t>(m_IndexBuffer.GetSize() / sizeof(Gram::VulkanBuffer::Index)), 1, 0, 0, 0);
     cmd.endRendering();
 
     // Left ready to sample: ImGui reads it while drawing the viewport panel, inside its own rendering,

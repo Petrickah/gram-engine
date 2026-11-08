@@ -33,6 +33,7 @@ private:
     Gram::VulkanRenderTarget& m_Target;
     Gram::VulkanPipeline      m_GraphicsPipeline;
     Gram::VulkanBuffer        m_VertexBuffer;
+    Gram::VulkanBuffer        m_IndexBuffer;
 };
 
 #endif // #ifdef GRAM_VULKAN_RENDERER

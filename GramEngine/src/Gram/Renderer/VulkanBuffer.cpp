@@ -18,6 +18,20 @@ VulkanBuffer VulkanBuffer::CreateVertex(VulkanDevice& device, std::vector<Vulkan
     return vertex;
 }
 
+VulkanBuffer VulkanBuffer::CreateIndex(VulkanDevice &device, std::vector<VulkanBuffer::Index> indices)
+{
+    auto staging = VulkanBuffer::Create(device, sizeof(Index) * indices.size(), vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
+    staging.Map<VulkanBuffer::Index, Access::Write>().Write(indices.data(), 0, indices.size());
+    auto index   = VulkanBuffer::Create(device, sizeof(Index) * indices.size(), vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer);
+    auto result  = device.Submit([&](vk::CommandBuffer cmd) {
+        cmd.copyBuffer(staging.Get(), index.Get(), vk::BufferCopy { .size = sizeof(Index) * indices.size() });
+        return vk::Result::eSuccess;
+    });
+
+    GramVulkanCheck_(result, "error transfering index data to GPU", return VulkanBuffer());
+    return index;
+}
+
 VulkanBuffer VulkanBuffer::Create(VulkanDevice &device, vk::DeviceSize size, vk::MemoryPropertyFlags properties, vk::BufferUsageFlags usage)
 {
     vk::BufferCreateInfo bufferInfo {

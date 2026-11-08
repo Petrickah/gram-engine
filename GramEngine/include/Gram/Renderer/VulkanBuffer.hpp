@@ -94,10 +94,13 @@ public:
             };
         }
     };
+
+    using Index = uint16_t;
     
 public:
     VulkanBuffer() = default;
     static VulkanBuffer CreateVertex(VulkanDevice& device, std::vector<VulkanBuffer::Vertex> vertices);
+    static VulkanBuffer CreateIndex(VulkanDevice& device, std::vector<VulkanBuffer::Index> indices);
     static VulkanBuffer Create(VulkanDevice& device, vk::DeviceSize size, vk::MemoryPropertyFlags properties, vk::BufferUsageFlags usage);
 
 private:
@@ -111,10 +114,9 @@ private:
     { }
 
 public:
-    inline void BindVertex(vk::CommandBuffer cmd)
+    inline void Send(vk::CommandBuffer cmd, std::function<void(vk::CommandBuffer, vk::Buffer)> callback)
     {
-        const vk::DeviceSize offset = 0;
-        cmd.bindVertexBuffers(0, 1, &*m_Buffer, &offset);
+        if (callback) callback(cmd, *m_Buffer);
     }
 
     inline vk::Buffer     Get()     const { return *m_Buffer; }
