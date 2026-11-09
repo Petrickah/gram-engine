@@ -28,6 +28,8 @@ public:
 private:
     void* m_TexturePixels = nullptr;
     vk::DeviceSize m_TextureSize = 0;
+    
+    std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_Uniforms;
 
     // The renderer's: its image is recreated on resize, so it's looked up every frame, never kept.
     Gram::VulkanRenderTarget& m_Target;

@@ -11,11 +11,19 @@ struct VSOutput
     [[vk::location(1)]] float4 Color : COLOR0;
 };
 
+struct UniformBuffer {
+    float4x4 model;
+    float4x4 view;
+    float4x4 proj;
+};
+
+[[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer> ubo;
+
 [shader("vertex")]
 VSOutput VSMain(VSInput input)
 {
     VSOutput output = (VSOutput)0;
-    output.Position = float4(input.Position, 0.0f, 1.0f);
+    output.Position = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.Position, 0.0, 1.0))));
     output.Color    = float4(input.Color, 1.0f);
     return output;
 }

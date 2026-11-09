@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Gram/Renderer/VulkanDevice.hpp"
+#include "Gram/Renderer/VulkanPass.hpp"
 
 #include "glm/glm.hpp"
 
@@ -51,6 +52,34 @@ struct VertexBuffer
 
     static constexpr vk::BufferUsageFlags Usage  = vk::BufferUsageFlagBits::eVertexBuffer;
     static constexpr bool                 Staged = true;
+};
+
+template<typename T>
+struct UniformBuffer
+{
+    using Type = T;
+    static constexpr vk::DescriptorType             DescriptorType = vk::DescriptorType::eUniformBuffer;
+    static constexpr vk::BufferUsageFlags           Usage          = vk::BufferUsageFlagBits::eUniformBuffer;
+    static constexpr bool                           Staged         = false;
+    static constexpr vk::DescriptorPoolSize         PoolSize
+    {
+        .type            = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount = Gram::vkMaxFramesInFlight
+    };
+    static constexpr vk::DescriptorPoolCreateInfo   PoolInfo
+    { 
+        .flags         = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        .maxSets       = Gram::vkMaxFramesInFlight,
+        .poolSizeCount = 1,
+        .pPoolSizes    = &PoolSize
+    };
+    static constexpr vk::DescriptorSetLayoutBinding Binding
+    {
+        .descriptorType     = vk::DescriptorType::eUniformBuffer,
+        .descriptorCount    = 1,
+        .stageFlags         = vk::ShaderStageFlagBits::eVertex,
+        .pImmutableSamplers = nullptr,
+    };
 };
 
 class VulkanBuffer : public MoveObject
@@ -111,26 +140,58 @@ public:
     };
     
 public:
-    template<BufferKind Kind>
+    template<BufferKind Kind> requires Kind::Staged
     static VulkanBuffer Create(VulkanDevice& device, const std::vector<typename Kind::Type>& data)
     {
         using T = typename Kind::Type;
         const vk::DeviceSize size = sizeof(T) * data.size();
+        auto stagingBuffer = VulkanBuffer::Create(device, size, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
+        stagingBuffer.Map<T, Access::Write>().Write(data.data(), 0, data.size());
+        auto deviceBuffer  = VulkanBuffer::Create(device, size, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eTransferDst | Kind::Usage);
+        GramVulkanCheck_(device.Submit([&](vk::CommandBuffer cmd) {
+            return (cmd.copyBuffer(stagingBuffer.Get(), deviceBuffer.Get(), vk::BufferCopy { .size = size }), vk::Result::eSuccess);
+        }), "error transfering data to GPU", return VulkanBuffer());
+        return deviceBuffer;
+    }
 
-        if constexpr (Kind::Staged)
+    template<typename T, BufferKind Kind = UniformBuffer<T>> requires (!Kind::Staged && Kind::Usage == vk::BufferUsageFlagBits::eUniformBuffer)
+    static std::array<VulkanBuffer, Gram::vkMaxFramesInFlight> Create(VulkanDevice& device, VulkanPass& pass)
+    {
+        std::array<VulkanBuffer, Gram::vkMaxFramesInFlight> buffers;
+        auto logicalDevice  = static_cast<vk::Device>(device.GetLogicalDevice());
+        auto descriptorPool = logicalDevice.createDescriptorPoolUnique(Kind::PoolInfo);
+        GramVulkanCheck_(descriptorPool.result, "error creating a descriptor pool", return buffers);
+        
+        std::vector<vk::UniqueDescriptorSetLayout> uniqueLayouts;
+        auto descriptorLayout = logicalDevice.createDescriptorSetLayoutUnique(vk::DescriptorSetLayoutCreateInfo
         {
-            auto stagingBuffer = VulkanBuffer::Create(device, size, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
-            stagingBuffer.Map<T, Access::Write>().Write(data.data(), 0, data.size());
-            auto deviceBuffer  = VulkanBuffer::Create(device, size, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eTransferDst | Kind::Usage);
-            GramVulkanCheck_(device.Submit([&](vk::CommandBuffer cmd) {
-                return (cmd.copyBuffer(stagingBuffer.Get(), deviceBuffer.Get(), vk::BufferCopy { .size = size }), vk::Result::eSuccess);
-            }), "error transfering data to GPU", return VulkanBuffer());
-            return deviceBuffer;
-        }
-        else
+            .bindingCount = 1,
+            .pBindings    = &Kind::Binding,
+        });
+        
+        GramVulkanCheck_(descriptorLayout.result, "error creating a descriptor layout", return buffers);
+        uniqueLayouts.push_back(std::move(descriptorLayout.value));
+        
+        std::vector<vk::DescriptorSetLayout> layouts(Gram::vkMaxFramesInFlight, *uniqueLayouts[0]);
+        auto descriptorSets = logicalDevice.allocateDescriptorSetsUnique(vk::DescriptorSetAllocateInfo 
         {
-            static_assert(Kind::Staged, "host-visible buffers aren't implemented yet");
+            .descriptorPool     = *descriptorPool.value,
+            .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+            .pSetLayouts        = layouts.data(),
+        });
+        
+        GramVulkanCheck_(descriptorSets.result, "error creating the descriptor set", return buffers);
+        pass.SetDescriptorPool(std::move(descriptorPool.value));
+        pass.SetDescriptorSetLayouts(std::move(uniqueLayouts));
+        pass.SetDescriptorSets(std::move(descriptorSets.value));
+
+        for (size_t index = 0; index < Gram::vkMaxFramesInFlight; index++)
+        {
+            buffers[index] = VulkanBuffer::Create(device, sizeof(T), vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, Kind::Usage);
+            buffers[index].UpdateDescriptorSet<T>(device, pass, index);
         }
+
+        return buffers;
     }
 
     static VulkanBuffer Create(VulkanDevice& device, vk::DeviceSize size, vk::MemoryPropertyFlags properties, vk::BufferUsageFlags usage);
@@ -145,11 +206,33 @@ private:
         , m_Properties(properties)
         , m_Usage(usage)
         , m_Size(size)
-    { }
+    {}
 
 public:
     inline vk::Buffer     Get()     const { return *m_Buffer; }
     inline vk::DeviceSize GetSize() const { return  m_Size;   }
+
+    template<typename T, BufferKind Kind = UniformBuffer<T>> requires (!Kind::Staged && Kind::Usage == vk::BufferUsageFlagBits::eUniformBuffer)
+    inline  void UpdateDescriptorSet(VulkanDevice& device, VulkanPass& pass, uint32_t frameIndex)
+    {
+        auto logicalDevice = static_cast<vk::Device>(device.GetLogicalDevice());
+
+        vk::DescriptorBufferInfo bufferInfo = {
+            .buffer = *m_Buffer,
+            .offset = 0,
+            .range  = sizeof(T)
+        };
+
+        vk::DescriptorBufferInfo info { .buffer = *m_Buffer, .offset = 0, .range = sizeof(T) };
+        logicalDevice.updateDescriptorSets(vk::WriteDescriptorSet
+        {
+            .dstSet          = pass.GetDescriptorSet(frameIndex),
+            .dstBinding      = 0,
+            .descriptorCount = 1,
+            .descriptorType  = vk::DescriptorType::eUniformBuffer,
+            .pBufferInfo     = &bufferInfo
+        }, {});
+    }
     inline void Send(vk::CommandBuffer cmd, std::function<void(vk::CommandBuffer, vk::Buffer)> callback)
     {
         if (callback) callback(cmd, *m_Buffer);
@@ -164,12 +247,12 @@ public:
     }
 
 private:
-    vk::Device              m_Device     = {};
-    vk::UniqueDeviceMemory  m_Memory     = {};
-    vk::UniqueBuffer        m_Buffer     = {};
-    vk::MemoryPropertyFlags m_Properties = {};
-    vk::BufferUsageFlags    m_Usage      = {};
-    vk::DeviceSize          m_Size       = {};
+    vk::Device               m_Device        = {};
+    vk::UniqueDeviceMemory   m_Memory        = {};
+    vk::UniqueBuffer         m_Buffer        = {};
+    vk::MemoryPropertyFlags  m_Properties    = {};
+    vk::BufferUsageFlags     m_Usage         = {};
+    vk::DeviceSize           m_Size          = {};
 };
 
 GRAM_NAMESPACE_END
