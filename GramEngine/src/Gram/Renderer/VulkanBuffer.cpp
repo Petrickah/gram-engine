@@ -4,34 +4,6 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
-VulkanBuffer VulkanBuffer::CreateVertex(VulkanDevice& device, std::vector<VulkanBuffer::Vertex> vertices)
-{
-    auto staging = VulkanBuffer::Create(device, sizeof(Vertex) * vertices.size(), vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
-    staging.Map<VulkanBuffer::Vertex, Access::Write>().Write(vertices.data(), 0, vertices.size());
-    auto vertex  = VulkanBuffer::Create(device, sizeof(Vertex) * vertices.size(), vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer);
-    auto result  = device.Submit([&](vk::CommandBuffer cmd) {
-        cmd.copyBuffer(staging.Get(), vertex.Get(), vk::BufferCopy { .size = sizeof(Vertex) * vertices.size() });
-        return vk::Result::eSuccess;
-    });
-
-    GramVulkanCheck_(result, "error transfering vertex data to GPU", return VulkanBuffer());
-    return vertex;
-}
-
-VulkanBuffer VulkanBuffer::CreateIndex(VulkanDevice &device, std::vector<VulkanBuffer::Index> indices)
-{
-    auto staging = VulkanBuffer::Create(device, sizeof(Index) * indices.size(), vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
-    staging.Map<VulkanBuffer::Index, Access::Write>().Write(indices.data(), 0, indices.size());
-    auto index   = VulkanBuffer::Create(device, sizeof(Index) * indices.size(), vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer);
-    auto result  = device.Submit([&](vk::CommandBuffer cmd) {
-        cmd.copyBuffer(staging.Get(), index.Get(), vk::BufferCopy { .size = sizeof(Index) * indices.size() });
-        return vk::Result::eSuccess;
-    });
-
-    GramVulkanCheck_(result, "error transfering index data to GPU", return VulkanBuffer());
-    return index;
-}
-
 VulkanBuffer VulkanBuffer::Create(VulkanDevice &device, vk::DeviceSize size, vk::MemoryPropertyFlags properties, vk::BufferUsageFlags usage)
 {
     vk::BufferCreateInfo bufferInfo {

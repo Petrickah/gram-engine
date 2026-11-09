@@ -16,14 +16,14 @@ TrianglePass::TrianglePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
     : m_Target(target)
     // Built for the target's format, not the swapchain's: that's what it renders into.
     // Its vertex input matches m_VertexBuffer's layout (Position, Color).
-    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, {}, target.GetFormat(), Gram::VulkanBuffer::Vertex::GetVertexInputInfo()))
-    , m_VertexBuffer(Gram::VulkanBuffer::CreateVertex(device, {
+    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, {}, target.GetFormat(), Gram::VertexBuffer::VertexInputInfo))
+    , m_VertexBuffer(Gram::VulkanBuffer::Create<Gram::VertexBuffer>(device, {
         { .Position = { -1.0f, -1.0f }, .Color = { 1.0f, 1.0f, 1.0f } },
         { .Position = {  1.0f, -1.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
         { .Position = {  1.0f,  1.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
         { .Position = { -1.0f,  1.0f }, .Color = { 0.0f, 0.0f, 1.0f } }
     }))
-    , m_IndexBuffer(Gram::VulkanBuffer::CreateIndex(device, {
+    , m_IndexBuffer(Gram::VulkanBuffer::Create<Gram::IndexBuffer>(device, {
         0, 1, 2, 2, 3, 0
     }))
 {}
@@ -64,12 +64,12 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 
     m_IndexBuffer.Send(cmd, [](vk::CommandBuffer cmd, vk::Buffer buffer) {
         const vk::DeviceSize offset = 0;
-        cmd.bindIndexBuffer(buffer, offset, vk::IndexType::eUint16);
+        cmd.bindIndexBuffer(buffer, offset, Gram::IndexBuffer::IndexType);
     });
 
     cmd.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));
     cmd.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), extent));
-    cmd.drawIndexed(static_cast<uint32_t>(m_IndexBuffer.GetSize() / sizeof(Gram::VulkanBuffer::Index)), 1, 0, 0, 0);
+    cmd.drawIndexed(static_cast<uint32_t>(m_IndexBuffer.GetSize() / sizeof(Gram::IndexBuffer::Type)), 1, 0, 0, 0);
     cmd.endRendering();
 
     // Left ready to sample: ImGui reads it while drawing the viewport panel, inside its own rendering,

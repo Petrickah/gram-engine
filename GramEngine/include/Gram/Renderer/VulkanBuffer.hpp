@@ -7,6 +7,52 @@
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
+template<typename K> concept BufferKind = requires
+{
+    typename K::Type;
+    { K::Usage  } -> std::convertible_to<vk::BufferUsageFlags>;
+    { K::Staged } -> std::convertible_to<bool>;
+} && std::is_trivially_copyable_v<typename K::Type>;
+
+struct IndexBuffer
+{
+    using Type  = uint16_t;
+    static constexpr vk::IndexType        IndexType = vk::IndexType::eUint16;
+    static constexpr vk::BufferUsageFlags Usage     = vk::BufferUsageFlagBits::eIndexBuffer;
+    static constexpr bool                 Staged    = true;
+};
+
+struct VertexBuffer
+{
+    using Type = struct Vertex
+    {
+        glm::vec2 Position;
+        glm::vec3 Color;
+    };
+
+    static constexpr vk::VertexInputBindingDescription BindingDescription = 
+    {
+        .binding = 0, .stride = sizeof(typename VertexBuffer::Type), .inputRate = vk::VertexInputRate::eVertex
+    };
+
+    static constexpr std::array<vk::VertexInputAttributeDescription, 2> AttributeDescription = 
+    {{
+        { .location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat,    .offset = offsetof(typename VertexBuffer::Type, Position) },
+        { .location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(typename VertexBuffer::Type, Color)    }
+    }};
+    
+    static constexpr vk::PipelineVertexInputStateCreateInfo VertexInputInfo =
+    {
+        .vertexBindingDescriptionCount   = 1,
+        .pVertexBindingDescriptions      = &BindingDescription,
+        .vertexAttributeDescriptionCount = static_cast<uint32_t>(AttributeDescription.size()),
+        .pVertexAttributeDescriptions    = AttributeDescription.data()
+    };
+
+    static constexpr vk::BufferUsageFlags Usage  = vk::BufferUsageFlagBits::eVertexBuffer;
+    static constexpr bool                 Staged = true;
+};
+
 class VulkanBuffer : public MoveObject
 {
 public:
@@ -63,45 +109,33 @@ public:
         vk::Device       m_Device = {};
         Object*          m_Data   = nullptr;
     };
-
-    struct Vertex
-    {
-        glm::vec2 Position;
-        glm::vec3 Color;
-
-        static vk::VertexInputBindingDescription GetBindingDescription()
-        {
-            return { .binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex };
-        }
-
-        static std::array<vk::VertexInputAttributeDescription, 2> GetAttributeDescription()
-        {
-            return {{
-                { .location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat,    .offset = offsetof(Vertex, Position) },
-                { .location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, Color)    }
-            }};
-        }
-        
-        static vk::PipelineVertexInputStateCreateInfo GetVertexInputInfo()
-        {
-            static auto attributes = Vertex::GetAttributeDescription();
-            static auto binding    = Vertex::GetBindingDescription();
-            return {
-                .vertexBindingDescriptionCount   = 1,
-                .pVertexBindingDescriptions      = &binding,
-                .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size()),
-                .pVertexAttributeDescriptions    = attributes.data()
-            };
-        }
-    };
-
-    using Index = uint16_t;
     
 public:
-    VulkanBuffer() = default;
-    static VulkanBuffer CreateVertex(VulkanDevice& device, std::vector<VulkanBuffer::Vertex> vertices);
-    static VulkanBuffer CreateIndex(VulkanDevice& device, std::vector<VulkanBuffer::Index> indices);
+    template<BufferKind Kind>
+    static VulkanBuffer Create(VulkanDevice& device, const std::vector<typename Kind::Type>& data)
+    {
+        using T = typename Kind::Type;
+        const vk::DeviceSize size = sizeof(T) * data.size();
+
+        if constexpr (Kind::Staged)
+        {
+            auto stagingBuffer = VulkanBuffer::Create(device, size, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
+            stagingBuffer.Map<T, Access::Write>().Write(data.data(), 0, data.size());
+            auto deviceBuffer  = VulkanBuffer::Create(device, size, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::BufferUsageFlagBits::eTransferDst | Kind::Usage);
+            GramVulkanCheck_(device.Submit([&](vk::CommandBuffer cmd) {
+                return (cmd.copyBuffer(stagingBuffer.Get(), deviceBuffer.Get(), vk::BufferCopy { .size = size }), vk::Result::eSuccess);
+            }), "error transfering data to GPU", return VulkanBuffer());
+            return deviceBuffer;
+        }
+        else
+        {
+            static_assert(Kind::Staged, "host-visible buffers aren't implemented yet");
+        }
+    }
+
     static VulkanBuffer Create(VulkanDevice& device, vk::DeviceSize size, vk::MemoryPropertyFlags properties, vk::BufferUsageFlags usage);
+
+    VulkanBuffer() = default;
 
 private:
     VulkanBuffer(VulkanDevice& device, vk::DeviceSize size, vk::UniqueBuffer buffer, vk::UniqueDeviceMemory memory, vk::MemoryPropertyFlags properties = {}, vk::BufferUsageFlags usage = {})
@@ -114,17 +148,15 @@ private:
     { }
 
 public:
+    inline vk::Buffer     Get()     const { return *m_Buffer; }
+    inline vk::DeviceSize GetSize() const { return  m_Size;   }
     inline void Send(vk::CommandBuffer cmd, std::function<void(vk::CommandBuffer, vk::Buffer)> callback)
     {
         if (callback) callback(cmd, *m_Buffer);
     }
 
-    inline vk::Buffer     Get()     const { return *m_Buffer; }
-    inline vk::DeviceSize GetSize() const { return  m_Size;   }
-
-public:
     template<typename Object, Access Mode>
-    VulkanBuffer::Mapping<Object, Mode> Map()
+    inline VulkanBuffer::Mapping<Object, Mode> Map()
     {
         // Only host-visible memory can be mapped: anything else gets an invalid mapping (Write/Read refuse it).
         const bool isHostVisible = static_cast<bool>(m_Properties & vk::MemoryPropertyFlagBits::eHostVisible);
