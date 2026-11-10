@@ -1,11 +1,13 @@
 #include "Gram/EntryPoint.hpp"
 #include "Gram/Application/GLFWApplication.hpp"
+#include "Gram/Renderer/VulkanShader.hpp"
 #include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Scripting/GameAPI.hpp"
 #include "Gram/Editor/Editor.hpp"
 #include "Gram/Editor/InspectorPanel.hpp"
 
 #include "Components.generated.hpp"
+#include "RayTracePass.hpp"
 #include "TrianglePass.hpp"
 
 class RuntimeApplication : public Gram::GLFWApplication
@@ -35,8 +37,13 @@ private:
         GramCheckVoid(m_VulkanRenderer, "couldn't register the render passes: no Vulkan renderer");
 
         Gram::VulkanDevice& device = m_VulkanRenderer->GetDevice();
-        const Gram::VulkanShader shader = Gram::VulkanShader::Graphics(spec.m_Workspace, "Default", static_cast<vk::Device>(device.GetLogicalDevice()));
-        m_VulkanRenderer->AddPass<TrianglePass>(spec.m_Workspace / "textures" / "texture.jpg", device, shader, m_VulkanRenderer->GetSceneTarget());
+
+        const Gram::VulkanShader shader = Gram::VulkanShader::Compute(spec.m_Workspace, "RayTracer", static_cast<vk::Device>(device.GetLogicalDevice()));
+        m_VulkanRenderer->AddPass<RayTracePass>(device, shader, m_VulkanRenderer->GetSceneTarget());
+
+        // Kept for backwards compatibility: used to test graphics shaders / pipeline and upload data through buffers.
+        // const Gram::VulkanShader shader = Gram::VulkanShader::Graphics(spec.m_Workspace, "Default", static_cast<vk::Device>(device.GetLogicalDevice()));
+        // m_VulkanRenderer->AddPass<TrianglePass>(spec.m_Workspace / "textures" / "texture.jpg", device, shader, m_VulkanRenderer->GetSceneTarget());
     }
 #endif // #ifdef GRAM_VULKAN_RENDERER
 

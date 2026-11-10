@@ -76,14 +76,14 @@ public:
         }
     }
 
-    void Write(VulkanDevice& device, uint32_t binding, const VulkanImage& image)
+    void Write(VulkanDevice& device, uint32_t binding, const VulkanImage& image, vk::ImageLayout layout = vk::ImageLayout::eShaderReadOnlyOptimal)
     {
         auto logicalDevice = static_cast<vk::Device>(device.GetLogicalDevice());
         vk::DescriptorImageInfo imageInfo
         {
-            .sampler = image.GetSampler(),
-            .imageView = image.GetView(),
-            .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
+            .sampler     = image.GetSampler(),
+            .imageView   = image.GetView(),
+            .imageLayout = layout
         };
 
         for (uint32_t setIndex = 0; setIndex < m_Sets.size(); setIndex++)

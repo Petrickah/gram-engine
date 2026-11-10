@@ -37,7 +37,5 @@ protected:
     }
 };
 
-class RayTracePass : public VulkanPass { /* VulkanPipeline::Compute, storage image, descriptors */ };
-
 GRAM_NAMESPACE_END
 #endif // #ifdef GRAM_VULKAN_RENDERER
