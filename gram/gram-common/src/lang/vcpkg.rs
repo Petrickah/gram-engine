@@ -110,15 +110,11 @@ pub(crate) fn add_dependency(module: &mut ModuleConfig, dependency: &DependencyS
     println!("gram add (dependency={name}, src={}): adding vcpkg dependency", module.src);
 
     let manifest_path = manifest_path(module);
-    let mut manifest_deps = if manifest_path.exists() {
-        read_dependencies(&manifest_path)?
-    } else {
-        vec![]
-    };
-
-    if !manifest_deps.iter().any(|d| *d == name) {
-        manifest_deps.push(name.clone());
-        write_manifest(&manifest_path, &sanitize_name(&module.name), &manifest_deps)?;
+    let mut manifest = if manifest_path.exists() { read_manifest(&manifest_path)? } else { Map::new() };
+    let dependencies = dependencies_mut(&mut manifest, &manifest_path)?;
+    if !dependencies.iter().any(|known| dependency_name(known) == Some(name.as_str())) {
+        dependencies.push(json!(name));
+        write_manifest(&manifest_path, &sanitize_name(&module.name), manifest)?;
     }
 
     let contents = fs::read_to_string(&module.src)?;
@@ -140,10 +136,12 @@ pub(crate) fn add_dependency(module: &mut ModuleConfig, dependency: &DependencyS
 pub(crate) fn remove_dependency(module: &ModuleConfig, dependency: &str) -> io::Result<()> {
     let manifest_path = manifest_path(module);
     if manifest_path.exists() {
-        let mut manifest_deps = read_dependencies(&manifest_path)?;
-        if let Some(position) = manifest_deps.iter().position(|d| d == dependency) {
-            manifest_deps.remove(position);
-            write_manifest(&manifest_path, &sanitize_name(&module.name), &manifest_deps)?;
+        let mut manifest = read_manifest(&manifest_path)?;
+        let dependencies = dependencies_mut(&mut manifest, &manifest_path)?;
+        let before = dependencies.len();
+        dependencies.retain(|known| dependency_name(known) != Some(dependency));
+        if dependencies.len() != before {
+            write_manifest(&manifest_path, &sanitize_name(&module.name), manifest)?;
         }
     }
     Ok(())
@@ -164,31 +162,51 @@ fn sanitize_name(name: &str) -> String {
     if collapsed.is_empty() { String::from("module") } else { collapsed }
 }
 
-fn read_dependencies(path: &Path) -> io::Result<Vec<String>> {
-    let contents = fs::read_to_string(path)?;
-    let start = contents.find("\"dependencies\"").and_then(|i| contents[i..].find('[').map(|j| i + j + 1));
-    let end = start.and_then(|s| contents[s..].find(']').map(|e| s + e));
-
-    match (start, end) {
-        (Some(s), Some(e)) => Ok(contents[s..e]
-            .split(',')
-            .map(|entry| entry.trim().trim_matches('"').to_string())
-            .filter(|entry| !entry.is_empty())
-            .collect()),
-        _ => Err(io::Error::new(io::ErrorKind::InvalidData, format!("malformed vcpkg.json: {}", path.display()))),
+/// The whole manifest, so a rewrite keeps every field (builtin-baseline, overrides, ...) and every
+/// dependency as written: a port can be a plain name or an object with a platform filter or features.
+fn read_manifest(path: &Path) -> io::Result<Map<String, Value>> {
+    let malformed = |detail: String| io::Error::new(io::ErrorKind::InvalidData, format!("malformed {}: {detail}", path.display()));
+    match serde_json::from_str(&fs::read_to_string(path)?).map_err(|err| malformed(err.to_string()))? {
+        Value::Object(fields) => Ok(fields),
+        _ => Err(malformed(String::from("not a JSON object"))),
     }
 }
 
-fn write_manifest(path: &Path, name: &str, deps: &[String]) -> io::Result<()> {
-    let dependencies = if deps.is_empty() {
-        String::from("[]")
-    } else {
-        let entries = deps.iter().map(|d| format!("        \"{d}\"")).collect::<Vec<_>>().join(",\n");
-        format!("[\n{entries}\n    ]")
-    };
+fn dependencies_mut<'a>(manifest: &'a mut Map<String, Value>, path: &Path) -> io::Result<&'a mut Vec<Value>> {
+    manifest.entry("dependencies").or_insert_with(|| json!([])).as_array_mut()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, format!("malformed {}: \"dependencies\" isn't an array", path.display())))
+}
 
-    let content = format!(
-        "{{\n    \"name\": \"{name}\",\n    \"version\": \"0.1.0\",\n    \"dependencies\": {dependencies}\n}}\n"
-    );
-    fs::write(path, content)
+/// Written by hand rather than pretty-printed: one dependency per line, an object kept on its line
+/// (`{ "name": "vulkan", "platform": "windows" }`), as these manifests are written when edited by hand.
+/// "name" and "version" come first (filled in when missing), the other fields in their original order.
+fn write_manifest(path: &Path, name: &str, mut manifest: Map<String, Value>) -> io::Result<()> {
+    let name = manifest.shift_remove("name").unwrap_or_else(|| json!(name));
+    let version = manifest.shift_remove("version").unwrap_or_else(|| json!("0.1.0"));
+    let fields = [(String::from("name"), name), (String::from("version"), version)].into_iter().chain(manifest);
+
+    let lines: Vec<String> = fields.map(|(key, value)| {
+        let value = match &value {
+            Value::Array(entries) if key == "dependencies" && !entries.is_empty() => {
+                let entries: Vec<String> = entries.iter().map(|entry| format!("        {}", inline(entry))).collect();
+                format!("[\n{}\n    ]", entries.join(",\n"))
+            },
+            _ => inline(&value),
+        };
+        format!("    {}: {value}", Value::String(key))
+    }).collect();
+    fs::write(path, format!("{{\n{}\n}}\n", lines.join(",\n")))
+}
+
+/// A JSON value on one line, spaced like the hand-written manifests.
+fn inline(value: &Value) -> String {
+    match value {
+        Value::Object(fields) if fields.is_empty() => String::from("{}"),
+        Value::Object(fields) => {
+            let fields: Vec<String> = fields.iter().map(|(key, value)| format!("{}: {}", Value::String(key.clone()), inline(value))).collect();
+            format!("{{ {} }}", fields.join(", "))
+        },
+        Value::Array(entries) => format!("[{}]", entries.iter().map(inline).collect::<Vec<_>>().join(", ")),
+        other => other.to_string(),
+    }
 }

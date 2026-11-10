@@ -193,6 +193,31 @@ fn adds_more_vcpkg_dependencies_to_the_same_manifest() {
 }
 
 #[test]
+fn keeps_hand_written_vcpkg_entries_and_fields() {
+    // A port written as an object (platform filter, features) and a field gram doesn't manage
+    // must survive gram rewriting the manifest, on add as on remove.
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "glm", "--module", "main", "--vcpkg"]).succeeds();
+    let hand_written = r#"{
+    "name": "main",
+    "version": "0.1.0",
+    "builtin-baseline": "abc123",
+    "dependencies": [
+        { "name": "vulkan-loader", "platform": "linux", "features": ["xcb", "xlib"] },
+        "glm"
+    ]
+}
+"#;
+    project.write("main/vcpkg.json", hand_written);
+
+    project.gram(&["add", "glfw3", "--module", "main", "--vcpkg"]).succeeds();
+    assert_eq!(project.read("main/vcpkg.json"), hand_written.replace("\"glm\"\n", "\"glm\",\n        \"glfw3\"\n"));
+
+    project.gram(&["remove", "glfw3", "--module", "main"]).succeeds();
+    assert_eq!(project.read("main/vcpkg.json"), hand_written, "removing restores the file as it was");
+}
+
+#[test]
 fn vcpkg_cannot_be_combined_with_url_or_tag() {
     let project = Sandbox::project("demo", &["--lang", "cmake"]);
 
