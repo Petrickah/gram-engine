@@ -12,9 +12,6 @@ include(FetchContent)
 # gram:dep:GramEngine begin
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine ${CMAKE_CURRENT_BINARY_DIR}/GramEngine)
 # gram:dep:GramEngine end
-# gram:dep:stb begin
-find_package(Stb REQUIRED)
-# gram:dep:stb end
 # --- end gram dependencies ---
 
 add_executable(Runtime src/main.cpp src/TrianglePass.cpp)

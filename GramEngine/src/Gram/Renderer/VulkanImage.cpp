@@ -1,9 +1,48 @@
-#include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanImage.hpp"
 
+// The one translation unit that compiles stb_image: its implementation has no include guard,
+// so a second STB_IMAGE_IMPLEMENTATION (or this header included again under it) redefines everything.
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
+
+VulkanImage VulkanImage::Load(VulkanDevice& device, const std::filesystem::path& path, vk::Format format)
+{
+    GramCheck_(std::filesystem::exists(path), return VulkanImage(), "VulkanImage::Load: image not found {}", path.string());
+
+    int width = 0, height = 0, channels = 0;
+    std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(stbi_load(path.string().c_str(), &width, &height, &channels, STBI_rgb_alpha), &stbi_image_free);
+    GramCheck_(pixels != nullptr, return VulkanImage {}, "VulkanImage::Load: can't load the image {}: {}", path.string(), stbi_failure_reason());
+    const vk::DeviceSize size = static_cast<vk::DeviceSize>(width) * height * 4;   // STBI_rgb_alpha: always 4 bytes per pixel
+
+    VulkanBuffer staging = VulkanBuffer::Create(device, size, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferSrc);
+    staging.Map<stbi_uc, VulkanBuffer::Access::Write>().Write(pixels.get(), 0, size);
+
+    const vk::Extent2D extent { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
+    VulkanImage image = VulkanImage::Create(device, extent, format, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
+
+    vk::Result result = device.Submit([&](vk::CommandBuffer cmd)
+    {
+        image.Transition(cmd, vk::ImageLayout::eTransferDstOptimal, vk::PipelineStageFlagBits2::eCopy, vk::AccessFlagBits2::eTransferWrite);
+        cmd.copyBufferToImage(staging.Get(), image.m_State.Image, vk::ImageLayout::eTransferDstOptimal, vk::BufferImageCopy {
+            .bufferOffset      = 0,
+            .bufferRowLength   = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource  = { .aspectMask = vk::ImageAspectFlagBits::eColor, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1 },
+            .imageOffset       = { 0, 0, 0 },
+            .imageExtent       = { extent.width, extent.height, 1 }
+        });
+        image.Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
+        return vk::Result::eSuccess;
+    });
+
+    GramVulkanCheck_(result, "VulkanImage::Load: error uploading the image", return VulkanImage {});
+    return image;
+}
 
 VulkanImage VulkanImage::Create(VulkanDevice &device, vk::Extent2D extent, vk::Format format, vk::ImageUsageFlags usage)
 {

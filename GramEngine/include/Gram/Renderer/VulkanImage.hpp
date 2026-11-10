@@ -21,9 +21,8 @@ public:
         void Transition(vk::CommandBuffer cmd, vk::ImageLayout layout, vk::PipelineStageFlags2 stage, vk::AccessFlags2 access);
     };
 
-    VulkanImage() = default;
-
 private:
+    VulkanImage() = default;
     VulkanImage(vk::UniqueImage image, vk::UniqueDeviceMemory memory, vk::UniqueImageView imageView, vk::UniqueSampler sampler, vk::Extent2D extent, vk::Format format)
         : m_Image(std::move(image))
         , m_Memory(std::move(memory))
@@ -40,6 +39,10 @@ private:
 public:
     static VulkanImage Create(VulkanDevice& device, vk::Extent2D extent, vk::Format format, vk::ImageUsageFlags usage);
 
+    // A single image file loaded on a device-local image, ready to be read by the shader (eShaderReadOnlyOptimal).
+    // eR8G8B8A8Srgb: image pixels are encoded as sRGB, the GPU reads them and converts in linear space.
+    static VulkanImage Load(VulkanDevice& device, const std::filesystem::path& path, vk::Format format = vk::Format::eR8G8B8A8Srgb);
+
     // The Barrier from the last usage to the new one. The stage and olt usage are hold by the image,
     // so the pass tells only how the image gets used by it.
     void Transition(vk::CommandBuffer cmd, vk::ImageLayout layout, vk::PipelineStageFlags2 stage, vk::AccessFlags2 access)
@@ -48,6 +51,7 @@ public:
     }
 
     void BeginRendering(vk::CommandBuffer cmd, vk::AttachmentLoadOp loadOp);
+    bool IsValid() const { return m_Image && m_View && m_Sampler; }
 
     vk::ImageView GetView()    const { return *m_View;    }
     vk::Sampler   GetSampler() const { return *m_Sampler; }

@@ -44,6 +44,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 # gram:dep:spdlog end
+# gram:dep:stb begin
+find_package(Stb REQUIRED)
+# gram:dep:stb end
 # --- end gram dependencies ---
 
 # --- Gram Engine ---
@@ -62,6 +65,8 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanSwapchain.cpp
 )
 target_include_directories(GramRenderer PUBLIC include)
+# stb_image is an implementation detail of VulkanImage.cpp (its only user): kept out of the public headers.
+target_include_directories(GramRenderer PRIVATE ${Stb_INCLUDE_DIR})
 target_compile_definitions(GramRenderer PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS})
 target_link_libraries(GramRenderer PUBLIC glfw Vulkan::Vulkan glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)

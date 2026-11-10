@@ -38,6 +38,9 @@ BuildConfig(
                     url: "https://github.com/gabime/spdlog.git",
                     tag: "v1.17.0",
                 ),
+                Vcpkg(
+                    name: "stb",
+                ),
             ],
             targets: [
                 "linux",

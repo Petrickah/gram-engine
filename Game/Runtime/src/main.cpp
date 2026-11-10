@@ -1,5 +1,4 @@
 #include "Gram/EntryPoint.hpp"
-#include "Gram/Application/Common.hpp"
 #include "Gram/Application/GLFWApplication.hpp"
 #include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Scripting/GameAPI.hpp"
@@ -37,12 +36,10 @@ private:
 
         Gram::VulkanDevice& device = m_VulkanRenderer->GetDevice();
         const Gram::VulkanShader shader = Gram::VulkanShader::Graphics(spec.m_Workspace, "Default", static_cast<vk::Device>(device.GetLogicalDevice()));
-        m_TrianglePass = &m_VulkanRenderer->AddPass<TrianglePass>(device, shader, m_VulkanRenderer->GetSceneTarget());
-        GramCheckVoid(m_TrianglePass->LoadTexture(spec.m_Workspace, "textures/texture.jpg"), "TrianglePass::LoadTexture: loading the image texture failed");
+        m_VulkanRenderer->AddPass<TrianglePass>(spec.m_Workspace / "textures" / "texture.jpg", device, shader, m_VulkanRenderer->GetSceneTarget());
     }
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
-    TrianglePass*   m_TrianglePass  = nullptr;
     Gram::ObjectID m_GreetingEntity = {};
     std::shared_ptr<Gram::GameAPILoader> m_GameAPI;
     std::shared_ptr<Gram::World> m_World;

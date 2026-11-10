@@ -76,7 +76,7 @@
 #define GRAM_LOGGER_ENABLED
 #endif // #ifndef GRAM_LOGGER_ENABLED
 
-#include <glm/vec2.hpp>
+#include <glm/glm.hpp>
 
 #define GRAM_NAMESPACE_BEGIN namespace Gram {
 #define GRAM_NAMESPACE_END }

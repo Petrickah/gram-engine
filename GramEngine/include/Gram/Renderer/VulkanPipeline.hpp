@@ -28,7 +28,7 @@ public:
 
     VulkanPipeline() = default;
     void Bind(vk::CommandBuffer cmd) const { cmd.bindPipeline(m_BindPoint, *m_Pipeline); }
-    void BindDescriptorSets(vk::CommandBuffer cmd, std::span<const vk::DescriptorSet> sets) const { cmd.bindDescriptorSets(m_BindPoint, *m_Layout, 0, sets, {}); }
+    void BindDescriptorSets(vk::CommandBuffer cmd, uint32_t firstSet, std::span<const vk::DescriptorSet> sets) const { cmd.bindDescriptorSets(m_BindPoint, *m_Layout, firstSet, sets, {}); }
     bool IsValid() const { return m_Pipeline && m_Layout; }
 
 private:

@@ -1,7 +1,9 @@
 #include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanBuffer.hpp"
+#include "Gram/Renderer/VulkanDescriptors.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
+#include "Gram/Renderer/VulkanImage.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
-#include "Gram/Renderer/VulkanSwapchain.hpp"
 
 #include "TrianglePass.hpp"
 
@@ -14,44 +16,29 @@ struct UniformBufferObject
     glm::mat4 proj;
 };
 
-// The one translation unit that compiles stb_image: its implementation has no include guard,
-// so a second STB_IMAGE_IMPLEMENTATION (or this header included again under it) redefines everything.
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
 #ifdef GRAM_VULKAN_RENDERER
 
-TrianglePass::TrianglePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::VulkanRenderTarget& target)
-    : m_Uniforms(Gram::VulkanBuffer::Create<UniformBufferObject>(device, *this))
-    , m_Target(target)
+TrianglePass::TrianglePass(const std::filesystem::path& texturePath, Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::VulkanRenderTarget& target)
+    : m_Target(target)
+    , m_Texture(Gram::VulkanImage::Load(device, texturePath))
+    , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
+        { .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer,        .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eVertex   },
+        { .binding = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment }
+    }))
     // Built for the target's format, not the swapchain's: that's what it renders into.
-    // Its vertex input matches m_VertexBuffer's layout (Position, Color).
-    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, GetDescriptorSetLayouts(), target.GetFormat(), Gram::VertexBuffer::VertexInputInfo))
+    // Its vertex input matches m_VertexBuffer's layout (Position, Color, TexCoord).
+    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, std::array { m_Descriptors.GetLayout() }, target.GetFormat(), Gram::VertexBuffer::VertexInputInfo))
     , m_VertexBuffer(Gram::VulkanBuffer::Create<Gram::VertexBuffer>(device, {
-        { .Position = { -1.0f, -1.0f }, .Color = { 1.0f, 1.0f, 1.0f } },
-        { .Position = {  1.0f, -1.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
-        { .Position = {  1.0f,  1.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
-        { .Position = { -1.0f,  1.0f }, .Color = { 0.0f, 0.0f, 1.0f } }
+        { .Position = { -1.0f, -1.0f }, .Color = { 1.0f, 1.0f, 1.0f }, .TexCoord = { 0.0f, 0.0f } },
+        { .Position = {  1.0f, -1.0f }, .Color = { 1.0f, 0.0f, 0.0f }, .TexCoord = { 1.0f, 0.0f } },
+        { .Position = {  1.0f,  1.0f }, .Color = { 0.0f, 1.0f, 0.0f }, .TexCoord = { 1.0f, 1.0f } },
+        { .Position = { -1.0f,  1.0f }, .Color = { 0.0f, 0.0f, 1.0f }, .TexCoord = { 0.0f, 1.0f } }
     }))
     , m_IndexBuffer(Gram::VulkanBuffer::Create<Gram::IndexBuffer>(device, { 0, 1, 2, 2, 3, 0 }))
-{}
-
-TrianglePass::~TrianglePass()
+    , m_Uniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<UniformBufferObject>>(device))
 {
-    stbi_image_free(m_TexturePixels);
-}
-
-bool TrianglePass::LoadTexture(const std::filesystem::path &workspace, std::string_view imagePath)
-{
-    int texWidth, texHeight, texChannels;
-    std::filesystem::path imageLocation = workspace / imagePath;
-
-    GramCheck(std::filesystem::exists(imageLocation), "TrianglePass::LoadTexture: image not found {}", imageLocation.string());
-
-    m_TexturePixels = (void*)stbi_load(imageLocation.string().c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-    m_TextureSize   = texWidth * texHeight * 4;
-
-    return m_TexturePixels;
+    m_Descriptors.Write(device, 0, m_Uniforms, sizeof(UniformBufferObject));
+    if (m_Texture.IsValid()) m_Descriptors.Write(device, 1, m_Texture);
 }
 
 bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
@@ -65,21 +52,21 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     const vk::Extent2D extent = scene.GetExtent();
     
     m_GraphicsPipeline.Bind(cmd);
+    m_GraphicsPipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex) });
 
-    m_VertexBuffer.Send(cmd, [](vk::CommandBuffer cmd, vk::Buffer buffer)
+    m_VertexBuffer.Send(cmd, [](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
     {
         const vk::DeviceSize offset = 0;
-        cmd.bindVertexBuffers(0, 1, &buffer, &offset);
+        cmd.bindVertexBuffers(0, 1, &buffer.Get(), &offset);
     });
 
-    m_IndexBuffer.Send(cmd, [](vk::CommandBuffer cmd, vk::Buffer buffer)
+    m_IndexBuffer.Send(cmd, [](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
     {
         const vk::DeviceSize offset = 0;
-        cmd.bindIndexBuffer(buffer, offset, Gram::IndexBuffer::IndexType);
+        cmd.bindIndexBuffer(buffer.Get(), offset, Gram::IndexBuffer::IndexType);
     });
 
-    auto& uniformBuffer = m_Uniforms[ctx.ActiveFrame.FrameIndex];
-    uniformBuffer.Send(cmd, [&](vk::CommandBuffer cmd, vk::Buffer _)
+    m_Uniforms[ctx.ActiveFrame.FrameIndex].Send(cmd, [extent](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
     {
         static  auto  startTime   = std::chrono::high_resolution_clock::now();
                 auto  currentTime = std::chrono::high_resolution_clock::now();
@@ -92,8 +79,7 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
             .proj   = glm::perspective(glm::radians(45.0f), static_cast<float>(extent.width) / static_cast<float>(extent.height), 0.1f, 10.0f)
         };
 
-        uniformBuffer.Map<UniformBufferObject, Gram::VulkanBuffer::Access::Write>().Write(&bufferData, 0, 1);
-        m_GraphicsPipeline.BindDescriptorSets(cmd, std::array<const vk::DescriptorSet, 1> { GetDescriptorSet(ctx.ActiveFrame.FrameIndex) });
+        buffer.Map<UniformBufferObject, Gram::VulkanBuffer::Access::Write>().Write(&bufferData, 0, 1);
     });
 
     cmd.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));
