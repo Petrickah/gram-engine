@@ -19,6 +19,8 @@ add_executable(Runtime src/main.cpp src/TrianglePass.cpp src/RayTracePass.cpp)
 target_include_directories(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Content)
 target_precompile_headers(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine/include/Gram/Application/Common.hpp)
 
+gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/SSAA.hlsl)
+gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Accumulate.hlsl)
 gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Default.hlsl)
 gram_add_hlsl_compute_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/RayTracer.hlsl)
 

@@ -1,42 +1,100 @@
-#include "RayTracePass.hpp"
+#include "Gram/Logging/GramLogger.hpp"
 #include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDescriptors.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
+#include "Gram/Renderer/VulkanRenderTarget.hpp"
+#include "vulkan/vulkan.hpp"
+
+#include "RayTracePass.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/fwd.hpp>
+#include <glm/matrix.hpp>
+#include <imgui.h>
 
 #ifdef GRAM_VULKAN_RENDERER
 
-RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::VulkanRenderTarget& target)
+RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, const std::shared_ptr<Gram::VulkanRenderTarget>& target)
     : m_Target(target)
-    , m_TargetGeneration(target.GetGeneration())
     , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
-        { .binding = 0, .descriptorType = vk::DescriptorType::eStorageImage, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
+        { .binding = 0, .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = 1, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = 2, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = 3, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
     }))
     , m_ComputePipeline(Gram::VulkanPipeline::Compute(device, shader, std::array { m_Descriptors.GetLayout() }))
+    , m_CameraUniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<CameraData>>(device))
+    , m_SphereCount(50), m_MaterialCount(50)
 {
-    m_Descriptors.Write(device, 0, m_Target.GetImage(), vk::ImageLayout::eGeneral);
+    m_Output = target ? std::make_shared<Gram::VulkanRenderTarget>(device, target->GetImage().GetExtent(), vk::Format::eR32G32B32A32Sfloat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled) : nullptr;
+    GramCheckVoid(m_Output, "the output image was not created; no render target recieved");
+
+    Gram::VulkanImage& scene = m_Output->GetImage();
+    if (scene.IsValid()) m_Descriptors.Write(device, 0, scene, vk::ImageLayout::eGeneral);
+
+    m_SphereStorages   = Gram::VulkanBuffer::Create<Gram::StorageBuffer<SphereData>>(device, m_SphereCount);
+    m_MaterialStorages = Gram::VulkanBuffer::Create<Gram::StorageBuffer<MaterialData>>(device, m_MaterialCount);
+    m_Descriptors.Write(device, 2, m_SphereStorages  , m_SphereCount   * sizeof(SphereData));
+    m_Descriptors.Write(device, 3, m_MaterialStorages, m_MaterialCount * sizeof(MaterialData));
+    m_Descriptors.Write(device, 1, m_CameraUniforms  , sizeof(CameraData));
 }
 
 bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 {
     GramCheck(m_ComputePipeline.IsValid(), "RayTracePass: the compute pipeline wasn't created");
-    
+    GramCheck(m_Output && m_Target, "RayTracePass: at least one of the images were nullptr");
+
+    m_Output->RequestExtent(m_Target->GetImage().GetExtent(), 2.0f);
+    m_Output->ApplyRequestedExtent();
+
     // The image's own size, not the swapchain's: the ray tracer fills the target, whatever the window.
-    Gram::VulkanImage& scene = m_Target.GetImage();
+    Gram::VulkanImage& scene  = m_Output->GetImage();
     const vk::Extent2D extent = scene.GetExtent();
 
     scene.Transition(cmd, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader, vk::AccessFlagBits2::eShaderStorageWrite);
 
     // The target was recreated (a resize): the sets still point at the old image's view.
-    if (m_TargetGeneration != m_Target.GetGeneration())
-    {
-        // Safe here: ApplyRequestedExtent waited for the device before recreating the image,
-        // so no command buffer uses these sets anymore, not even the other frame in flight's.
-        m_Descriptors.Write(ctx.Device, 0, m_Target.GetImage(), vk::ImageLayout::eGeneral);
-        m_TargetGeneration = m_Target.GetGeneration();
-    }
+    const bool outputRecreated = !m_TargetGeneration || *m_TargetGeneration != m_Output->GetGeneration(); m_TargetGeneration = m_Output->GetGeneration();
+
+    // Safe here: ApplyRequestedExtent waited for the device before recreating the image,
+    // so no command buffer uses these sets anymore, not even the other frame in flight's.
+    if (outputRecreated) m_Descriptors.Write(ctx.Device, 0, m_Output->GetImage(), vk::ImageLayout::eGeneral);
 
     m_ComputePipeline.Bind(cmd);
     m_ComputePipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex) });
+
+    m_CameraUniforms[ctx.ActiveFrame.FrameIndex].Send(cmd, [&](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
+    {
+        const float yaw   = glm::radians(m_CameraControls.Yaw);
+        const float pitch = glm::radians(m_CameraControls.Pitch);
+
+        const glm::vec3 forward = glm::normalize(glm::vec3(std::cos(pitch) * std::sin(yaw), std::sin(pitch), -std::cos(pitch) * std::cos(yaw)));
+        const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));   // lumea are Y în sus
+        const glm::vec3 up      = glm::cross(right, forward);
+
+        CameraData camera {
+            .Position = m_CameraControls.Position, .TanHalfFovY  = std::tan(glm::radians(m_CameraControls.FovY) * 0.5f),
+            .Right    = right,                     .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
+            .Up       = up,                        .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
+            .Forward  = forward,                   .FrameIndex   = m_FrameCounter++,
+            .Samples  = 10,                        .SamplesScale = 1.0f / 10.0f
+        };
+
+        buffer.Map<CameraData, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
+    });
+
+    m_SphereStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
+    {
+        buffer.Map<SphereData, Gram::VulkanBuffer::Access::Write>().Write(m_Spheres.data(), 0, m_Spheres.size());
+    });
+
+    m_MaterialStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
+    {
+        buffer.Map<MaterialData, Gram::VulkanBuffer::Access::Write>().Write(m_Materials.data(), 0, m_Materials.size());
+    });
 
     cmd.dispatch((extent.width + 7) / 8, (extent.height + 7) / 8, 1);
 
@@ -44,6 +102,83 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     // where no barrier can go.
     scene.Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
     return true;
+}
+
+void RayTracePass::RayTracerUI::DrawContents()
+{
+    bool changed = false;
+    ImGui::BeginDisabled(RayTracePass.m_Spheres.size() >= RayTracePass.m_SphereCount);
+    if (ImGui::Button("Add Sphere"))
+    {
+        RayTracePass.m_Materials.push_back({
+            .Albedo = glm::vec3(0.8f, 0.3f, 0.3f),
+            .Fuzz   = 0.5f,
+            .Type   = MaterialData::TypeEnum::Lambertian,
+        });
+
+        RayTracePass.m_Spheres.push_back({
+            .Position      = glm::vec3(0.0f, 0.0f, -0.2f),
+            .Radius        = 0.45f,
+            .MaterialIndex = static_cast<uint32_t>(RayTracePass.m_Materials.size() - 1)
+        });
+
+        changed = true;
+    }
+    ImGui::EndDisabled();
+
+    if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        CameraControls& c = RayTracePass.m_CameraControls;
+        changed |= ImGui::DragFloat3 ("Camera Position", &c.Position.x, 0.05f);
+        changed |= ImGui::DragFloat  ("Camera Yaw"     , &c.Yaw       , 0.05f);
+        changed |= ImGui::DragFloat  ("Camera Pitch"   , &c.Pitch     , 0.05f, -89.0f, 89.0f);   // la ±90, „înainte” devine paralel cu „sus” și produsul vectorial dă zero
+        changed |= ImGui::SliderFloat("Camera FOV"     , &c.FovY      ,   10.0f, 120.0f);
+    }
+    
+    if (ImGui::CollapsingHeader("Spheres", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        uint32_t index = 0;
+        std::optional<size_t> toRemove = std::nullopt;
+        for (auto& s: RayTracePass.m_Spheres)
+        {
+            ImGui::PushID(std::format("_sphere#{}", index).c_str());
+            if (ImGui::CollapsingHeader("Sphere Data", ImGuiTreeNodeFlags_CollapsingHeader))
+            {
+                changed |= ImGui::DragFloat3("Sphere Position", &s.Position.x, 0.05f);
+                changed |= ImGui::DragFloat( "Sphere Radius"  , &s.Radius    , 0.05f, 0.01f, 100.0f);
+
+                if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_CollapsingHeader))
+                {
+                    auto& m = RayTracePass.m_Materials[s.MaterialIndex];
+                    int type = static_cast<int>(m.Type);
+                    if (ImGui::Combo("Type", &type, MaterialData::TypeNames.data(), static_cast<int>(MaterialData::TypeNames.size())))
+                    {
+                        m.Type = static_cast<MaterialData::TypeEnum>(type);
+                        changed = true;   // nu uita resetarea acumulării
+                    }
+
+                    changed |= ImGui::DragFloat3("Material Albedo", &m.Albedo.x, 0.005f, 0.0f, 1.0f);
+                    changed |= ImGui::DragFloat( "Material Fuzz"  , &m.Fuzz    , 0.005f, 0.0f, 1.0f);
+                }
+
+                if (ImGui::Button("Remove")) { toRemove = index; changed = true; }
+            }
+
+            ImGui::PopID();
+
+            index++;
+        }
+
+        if (toRemove)
+        {
+            const uint32_t removed = RayTracePass.m_Spheres[*toRemove].MaterialIndex;
+            RayTracePass.m_Materials.erase(RayTracePass.m_Materials.begin() + static_cast<std::ptrdiff_t>(removed));
+            RayTracePass.m_Spheres.erase(RayTracePass.m_Spheres.begin() + static_cast<std::ptrdiff_t>(*toRemove));
+            for (auto& s : RayTracePass.m_Spheres) if (s.MaterialIndex > removed) --s.MaterialIndex;
+        }
+    }
+
+    if (changed) RayTracePass.m_SceneChanged = true;
 }
 
 #endif // #ifdef GRAM_VULKAN_RENDERER

@@ -1,4 +1,5 @@
 #include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Renderer/VulkanRenderer.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
@@ -41,12 +42,12 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
         , m_VulkanDevice.GetQueueFamilyIndices()
         , static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice())
     )
-    , m_SceneTarget(
+    , m_SceneTarget(std::make_shared<Gram::VulkanRenderTarget>(
         m_VulkanDevice
         , vk::Extent2D { 1280, 720 }     // until the viewport panel asks for its own size
-        , vk::Format::eR16G16B16A16Sfloat
+        , vk::Format::eR32G32B32A32Sfloat
         , vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage
-    )
+    ))
     GramImGuiOnly(, m_VulkanImGui(
         & m_RendererSpec
         , static_cast<vk::Instance>(m_VulkanInstance.GetInstance())
@@ -68,7 +69,7 @@ bool VulkanRenderer::OnDrawFrame()
     if (m_VulkanFrame.IsSwapchainStale() && !RecreateSwapchain()) return true;
 
     // The size the viewport panel asked for last frame, before any pass renders into the scene.
-    m_SceneTarget.ApplyRequestedExtent();
+    if (m_SceneTarget) m_SceneTarget->ApplyRequestedExtent();
 
     std::optional<VulkanFrame::Active> frame = m_VulkanFrame.Begin(static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()), m_VulkanSwapchain);
     if (!frame) return true;

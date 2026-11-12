@@ -33,7 +33,7 @@ private:
 class Editor : private UniqueObject
 {
 public:
-    Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, VulkanRenderTarget* sceneTarget = nullptr);
+    Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, std::shared_ptr<VulkanRenderTarget> sceneTarget = nullptr);
 
     // A game's own panel, listed in the Window menu like the editor's.
     template<class Panel, class... Args>

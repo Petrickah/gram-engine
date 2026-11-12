@@ -1,11 +1,10 @@
+#include "TrianglePass.hpp"
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDescriptors.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanImage.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
-
-#include "TrianglePass.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -68,9 +67,9 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 
     m_Uniforms[ctx.ActiveFrame.FrameIndex].Send(cmd, [extent](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
     {
-        static  auto  startTime   = std::chrono::high_resolution_clock::now();
-                auto  currentTime = std::chrono::high_resolution_clock::now();
-                float time        = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        static  auto startTime   = std::chrono::high_resolution_clock::now();
+                auto currentTime = std::chrono::high_resolution_clock::now();
+                auto time             = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         UniformBufferObject bufferData
         {

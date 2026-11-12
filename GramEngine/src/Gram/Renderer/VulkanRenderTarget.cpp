@@ -1,4 +1,3 @@
-#include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 
@@ -12,10 +11,13 @@ VulkanRenderTarget::VulkanRenderTarget(VulkanDevice& device, vk::Extent2D extent
     , m_Image(VulkanImage::Create(device, extent, format, usage))
 { }
 
-void VulkanRenderTarget::RequestExtent(vk::Extent2D extent)
+void VulkanRenderTarget::RequestExtent(vk::Extent2D extent, float scaleFactor)
 {
     if (extent.width == 0 || extent.height == 0) return;
-    m_RequestedExtent = extent;
+
+    glm::vec2 scale = scaleFactor * glm::vec2(extent.width, extent.height);
+    
+    m_RequestedExtent = vk::Extent2D { .width = static_cast<uint32_t>(std::round(scale.x)), .height = static_cast<uint32_t>(std::round(scale.y)) };
 }
 
 bool VulkanRenderTarget::ApplyRequestedExtent()

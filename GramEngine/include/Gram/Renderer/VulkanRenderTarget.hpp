@@ -17,7 +17,7 @@ public:
     VulkanRenderTarget(VulkanDevice& device, vk::Extent2D extent, vk::Format format, vk::ImageUsageFlags usage);
 
     // Remembered until the next ApplyRequestedExtent; a zero size (a collapsed panel) is ignored.
-    void RequestExtent(vk::Extent2D extent);
+    void RequestExtent(vk::Extent2D extent, float scaleFactor = 1.0f);
 
     // Recreates the image when a different size was requested. Waits for the device to be idle
     // first: the frame still in flight may be reading the old image. Returns whether it recreated it.

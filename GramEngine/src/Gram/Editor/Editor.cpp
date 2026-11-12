@@ -27,7 +27,7 @@ bool EditorMenuBar::OnDrawFrame()
     return true;
 }
 
-Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, VulkanRenderTarget* sceneTarget)
+Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, std::shared_ptr<VulkanRenderTarget> sceneTarget)
     : m_UI(ui)
 {
     GramCheckVoid(m_UI.RegisterLayer<EditorMenuBar>(m_MenuBar), "couldn't create the editor's menu bar");

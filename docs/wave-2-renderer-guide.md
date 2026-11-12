@@ -33,7 +33,7 @@ VulkanRenderer::OnDrawFrame
 | `VulkanPass` | What `VulkanRenderer::AddPass<T>(args...)` takes: `Record(cmd, ctx)`, optional `OnPresented()`, `Finish()`. `ctx` = `{ Device, ActiveFrame, Swapchain }`. |
 | `VulkanImage` | An owned image: `UniqueImage` + `UniqueDeviceMemory` + `UniqueImageView` + `UniqueSampler`, extent, format. `Create(device, extent, format, usage)` (device-local memory via `VulkanDevice::FindMemoryType`). `BeginRendering(cmd, loadOp)`. |
 | `VulkanImage::State` | An image's last use: `Layout`, `Stage`, `Access` (+ raw `Image`/`View`). Owns nothing, so the swapchain keeps one per image too. `Transition(cmd, layout, stage, access)` emits the barrier from the last use to the next, and skips it only for read-after-read in the same layout. |
-| `VulkanRenderTarget` | The scene image (renderer's `GetSceneTarget()`: `eR16G16B16A16Sfloat`, starts at 1280×720). `RequestExtent` (from the viewport, while drawing UI), `ApplyRequestedExtent` (next frame, before passes: `waitIdle`, recreate, `Generation++`). |
+| `VulkanRenderTarget` | The scene image (renderer's `GetSceneTarget()`: `eR32G32B32A32Sfloat`, starts at 1280×720). `RequestExtent` (from the viewport, while drawing UI), `ApplyRequestedExtent` (next frame, before passes: `waitIdle`, recreate, `Generation++`). |
 | `VulkanPipeline` | `Graphics(device, shader, setLayouts, colorFormat)` / `Compute(device, shader, setLayouts)`; keeps its bind point, so `Bind` / `BindDescriptorSets` need no argument for it. Viewport/scissor are dynamic. |
 | `VulkanShader` | `Graphics(workspace, name, device)` (`VSMain`/`PSMain` → `<name>.vert/.frag.spv`) / `Compute(...)` (`CSMain` → `<name>.compute.spv`). Modules are `Unique`, alive until the pipeline is built. |
 | `VulkanImGui` | ImGui context + backends, itself a pass (always last, not in `m_Passes`), and the `LayerOwner` of the editor panels. |
@@ -169,9 +169,9 @@ Uploads happen at load time, so waiting (`queue.waitIdle()` or a fence) is fine.
 
 ## Step 4 — `RayTracePass`
 
-`Game/Content/shaders/RayTracer.hlsl` is ready (`rgba16f` storage image at binding 0, set 0, sized from `GetDimensions`). Remaining:
+`Game/Content/shaders/RayTracer.hlsl` is ready (`rgba32f` storage image at binding 0, set 0, sized from `GetDimensions`). Remaining:
 
-1. **The scene target** (`VulkanRenderer` constructor): format **`eR16G16B16A16Sfloat`**, usage `eColorAttachment | eSampled | eStorage`. Vulkan guarantees this format as storage image, color attachment and linearly filterable sampled image; `rgba32f` isn't guaranteed filterable, `rgba8` isn't guaranteed as storage. (Claude can do this change.)
+1. **The scene target** (`VulkanRenderer` constructor): format **`eR32G32B32A32Sfloat`**, usage `eColorAttachment | eSampled | eStorage`. Vulkan guarantees this format as storage image and color attachment, but not as a linearly filterable sampled image (fine on the M4 Pro; `R16G16B16A16Sfloat` is the portable choice if a device refuses it); `rgba8` isn't guaranteed as storage. (Claude can do this change.)
 2. **Descriptors:** a layout with binding 0 `eStorageImage` for `eCompute`; a pool with one set; `VulkanPipeline::Compute(device, VulkanShader::Compute(workspace, "RayTracer", device), { layout })`.
 3. **Descriptor contents follow the image:** write `{ view, imageLayout = eGeneral }`. In `Record`, if `m_Target.GetGeneration()` changed since the last write, `updateDescriptorSets` again. Safe without per-frame sets: the target waited for the device before recreating.
 4. **Record:**

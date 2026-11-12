@@ -93,13 +93,13 @@ VulkanImage VulkanImage::Create(VulkanDevice &device, vk::Extent2D extent, vk::F
     GramVulkanCheck_(imageView.result, "error creating the image view", return VulkanImage {});
 
     vk::SamplerCreateInfo samplerInfo {
-        .magFilter     = vk::Filter::eLinear,                  // la mărire (panoul mai mare decât imaginea)
-        .minFilter     = vk::Filter::eLinear,                  // la micșorare
+        .magFilter     = vk::Filter::eLinear,
+        .minFilter     = vk::Filter::eLinear,
         .mipmapMode    = vk::SamplerMipmapMode::eLinear,
-        .addressModeU  = vk::SamplerAddressMode::eClampToEdge, // fără repetare la margini
+        .addressModeU  = vk::SamplerAddressMode::eClampToEdge,
         .addressModeV  = vk::SamplerAddressMode::eClampToEdge,
         .addressModeW  = vk::SamplerAddressMode::eClampToEdge,
-        .maxLod        = 0.0f,                                 // un singur nivel de mip
+        .maxLod        = 0.0f,
     };
     auto sampler = logicalDevice.createSamplerUnique(samplerInfo);
     GramVulkanCheck_(sampler.result, "error creating the sampler", return VulkanImage {});

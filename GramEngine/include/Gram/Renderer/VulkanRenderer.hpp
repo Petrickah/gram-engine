@@ -41,7 +41,7 @@ public:
     VulkanDevice&          GetDevice()          { return m_VulkanDevice; }
     const VulkanSwapchain& GetSwapchain() const { return m_VulkanSwapchain; }
     // The image a game renders its scene into, shown by the editor's viewport panel.
-    VulkanRenderTarget&    GetSceneTarget()     { return m_SceneTarget; }
+    std::shared_ptr<VulkanRenderTarget>& GetSceneTarget() { return m_SceneTarget; }
     GramImGuiOnly(LayerOwner<ImGuiApplicationLayer>& GetImGuiApplication() { return m_VulkanImGui; })
 
 private:
@@ -54,7 +54,7 @@ private:
     VulkanDevice m_VulkanDevice;
     VulkanSwapchain m_VulkanSwapchain;
     VulkanFrame m_VulkanFrame;
-    VulkanRenderTarget m_SceneTarget;
+    std::shared_ptr<VulkanRenderTarget> m_SceneTarget;
     GramImGuiOnly(VulkanImGui m_VulkanImGui);
 
 private:
