@@ -6,23 +6,26 @@ struct Ray
 
 struct Camera
 {
-    float3 Position; float TanHalfFovY;
-    float3 Right   ; float Aspect     ;
-    float3 Up      ; uint  SphereCount;
-    float3 Forward ; uint  FrameIndex ;
-    uint   Samples ; float SampleScale;
+    float3 Position  ; float TanHalfFovY;
+    float3 Right     ; float Aspect     ;
+    float3 Up        ; uint  SphereCount;
+    float3 Forward   ; uint  FrameIndex ;
+    uint   Samples   ; float SampleScale;
+    uint   MaxBounces; float Padding0   ;
 };
 
+// Layout kept 1:1 with SphereData (RayTracePass.hpp): 32 bytes.
 struct Sphere
 {
-    float3 Position     ; float  Radius  ;
-    uint   MaterialIndex; float3 Padding0;
+    float3 Position   ; float  Radius       ;
+    float  InnerRadius; uint   MaterialIndex; float2 Padding0;   // InnerRadius 0 = plină
 };
 
+// Layout kept 1:1 with MaterialData (RayTracePass.hpp): 32 bytes.
 struct Material
 {
-    float3 Albedo; float Fuzz;
-    uint   Type  ; uint3 Padding0;
+    float3 Albedo      ; float Fuzz              ;
+    float  RefractIndex; float AbsorptionDistance; uint Type; float Padding0;
 };
 
 struct HitRecord
@@ -32,12 +35,12 @@ struct HitRecord
     uint   MaterialIndex;
 };
 
-static uint g_MaxBounces = 0;
 static uint g_Seed       = 0;
 
 // Material Types; Keep the numeric values 1:1 with C++
 static const uint g_MaterialLambertian = 0;
 static const uint g_MaterialMetal      = 1;
+static const uint g_MaterialDielectric = 2;
 
 uint PcgHash(uint input)
 {
@@ -100,12 +103,12 @@ void SetFaceNormal(inout HitRecord rec, float3 direction, float3 normal)
     rec.Normal    = rec.FrontFace ? normal : -normal;
 }
 
-bool HitSphere(in Sphere s, in Ray ray, float tmin, float tmax, out HitRecord rec)
+bool HitSurface(float3 center, float radius, float outwardSign, in Ray ray, float tmin, float tmax, out HitRecord rec)
 {
-    float3 oc     = s.Position - ray.Origin;
+    float3 oc     = center - ray.Origin;
     float  a      = dot(ray.Direction, ray.Direction);
     float  h      = dot(ray.Direction, oc);
-    float  c      = dot(oc, oc) - s.Radius * s.Radius;
+    float  c      = dot(oc, oc) - radius * radius;
     float  delta  = h * h - a * c;
 
     if (delta < 0.0f) return false;
@@ -118,11 +121,28 @@ bool HitSphere(in Sphere s, in Ray ray, float tmin, float tmax, out HitRecord re
             return false;
     }
 
-    rec.Distance      = root;
-    rec.Position      = RayAt(ray, rec.Distance);
-    rec.MaterialIndex = s.MaterialIndex;
-    SetFaceNormal(rec, ray.Direction, normalize((rec.Position - s.Position) / s.Radius));
+    rec.Distance  = root;
+    rec.Position  = RayAt(ray, rec.Distance);
+    SetFaceNormal(rec, ray.Direction, outwardSign * (rec.Position - center) / radius);
     return true;
+}
+
+bool HitSphere(in Sphere s, in Ray ray, float tmin, float tmax, out HitRecord rec)
+{
+    bool hit = HitSurface(s.Position, s.Radius, 1.0f, ray, tmin, tmax, rec);
+
+    if (s.InnerRadius > 0.0f)
+    {
+        HitRecord inner;
+        if (HitSurface(s.Position, s.InnerRadius, -1.0f, ray, tmin, hit ? rec.Distance : tmax, inner))
+        {
+            rec = inner;
+            hit = true;
+        }
+    }
+
+    if (hit) rec.MaterialIndex = s.MaterialIndex;
+    return hit;
 }
 
 bool HitSpheres(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
@@ -142,6 +162,12 @@ bool HitSpheres(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
     }
 
     return hitAnything;
+}
+
+float reflectance(float cosine, float refractionIndex)
+{
+    float r0 = (1.0f - refractionIndex) / (1.0f + refractionIndex);
+    return (r0 * r0) + (1.0f - (r0 * r0)) * pow(1.0f - cosine, 5);
 }
 
 bool Scatter(in Material mat, inout Ray ray, in HitRecord hit, out float3 attenuation)
@@ -165,6 +191,20 @@ bool Scatter(in Material mat, inout Ray ray, in HitRecord hit, out float3 attenu
             ray.Direction = normalize(reflect(ray.Direction, hit.Normal) + (mat.Fuzz * RandomFloat3(g_Seed)));
             return dot(ray.Direction, hit.Normal) > 0;
         }
+        case g_MaterialDielectric:
+        {
+            float ri       = hit.FrontFace ? (1.0f / mat.RefractIndex) : mat.RefractIndex;
+            float cosTheta = min(dot(-ray.Direction, hit.Normal), 1.0f);
+            float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+
+            attenuation   = 1.0f;
+            ray.Origin    = hit.Position;
+            ray.Direction = normalize((ri * sinTheta > 1.0f || reflectance(cosTheta, ri) > RandomFloat(g_Seed)) 
+                          ? reflect(ray.Direction, hit.Normal)
+                          : refract(ray.Direction, hit.Normal, ri))
+                          ;
+            return true;
+        }
     }
 
     return false;
@@ -174,12 +214,21 @@ float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
 {
     float3 attenuation = 1.0f;
 
-    for (uint bounce = 0; bounce < g_MaxBounces; bounce++)
+    for (uint bounce = 0; bounce < camera.MaxBounces; bounce++)
     {
         HitRecord hitRecord;
         if (!HitSpheres(ray, 0.01f, 3.402823466e+38f, hitRecord))
         {
             return attenuation * lerp(startColor, endColor, 0.5 * (ray.Direction.y + 1.0f));
+        }
+
+        const Material mat = materials[hitRecord.MaterialIndex];
+
+        // Lovită din spate: raza a parcurs hitRecord.Distance prin interiorul materialului.
+        if (mat.Type == g_MaterialDielectric && !hitRecord.FrontFace)
+        {
+            // Albedo = culoarea văzută printr-o grosime AbsorptionDistance; max: pow(0, x) e bine definit, log2(0) nu.
+            attenuation *= pow(max(mat.Albedo, 1e-4f), hitRecord.Distance / mat.AbsorptionDistance);
         }
 
         float3 materialAttenuation;
@@ -199,8 +248,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     if (id.x >= width || id.y >= height) return;
 
-    g_MaxBounces = 10;
-    g_Seed       = InitRandom(id.xy, width, camera.FrameIndex);
+    g_Seed = InitRandom(id.xy, width, camera.FrameIndex);
 
     float3 color = float3(0.0f, 0.0f, 0.0f);
     for (uint sampleCount = 0; sampleCount < camera.Samples; sampleCount++)

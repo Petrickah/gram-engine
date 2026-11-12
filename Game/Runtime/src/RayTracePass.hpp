@@ -19,42 +19,45 @@
 
 struct CameraControls
 {
-    glm::vec3 Position = { 0.0f, 0.0f, 2.0f };
-    float     Yaw      = 0.0f;     // grade, în jurul axei Y; 0 = privește spre -Z
-    float     Pitch    = 0.0f;     // grade, sus/jos; limitat la ±89
-    float     FovY     = 45.0f;    // grade
+    glm::vec3 Position   = { 0.0f, 0.0f, 2.0f };
+    float     Yaw        =  0.0f;     // grade, în jurul axei Y; 0 = privește spre -Z
+    float     Pitch      =  0.0f;     // grade, sus/jos; limitat la ±89
+    float     FovY       = 45.0f;    // grade
+    uint32_t  MaxBounces = 10;
 };
 
 struct CameraData
 {
-    glm::vec3 Position; float    TanHalfFovY;
-    glm::vec3 Right;    float    Aspect;
-    glm::vec3 Up;       uint32_t SphereCount;
-    glm::vec3 Forward;  uint32_t FrameIndex;
-    uint32_t  Samples;  float    SamplesScale;
+    glm::vec3 Position;   float    TanHalfFovY;
+    glm::vec3 Right;      float    Aspect;
+    glm::vec3 Up;         uint32_t SphereCount;
+    glm::vec3 Forward;    uint32_t FrameIndex;
+    uint32_t  Samples;    float    SamplesScale;
+    uint32_t  MaxBounces; float    Padding0;
 };
 
 struct MaterialData
 {
-    static constexpr std::array TypeNames { "Lambertian", "Metal" };
+    static constexpr std::array TypeNames { "Lambertian", "Metal", "Dielectric" };
     enum class TypeEnum : uint32_t
     {
         Lambertian,
         Metal,
+        Dielectric,
         Count
     };
 
-    glm::vec3 Albedo; float    Fuzz;
-    TypeEnum Type   ; uint32_t Padding0[3];
+    glm::vec3 Albedo      ; float Fuzz              ;
+    float     RefractIndex; float AbsorptionDistance; TypeEnum Type; float Padding0;
 };
 
 struct SphereData
 {
-    glm::vec3 Position;      float Radius;
-    uint32_t  MaterialIndex; glm::vec3 Padding0;
+    glm::vec3 Position   ; float    Radius       ;
+    float     InnerRadius; uint32_t MaterialIndex; glm::vec2 Padding0;   // InnerRadius 0 = plină
 };
 
-static_assert(sizeof(CameraData)   == 72);
+static_assert(sizeof(CameraData)   == 80);
 static_assert(sizeof(SphereData)   == 32);
 static_assert(sizeof(MaterialData) == 32);
 static_assert(MaterialData::TypeNames.size() == static_cast<size_t>(MaterialData::TypeEnum::Count));

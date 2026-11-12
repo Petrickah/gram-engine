@@ -76,11 +76,12 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
         const glm::vec3 up      = glm::cross(right, forward);
 
         CameraData camera {
-            .Position = m_CameraControls.Position, .TanHalfFovY  = std::tan(glm::radians(m_CameraControls.FovY) * 0.5f),
-            .Right    = right,                     .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
-            .Up       = up,                        .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
-            .Forward  = forward,                   .FrameIndex   = m_FrameCounter++,
-            .Samples  = 10,                        .SamplesScale = 1.0f / 10.0f
+            .Position   = m_CameraControls.Position,  .TanHalfFovY  = std::tan(glm::radians(m_CameraControls.FovY) * 0.5f),
+            .Right      = right,                      .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
+            .Up         = up,                         .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
+            .Forward    = forward,                    .FrameIndex   = m_FrameCounter++,
+            .Samples    = 10,                         .SamplesScale = 1.0f / 10.0f,
+            .MaxBounces = m_CameraControls.MaxBounces
         };
 
         buffer.Map<CameraData, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
@@ -111,15 +112,18 @@ void RayTracePass::RayTracerUI::DrawContents()
     if (ImGui::Button("Add Sphere"))
     {
         RayTracePass.m_Materials.push_back({
-            .Albedo = glm::vec3(0.8f, 0.3f, 0.3f),
-            .Fuzz   = 0.5f,
-            .Type   = MaterialData::TypeEnum::Lambertian,
+            .Albedo       = glm::vec3(0.8f, 0.3f, 0.3f),
+            .Fuzz         = 0.50f,
+            .RefractIndex       = 1.5f,
+            .AbsorptionDistance = 1.0f,   // 0 ar împărți la zero în shader
+            .Type               = MaterialData::TypeEnum::Lambertian,
         });
 
         RayTracePass.m_Spheres.push_back({
             .Position      = glm::vec3(0.0f, 0.0f, -0.2f),
             .Radius        = 0.45f,
-            .MaterialIndex = static_cast<uint32_t>(RayTracePass.m_Materials.size() - 1)
+            .InnerRadius   = 0.40f,
+            .MaterialIndex = static_cast<uint32_t>(RayTracePass.m_Materials.size() - 1),
         });
 
         changed = true;
@@ -129,10 +133,12 @@ void RayTracePass::RayTracerUI::DrawContents()
     if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
     {
         CameraControls& c = RayTracePass.m_CameraControls;
-        changed |= ImGui::DragFloat3 ("Camera Position", &c.Position.x, 0.05f);
-        changed |= ImGui::DragFloat  ("Camera Yaw"     , &c.Yaw       , 0.05f);
-        changed |= ImGui::DragFloat  ("Camera Pitch"   , &c.Pitch     , 0.05f, -89.0f, 89.0f);   // la ±90, „înainte” devine paralel cu „sus” și produsul vectorial dă zero
-        changed |= ImGui::SliderFloat("Camera FOV"     , &c.FovY      ,   10.0f, 120.0f);
+        uint32_t minBounces = 3; uint32_t maxBounces = 100;
+        changed |= ImGui::DragFloat3  ("Camera Position", &c.Position.x, 0.05f);
+        changed |= ImGui::DragFloat   ("Camera Yaw"     , &c.Yaw       , 0.05f);
+        changed |= ImGui::DragFloat   ("Camera Pitch"   , &c.Pitch     , 0.05f, -89.0f, 89.0f);   // la ±90, „înainte” devine paralel cu „sus” și produsul vectorial dă zero
+        changed |= ImGui::SliderScalar("Camera Bounces" , ImGuiDataType_U32, &c.MaxBounces, &minBounces, &maxBounces);
+        changed |= ImGui::SliderFloat ("Camera FOV"     , &c.FovY      ,   10.0f, 120.0f);
     }
     
     if (ImGui::CollapsingHeader("Spheres", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
@@ -144,8 +150,11 @@ void RayTracePass::RayTracerUI::DrawContents()
             ImGui::PushID(std::format("_sphere#{}", index).c_str());
             if (ImGui::CollapsingHeader("Sphere Data", ImGuiTreeNodeFlags_CollapsingHeader))
             {
-                changed |= ImGui::DragFloat3("Sphere Position", &s.Position.x, 0.05f);
-                changed |= ImGui::DragFloat( "Sphere Radius"  , &s.Radius    , 0.05f, 0.01f, 100.0f);
+                changed |= ImGui::DragFloat3("Sphere Position"    , &s.Position.x, 0.005f);
+                changed |= ImGui::DragFloat( "Sphere Outer Radius", &s.Radius    , 0.005f, 0.00f, 100.0f);
+                changed |= ImGui::DragFloat( "Sphere Inner Radius", &s.InnerRadius, 0.005f, 0.00f, s.Radius);
+
+                s.InnerRadius = std::min(s.InnerRadius, s.Radius * 0.99f);
 
                 if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_CollapsingHeader))
                 {
@@ -157,8 +166,10 @@ void RayTracePass::RayTracerUI::DrawContents()
                         changed = true;   // nu uita resetarea acumulării
                     }
 
-                    changed |= ImGui::DragFloat3("Material Albedo", &m.Albedo.x, 0.005f, 0.0f, 1.0f);
-                    changed |= ImGui::DragFloat( "Material Fuzz"  , &m.Fuzz    , 0.005f, 0.0f, 1.0f);
+                    changed |= ImGui::DragFloat3("Material Albedo"    , &m.Albedo.x          , 0.005f, 0.000f, 1.0f);
+                    changed |= ImGui::DragFloat( "Material Fuzz"      , &m.Fuzz              , 0.005f, 0.000f, 1.0f);
+                    changed |= ImGui::DragFloat( "Material Refract"   , &m.RefractIndex      , 0.005f, 0.000f, 2.0f);
+                    changed |= ImGui::DragFloat( "Material Absorption", &m.AbsorptionDistance, 0.005f, 0.010f, 2.0f);
                 }
 
                 if (ImGui::Button("Remove")) { toRemove = index; changed = true; }
