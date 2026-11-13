@@ -1,0 +1,25 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            // Builds the whole tree for the machine VS Code runs on (a plain `gram build`), using the
+            // gram bootstrapped with cargo (README, Setup) — never the copy under build/, which
+            // would be the file being replaced.
+            "label": "gram build",
+            "type": "shell",
+            "command": "${workspaceFolder}/gram/target/debug/gram",
+            "args": ["build"],
+            "windows": {
+                "command": "${workspaceFolder}\\gram\\target\\debug\\gram.exe"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc", "$msCompile"]
+        }
+    ]
+}

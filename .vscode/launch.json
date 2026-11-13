@@ -1,29 +1,58 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    // One launch configuration per target, so the file is the same on every machine: pick the one
+    // that matches the machine you're on. Each builds first (the "gram build" task, host target only).
+    //   - Linux / macOS: CodeLLDB (extension vadimcn.vscode-lldb)
+    //   - Windows: the C/C++ extension's Visual Studio debugger (ms-vscode.cpptools), which reads the
+    //     .pdb the MSVC build leaves in Game/Runtime/build-windows/Debug/ (the path is in the .exe).
+    // gram builds with the Debug configuration (-g / .pdb), which breakpoints need.
     "version": "0.2.0",
-    "configurations": [    
+    "configurations": [
         {
-            "name": "Debug executable 'gram'",
+            "name": "Game (Linux)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/gram-engine/linux/Game",
+            "cwd": "${workspaceFolder}/build/gram-engine/linux",
+            "preLaunchTask": "gram build"
+        },
+        {
+            "name": "Game (macOS)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/gram-engine/macos/Game",
+            "cwd": "${workspaceFolder}/build/gram-engine/macos",
+            "preLaunchTask": "gram build"
+        },
+        {
+            "name": "Game (Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\gram-engine\\windows\\Game.exe",
+            "cwd": "${workspaceFolder}\\build\\gram-engine\\windows",
+            "preLaunchTask": "gram build"
+        },
+        {
+            "name": "gram (cargo run)",
             "type": "lldb",
             "request": "launch",
             "cargo": {
                 "args": [
                     "run",
+                    "--manifest-path=gram/Cargo.toml",
                     "--bin=gram"
                 ]
             },
             "args": []
         },
         {
-            "name": "Debug unit tests in executable 'gram'",
+            "name": "gram unit tests (cargo test)",
             "type": "lldb",
             "request": "launch",
             "cargo": {
                 "args": [
                     "test",
-                    "--bin=gram"
+                    "--manifest-path=gram/Cargo.toml",
+                    "--no-run"
                 ]
             }
         }
