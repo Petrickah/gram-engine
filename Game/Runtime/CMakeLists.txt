@@ -21,6 +21,7 @@ target_precompile_headers(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../Gram
 
 gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/SSAA.hlsl)
 gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Accumulate.hlsl)
+gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/DepthOfField.hlsl)
 gram_add_hlsl_raster_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/Default.hlsl)
 gram_add_hlsl_compute_shader(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/shaders/RayTracer.hlsl)
 

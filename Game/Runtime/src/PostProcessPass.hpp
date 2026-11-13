@@ -3,9 +3,11 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDescriptors.hpp"
+#include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanPass.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
+#include "Gram/Renderer/VulkanShader.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
 
@@ -27,21 +29,20 @@ public:
 
     std::shared_ptr<Gram::VulkanRenderTarget>& GetOutput() { return m_TargetOutput; }
 
-    PostProcessPass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, std::shared_ptr<Gram::VulkanRenderTarget> input, vk::Format format, Fill fill)
-        : PostProcessPass(device, shader, input, std::make_shared<Gram::VulkanRenderTarget>(device, input->GetImage().GetExtent(), format, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled), std::move(fill))
+    // An intermediate pass: owns its output, which follows the size of the first input.
+    PostProcessPass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, std::vector<std::shared_ptr<Gram::VulkanRenderTarget>> inputs, vk::Format format, Fill fill)
+        : PostProcessPass(device, shader, inputs, std::make_shared<Gram::VulkanRenderTarget>(device, inputs.at(0)->GetImage().GetExtent(), format, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled), std::move(fill))
     {
         m_FollowsInput = true;
     }
 
-    PostProcessPass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, const std::shared_ptr<Gram::VulkanRenderTarget>& input, const std::shared_ptr<Gram::VulkanRenderTarget>& output, Fill fill)
-        : m_Fill(fill)
-        , m_TargetInput(input)
+    // The last pass: writes into someone else's target (the scene), which it doesn't resize.
+    // Set 0, binding 0: the uniform. Set 1, binding i: inputs[i], a combined image sampler.
+    PostProcessPass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, std::vector<std::shared_ptr<Gram::VulkanRenderTarget>> inputs, const std::shared_ptr<Gram::VulkanRenderTarget>& output, Fill fill)
+        : m_Fill(std::move(fill))
         , m_TargetOutput(output)
-        , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding>  {
-            { .binding = 0, .descriptorType = vk::DescriptorType::eCombinedImageSampler,  .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment },
-            { .binding = 1, .descriptorType = vk::DescriptorType::eUniformBuffer,         .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment }
-        }))
-        , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, std::array {m_Descriptors.GetLayout()}, m_TargetOutput->GetFormat(), Gram::VertexBuffer::VertexInputInfo))
+        , m_TargetInputs(std::move(inputs))
+        , m_InputGenerations(m_TargetInputs.size())
         , m_VertexBuffer(Gram::VulkanBuffer::Create<Gram::VertexBuffer>(device, {
             { .Position = { -1.0f, -1.0f }, .Color = { 0.0f, 0.0f, 0.0f }, .TexCoord = { 0.0f, 0.0f } },
             { .Position = {  1.0f, -1.0f }, .Color = { 0.0f, 0.0f, 0.0f }, .TexCoord = { 1.0f, 0.0f } },
@@ -50,48 +51,69 @@ public:
         }))
         , m_IndexBuffer(Gram::VulkanBuffer::Create<Gram::IndexBuffer>(device, { 0, 1, 2, 2, 3, 0 }))
         , m_Uniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<Params>>(device))
+        , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, UniformBindings()))
+        , m_ImageDescriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, InputBindings(m_TargetInputs.size())))
+        , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, std::array { m_Descriptors.GetLayout(), m_ImageDescriptors.GetLayout() }, m_TargetOutput->GetFormat(), Gram::VertexBuffer::VertexInputInfo))
     {
-        if (m_TargetInput && m_TargetInput->GetImage().IsValid()) m_Descriptors.Write(device, 0, m_TargetInput->GetImage());
-        m_Descriptors.Write(device, 1, m_Uniforms, sizeof(Params));
+        m_Descriptors.Write(device, 0, m_Uniforms, sizeof(Params));
+
+        for (uint32_t inputIndex = 0; inputIndex < m_TargetInputs.size(); inputIndex++)
+        {
+            if (!m_TargetInputs[inputIndex] || !m_TargetInputs[inputIndex]->GetImage().IsValid()) continue;
+
+            m_ImageDescriptors.Write(device, inputIndex, m_TargetInputs[inputIndex]->GetImage());
+        }
     }
 
     bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override
     {
         GramCheck(m_GraphicsPipeline.IsValid(), "PostProcessPass: the graphics pipeline wasn't created");
-        GramCheck(m_TargetOutput && m_TargetInput, "PostProcessPass: at least one of the images were nullptr");
-        
-        Gram::VulkanImage& sceneOutput = m_TargetOutput->GetImage();
-        Gram::VulkanImage& sceneInput  = m_TargetInput->GetImage();
+        GramCheck(m_TargetOutput && m_TargetOutput->GetImage().IsValid(), "PostProcessPass: output image was invalid");
 
-        // The image's own size, not the swapchain's: the post processing pass fills the target, whatever the window.
-        const vk::Extent2D outputExtent = sceneOutput.GetExtent();
-        const vk::Extent2D inputExtent  = sceneInput.GetExtent();
+        GramCheck(!m_TargetInputs.empty() && m_TargetInputs[0], "PostProcessPass: no input");
 
-        const bool outputRecreated = !m_OutputGeneration || *m_OutputGeneration != m_TargetOutput->GetGeneration(); m_OutputGeneration = m_TargetOutput->GetGeneration();
-        const bool inputRecreated  = !m_InputGeneration  || *m_InputGeneration  != m_TargetInput->GetGeneration() ; m_InputGeneration  = m_TargetInput->GetGeneration();
+        // Looked up every frame: the inputs are resized with the viewport.
+        const vk::Extent2D inputExtent = m_TargetInputs[0]->GetImage().GetExtent();
 
         if (m_FollowsInput)
         {
-            m_TargetOutput->RequestExtent(m_TargetInput->GetImage().GetExtent());
+            m_TargetOutput->RequestExtent(inputExtent);
             m_TargetOutput->ApplyRequestedExtent();
         }
 
-        // The target was recreated (a resize): the sets still point at the old image's view.
-        if (inputRecreated)
+        Gram::VulkanImage& sceneOutput = m_TargetOutput->GetImage();
+
+        // The image's own size, not the swapchain's: the post processing pass fills the target, whatever the window.
+        const vk::Extent2D outputExtent = sceneOutput.GetExtent();
+
+        for (uint32_t inputIndex = 0; inputIndex < m_TargetInputs.size(); inputIndex++)
         {
-            // Safe here: ApplyRequestedExtent waited for the device before recreating the image,
-            // so no command buffer uses these sets anymore, not even the other frame in flight's.
-            m_Descriptors.Write(ctx.Device, 0, sceneInput);
+            GramCheck(m_TargetInputs[inputIndex] && m_TargetInputs[inputIndex]->GetImage().IsValid(), "PostProcessPass: at least one of the images were invalid");
+
+            Gram::VulkanRenderTarget &target     = *m_TargetInputs[inputIndex];
+            Gram::VulkanImage        &sceneInput = target.GetImage();
+
+            const bool inputRecreated = !m_InputGenerations[inputIndex] || *m_InputGenerations[inputIndex] != target.GetGeneration() ; m_InputGenerations[inputIndex] = target.GetGeneration();
+
+            // The target was recreated (a resize): the sets still point at the old image's view.
+            if (inputRecreated)
+            {
+                // Safe here: ApplyRequestedExtent waited for the device before recreating the image,
+                // so no command buffer uses these sets anymore, not even the other frame in flight's.
+                m_ImageDescriptors.Write(ctx.Device, inputIndex, sceneInput);
+            }
+
+            // Transition the image for reading by the fragment shader, ready to apply Post Porcessing effects.
+            sceneInput.Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
         }
         
-        // Transition the image for reading by the fragment shader, ready to apply Post Porcessing effects.
-        sceneInput.Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
+        const bool outputRecreated = !m_OutputGeneration || *m_OutputGeneration != m_TargetOutput->GetGeneration(); m_OutputGeneration = m_TargetOutput->GetGeneration();
 
         // With blending, the old content matters (eLoad), without a new image, which may contain NaN (eClear).
         sceneOutput.BeginRendering(cmd, outputRecreated ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad);
 
         m_GraphicsPipeline.Bind(cmd);
-        m_GraphicsPipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex) });
+        m_GraphicsPipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex), m_ImageDescriptors.Get(ctx.ActiveFrame.FrameIndex) });
 
         m_VertexBuffer.Send(cmd, [](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
         {
@@ -123,19 +145,37 @@ public:
     }
 
 private:
+    // Set 0: the pass's parameters, filled every frame by m_Fill.
+    static std::vector<vk::DescriptorSetLayoutBinding> UniformBindings()
+    {
+        return { { .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment } };
+    }
+
+    // Set 1: one combined image sampler per input, binding i = inputs[i].
+    static std::vector<vk::DescriptorSetLayoutBinding> InputBindings(size_t count)
+    {
+        std::vector<vk::DescriptorSetLayoutBinding> bindings;
+        for (uint32_t inputIndex = 0; inputIndex < count; inputIndex++)
+        {
+            bindings.push_back({ .binding = inputIndex, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment });
+        }
+        return bindings;
+    }
+
     Fill m_Fill;
     
-    std::shared_ptr<Gram::VulkanRenderTarget> m_TargetInput;
-    std::shared_ptr<Gram::VulkanRenderTarget> m_TargetOutput;
-    std::optional<uint64_t>                   m_InputGeneration  = std::nullopt;
-    std::optional<uint64_t>                   m_OutputGeneration = std::nullopt;
-
-    Gram::VulkanDescriptors   m_Descriptors;
-    Gram::VulkanPipeline      m_GraphicsPipeline;
+    std::shared_ptr<Gram::VulkanRenderTarget>              m_TargetOutput;
+    std::vector<std::shared_ptr<Gram::VulkanRenderTarget>> m_TargetInputs;
+    std::vector<std::optional<uint64_t>>                   m_InputGenerations;
+    std::optional<uint64_t>                                m_OutputGeneration = std::nullopt;
+    
+    // Declared in the order the constructor builds them: the pipeline needs both layouts.
     Gram::VulkanBuffer        m_VertexBuffer;
     Gram::VulkanBuffer        m_IndexBuffer;
-    
     std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_Uniforms;
+    Gram::VulkanDescriptors   m_Descriptors;
+    Gram::VulkanDescriptors   m_ImageDescriptors;
+    Gram::VulkanPipeline      m_GraphicsPipeline;
     bool m_FollowsInput = false;
 };
 

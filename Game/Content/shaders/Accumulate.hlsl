@@ -1,5 +1,7 @@
-[[vk::binding(0, 0)]] [[vk::combinedImageSampler]] Texture2D    _MainTexture;
-[[vk::binding(0, 0)]] [[vk::combinedImageSampler]] SamplerState sampler_MainTexture;
+[[vk::binding(0, 1)]] [[vk::combinedImageSampler]] Texture2D    _MainTexture;
+[[vk::binding(0, 1)]] [[vk::combinedImageSampler]] SamplerState sampler_MainTexture;
+[[vk::binding(1, 1)]] [[vk::combinedImageSampler]] Texture2D    _DepthTexture;
+[[vk::binding(1, 1)]] [[vk::combinedImageSampler]] SamplerState sampler_DepthTexture;
 
 struct VSInput
 {
@@ -20,7 +22,7 @@ struct UniformBuffer
     uint FrameCount; float3 Padding0;
 };
 
-[[vk::binding(1, 0)]] ConstantBuffer<UniformBuffer> ubo;
+[[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer> ubo;
 
 [shader("vertex")]
 VSOutput VSMain(in VSInput input)

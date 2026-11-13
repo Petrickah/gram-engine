@@ -21,7 +21,16 @@ struct AccumulationParams
     uint32_t FrameCount = 0; bool Reset = true;
 };
 
+// DepthOfField.hlsl's uniform. CoC = circle of confusion: the diameter, in input pixels, of the disc a point
+// at depth d blurs into: CoCScale * |d - FocusDistance| / d, capped at MaxCoC.
+struct DepthOfFieldParams
+{
+    glm::vec2 TexelSize; float FocusDistance; float    CoCScale;
+    float     MaxCoC;    uint32_t Enabled;    glm::vec2 Padding0;
+};
+
 static_assert(sizeof(SSAAParams) == 16);
+static_assert(sizeof(DepthOfFieldParams) == 32);
 static_assert(sizeof(AccumulationParams) == 8);
 
 class RuntimeApplication : public Gram::GLFWApplication
@@ -57,14 +66,41 @@ private:
         GramImGuiOnly(rayTracePass.RegisterPanels(m_Editor));
 
         const Gram::VulkanShader accumulate = Gram::VulkanShader::Graphics(spec.m_Workspace, "Accumulate", static_cast<vk::Device>(device.GetLogicalDevice()));
-        auto& accumulatePass = m_VulkanRenderer->AddPass<PostProcessPass<AccumulationParams>>(device, accumulate, rayTracePass.GetOutput(), vk::Format::eR32G32B32A32Sfloat, [&state = m_Accumulation, &rayTracePass](const PostProcessPass<AccumulationParams>::Context& ctx)
+        auto& accumulatePass = m_VulkanRenderer->AddPass<PostProcessPass<AccumulationParams>>(device, accumulate, std::vector { rayTracePass.GetOutput() }, vk::Format::eR32G32B32A32Sfloat, [&state = m_Accumulation, &rayTracePass](const PostProcessPass<AccumulationParams>::Context& ctx)
         {
             if (state.Reset || ctx.OutputRecreated || rayTracePass.ConsumeSceneChanged()) { state.FrameCount = 0; state.Reset = false; }
             return AccumulationParams { .FrameCount = state.FrameCount++ };
         });
 
+        // After the accumulation (it blurs the clean image), before SSAA (at the depth output's resolution).
+        // Set 1: binding 0 = the accumulated color, binding 1 = the ray tracer's depth (metres along the camera's axis).
+        const Gram::VulkanShader dof = Gram::VulkanShader::Graphics(spec.m_Workspace, "DepthOfField", static_cast<vk::Device>(device.GetLogicalDevice()));
+        auto& dofPass = m_VulkanRenderer->AddPass<PostProcessPass<DepthOfFieldParams>>(device, dof, std::vector { accumulatePass.GetOutput(), rayTracePass.GetOutputDepth() }, vk::Format::eR32G32B32A32Sfloat, [&rayTracePass](const PostProcessPass<DepthOfFieldParams>::Context& ctx)
+        {
+            const CameraControls& c = rayTracePass.GetCameraControls();
+
+            // The same lens as the ray tracer's (RayTracePass::Record): a full-frame sensor, the focal length
+            // its FOV needs, the aperture's diameter A = f / N. A point at depth d is focused behind the sensor,
+            // so it lands as a disc of diameter A * f * |d - s| / (d * (s - f)) on it (s = focus distance);
+            // divided by the sensor's height, times the image's height in pixels, it's in pixels.
+            constexpr float sensorHeight = 0.024f;
+            const     float focalLength  = (sensorHeight * 0.5f) / std::tan(glm::radians(c.FovY) * 0.5f);
+            const     float aperture     = focalLength / c.FStop;
+            const     float focus        = std::max(c.FocusDistance, focalLength * 1.01f);   // s > f, or nothing focuses
+            const     float cocScale     = aperture * focalLength / (focus - focalLength)
+                                         / sensorHeight * static_cast<float>(ctx.InputExtent.height) * c.BokehScale;
+
+            return DepthOfFieldParams {
+                .TexelSize     = 1.0f / glm::vec2(ctx.InputExtent.width, ctx.InputExtent.height),
+                .FocusDistance = focus,
+                .CoCScale      = cocScale,
+                .MaxCoC        = 64.0f,   // pixels of the 2x image: bounds the shader's loop
+                .Enabled       = c.PostProcessDoF ? 1u : 0u,
+            };
+        });
+
         const Gram::VulkanShader ssaa = Gram::VulkanShader::Graphics(spec.m_Workspace, "SSAA", static_cast<vk::Device>(device.GetLogicalDevice()));
-        m_VulkanRenderer->AddPass<PostProcessPass<SSAAParams>>(device, ssaa, accumulatePass.GetOutput(), m_VulkanRenderer->GetSceneTarget(), [](const PostProcessPass<SSAAParams>::Context& ctx)
+        m_VulkanRenderer->AddPass<PostProcessPass<SSAAParams>>(device, ssaa, std::vector { dofPass.GetOutput() }, m_VulkanRenderer->GetSceneTarget(), [](const PostProcessPass<SSAAParams>::Context& ctx)
         {
             return SSAAParams {
                 .TexelSize   = 1.0f / glm::vec2(ctx.InputExtent.width, ctx.InputExtent.height),

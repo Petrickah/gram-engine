@@ -21,6 +21,13 @@ bool EditorMenuBar::OnDrawFrame()
             ImGui::EndMenu();
         }
 
+        // The frame rate, right-aligned: ImGui's own running average over the last frames.
+        const ImGuiIO& io = ImGui::GetIO();
+        char frameRate[64];
+        std::snprintf(frameRate, sizeof(frameRate), "%.1f FPS (%.2f ms)", io.Framerate, 1000.0f / io.Framerate);
+        ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::CalcTextSize(frameRate).x - 2.0f * ImGui::GetStyle().ItemSpacing.x);
+        ImGui::TextUnformatted(frameRate);
+
         ImGui::EndMainMenuBar();
     }
 

@@ -1,5 +1,5 @@
-[[vk::binding(0, 0)]] [[vk::combinedImageSampler]] Texture2D    _MainTexture;
-[[vk::binding(0, 0)]] [[vk::combinedImageSampler]] SamplerState sampler_MainTexture;
+[[vk::binding(0, 1)]] [[vk::combinedImageSampler]] Texture2D    _MainTexture;
+[[vk::binding(0, 1)]] [[vk::combinedImageSampler]] SamplerState sampler_MainTexture;
 
 struct VSInput
 {
@@ -20,7 +20,7 @@ struct UniformBuffer
     float2 TexelSize; float ScaleFactor; float Padding0;
 };
 
-[[vk::binding(1, 0)]] ConstantBuffer<UniformBuffer> ubo;
+[[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer> ubo;
 
 [shader("vertex")]
 VSOutput VSMain(in VSInput input)

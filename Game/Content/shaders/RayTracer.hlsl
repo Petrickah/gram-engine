@@ -87,10 +87,11 @@ uint InitRandom(uint2 pixel, uint width, uint frame)
     return PcgHash(pixel.y * width + pixel.x) ^ PcgHash(frame);
 }
 
-[[vk::binding(0, 0)]] [[vk::image_format("rgba32f")]] RWTexture2D<float4> result;
-[[vk::binding(1, 0)]] ConstantBuffer<Camera>     camera;
-[[vk::binding(2, 0)]] StructuredBuffer<Sphere>   spheres;
-[[vk::binding(3, 0)]] StructuredBuffer<Material> materials;
+[[vk::binding(0, 0)]] ConstantBuffer<Camera>     camera;
+[[vk::binding(1, 0)]] StructuredBuffer<Sphere>   spheres;
+[[vk::binding(2, 0)]] StructuredBuffer<Material> materials;
+[[vk::binding(0, 1)]] [[vk::image_format("rgba32f")]] RWTexture2D<float4> result;
+[[vk::binding(1, 1)]] [[vk::image_format("r32f")]]    RWTexture2D<float>  depth;
 
 Ray CalculateRay(in Camera cam, uint2 pixel, uint2 size)
 {
@@ -252,6 +253,21 @@ float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
     return 0.0f;
 }
 
+float PrimaryDepth(in Camera cam, uint2 pixel, uint2 size)
+{
+    float2 ndc = (pixel + 0.5f) / float2(size) * 2.0f - 1.0f;
+    ndc.y = -ndc.y;
+
+    Ray ray;
+    ray.Origin    = cam.Position;
+    ray.Direction = normalize(cam.Forward + ndc.x * cam.Aspect * cam.TanHalfFovY * cam.Right
+                                          + ndc.y *              cam.TanHalfFovY * cam.Up);
+
+    HitRecord hit;
+    if (!HitSpheres(ray, 0.01f, 3.402823466e+38f, hit)) return 1e6f;
+    return hit.Distance * dot(ray.Direction, cam.Forward);
+}
+
 [shader("compute")]
 [numthreads(8,8,1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -263,11 +279,15 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     g_Seed = InitRandom(id.xy, width, camera.FrameIndex);
 
-    float3 color = float3(0.0f, 0.0f, 0.0f);
+    float3 viewColor = float3(0.0f, 0.0f, 0.0f);
+    float  viewDepth = PrimaryDepth(camera, id.xy, uint2(width, height));
+
+    depth[id.xy] = viewDepth;
+
     for (uint sampleCount = 0; sampleCount < camera.Samples; sampleCount++)
     {
-        color += RayColor(CalculateRay(camera, id.xy, uint2(width, height)), float3(1.0f, 1.0f, 1.0f), float3(0.5f, 0.7f, 1.0f)) * camera.SampleScale;
+        viewColor += RayColor(CalculateRay(camera, id.xy, uint2(width, height)), float3(1.0f, 1.0f, 1.0f), float3(0.5f, 0.7f, 1.0f)) * camera.SampleScale;
     }
 
-    result[id.xy] = float4(color, 1.0f);
+    result[id.xy] = float4(viewColor, 1.0f);
 }

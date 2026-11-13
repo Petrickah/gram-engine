@@ -9,12 +9,6 @@
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 
-#include <cstdint>
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <memory>
-#include <vector>
-
 #ifdef GRAM_VULKAN_RENDERER
 
 struct CameraControls
@@ -26,6 +20,7 @@ struct CameraControls
     float     FStop         = 05.6f; // f/1.4 (wide open, most blur) ... f/22 (almost everything sharp)
     float     FocusDistance = 02.2f; // metres to the sharp plane (camera at z = 2, first sphere at z = -0.2)
     float     BokehScale    = 01.0f; // artistic: multiplies the physical lens radius (1 = a real camera)
+    bool      PostProcessDoF = false; // false: the lens blurs in the ray tracer; true: a pinhole here, DepthOfField.hlsl blurs from the depth output
     uint32_t  MaxBounces    = 10;
 };
 
@@ -86,7 +81,8 @@ public:
     private:
         RayTracePass& RayTracePass;
     };
-
+    
+    void GenerateBookScene();
     void RegisterPanels(std::unique_ptr<Gram::Editor>& editor)
     {
         // The scene target: the editor's Viewport shows what this RenderPass renders into it.
@@ -97,15 +93,22 @@ public:
 public:
     bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override;
 
-    std::shared_ptr<Gram::VulkanRenderTarget>& GetOutput() { return m_Output; }
+    std::shared_ptr<Gram::VulkanRenderTarget>& GetOutput()      { return m_Output;      }
+    std::shared_ptr<Gram::VulkanRenderTarget>& GetOutputDepth() { return m_OutputDepth; }
+    // The lens's settings, for the depth of field post-process (the same camera, simulated afterwards).
+    const CameraControls& GetCameraControls() const { return m_CameraControls; }
+
     bool ConsumeSceneChanged() { return std::exchange(m_SceneChanged, false); }
     
 private:
     std::shared_ptr<Gram::VulkanRenderTarget> m_Target;
     std::optional<uint64_t>                   m_TargetGeneration = std::nullopt;
+    std::optional<uint64_t>                   m_DepthGeneration  = std::nullopt;
     std::shared_ptr<Gram::VulkanRenderTarget> m_Output;
-    Gram::VulkanDescriptors   m_Descriptors;
-    Gram::VulkanPipeline      m_ComputePipeline;
+    std::shared_ptr<Gram::VulkanRenderTarget> m_OutputDepth;
+    Gram::VulkanDescriptors                   m_Descriptors;
+    Gram::VulkanDescriptors                   m_ImageDescriptors;
+    Gram::VulkanPipeline                      m_ComputePipeline;
 
     std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_CameraUniforms;
     std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_SphereStorages;
