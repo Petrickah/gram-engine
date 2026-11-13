@@ -75,13 +75,21 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
         const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));   // lumea are Y în sus
         const glm::vec3 up      = glm::cross(right, forward);
 
+        // One unit = 1 m. The focal length a full-frame camera (a 24 mm tall sensor) needs for this FOV, and
+        // the lens's radius at this f-stop: N = focal length / aperture diameter, so radius = f / (2N).
+        constexpr float sensorHeight = 0.024f;
+        const     float tanHalfFovY  = std::tan(glm::radians(m_CameraControls.FovY) * 0.5f);
+        const     float focalLength  = (sensorHeight * 0.5f) / tanHalfFovY;
+        const     float lensRadius   = focalLength / (2.0f * m_CameraControls.FStop) * m_CameraControls.BokehScale;
+
         CameraData camera {
-            .Position   = m_CameraControls.Position,  .TanHalfFovY  = std::tan(glm::radians(m_CameraControls.FovY) * 0.5f),
-            .Right      = right,                      .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
-            .Up         = up,                         .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
-            .Forward    = forward,                    .FrameIndex   = m_FrameCounter++,
-            .Samples    = 10,                         .SamplesScale = 1.0f / 10.0f,
-            .MaxBounces = m_CameraControls.MaxBounces
+            .Position      = m_CameraControls.Position,      .TanHalfFovY  = tanHalfFovY,
+            .Right         = right,                          .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
+            .Up            = up,                             .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
+            .Forward       = forward,                        .FrameIndex   = m_FrameCounter++,
+            .Samples       = 10,                             .SampleScale  = 1.0f / 10.0f,
+            .MaxBounces    = m_CameraControls.MaxBounces,    .LensRadius   = lensRadius,
+            .FocusDistance = m_CameraControls.FocusDistance,
         };
 
         buffer.Map<CameraData, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
@@ -134,11 +142,15 @@ void RayTracePass::RayTracerUI::DrawContents()
     {
         CameraControls& c = RayTracePass.m_CameraControls;
         uint32_t minBounces = 3; uint32_t maxBounces = 100;
-        changed |= ImGui::DragFloat3  ("Camera Position", &c.Position.x, 0.05f);
-        changed |= ImGui::DragFloat   ("Camera Yaw"     , &c.Yaw       , 0.05f);
-        changed |= ImGui::DragFloat   ("Camera Pitch"   , &c.Pitch     , 0.05f, -89.0f, 89.0f);   // la ±90, „înainte” devine paralel cu „sus” și produsul vectorial dă zero
-        changed |= ImGui::SliderScalar("Camera Bounces" , ImGuiDataType_U32, &c.MaxBounces, &minBounces, &maxBounces);
-        changed |= ImGui::SliderFloat ("Camera FOV"     , &c.FovY      ,   10.0f, 120.0f);
+        changed |= ImGui::DragFloat3  ("Camera Position"       , &c.Position.x   , 0.05f);
+        changed |= ImGui::DragFloat   ("Camera Yaw"            , &c.Yaw          , 0.05f);
+        changed |= ImGui::DragFloat   ("Camera Pitch"          , &c.Pitch        , 0.05f, -89.0f, 89.0f);   // la ±90, „înainte” devine paralel cu „sus” și produsul vectorial dă zero
+        changed |= ImGui::SliderScalar("Camera Bounces"        , ImGuiDataType_U32, &c.MaxBounces, &minBounces, &maxBounces);
+        changed |= ImGui::SliderFloat ("Camera FOV"            , &c.FovY         , +10.00f, 120.00f);
+        changed |= ImGui::SliderFloat ("Camera F-Stop"         , &c.FStop        , 1.4f, 22.0f, "f/%.1f");
+        changed |= ImGui::DragFloat   ("Camera Focus Distance" , &c.FocusDistance, 0.01f, 0.1f, 100.0f, "%.2f m");
+        // Logarithmic: 1-2x and 50-100x are equally easy to reach.
+        changed |= ImGui::SliderFloat ("Camera Bokeh Scale"    , &c.BokehScale   , 1.0f, 100.0f, "%.1fx", ImGuiSliderFlags_Logarithmic);
     }
     
     if (ImGui::CollapsingHeader("Spheres", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
@@ -150,8 +162,8 @@ void RayTracePass::RayTracerUI::DrawContents()
             ImGui::PushID(std::format("_sphere#{}", index).c_str());
             if (ImGui::CollapsingHeader("Sphere Data", ImGuiTreeNodeFlags_CollapsingHeader))
             {
-                changed |= ImGui::DragFloat3("Sphere Position"    , &s.Position.x, 0.005f);
-                changed |= ImGui::DragFloat( "Sphere Outer Radius", &s.Radius    , 0.005f, 0.00f, 100.0f);
+                changed |= ImGui::DragFloat3("Sphere Position"    , &s.Position.x , 0.005f);
+                changed |= ImGui::DragFloat( "Sphere Outer Radius", &s.Radius     , 0.005f, 0.00f, 100.0f);
                 changed |= ImGui::DragFloat( "Sphere Inner Radius", &s.InnerRadius, 0.005f, 0.00f, s.Radius);
 
                 s.InnerRadius = std::min(s.InnerRadius, s.Radius * 0.99f);

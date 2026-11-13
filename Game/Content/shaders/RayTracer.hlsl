@@ -6,12 +6,13 @@ struct Ray
 
 struct Camera
 {
-    float3 Position  ; float TanHalfFovY;
-    float3 Right     ; float Aspect     ;
-    float3 Up        ; uint  SphereCount;
-    float3 Forward   ; uint  FrameIndex ;
-    uint   Samples   ; float SampleScale;
-    uint   MaxBounces; float Padding0   ;
+    float3 Position     ; float TanHalfFovY;
+    float3 Right        ; float Aspect     ;
+    float3 Up           ; uint  SphereCount;
+    float3 Forward      ; uint  FrameIndex ;
+    uint   Samples      ; float SampleScale;
+    uint   MaxBounces   ; float LensRadius ;   // LensRadius 0 = pinhole, everything sharp
+    float  FocusDistance; float3 Padding0  ;   // distance to the sharp plane, along Forward
 };
 
 // Layout kept 1:1 with SphereData (RayTracePass.hpp): 32 bytes.
@@ -42,6 +43,12 @@ static const uint g_MaterialLambertian = 0;
 static const uint g_MaterialMetal      = 1;
 static const uint g_MaterialDielectric = 2;
 
+float reflectance(float cosine, float refractionIndex)
+{
+    float r0 = (1.0f - refractionIndex) / (1.0f + refractionIndex);
+    return (r0 * r0) + (1.0f - (r0 * r0)) * pow(1.0f - cosine, 5);
+}
+
 uint PcgHash(uint input)
 {
     uint state = input * 747796405u + 2891336453u;
@@ -60,12 +67,19 @@ float RandomFloat(inout uint state, float lo, float hi)
     return lo + (hi - lo) * RandomFloat(state);
 }
 
-float3 RandomFloat3(inout uint state)
+float3 RandomUnitVector(inout uint state)
 {
     const float z   = RandomFloat(state, -1.0f, 1.0f);
     const float phi = RandomFloat(state,  0.0f, 6.28318530718f);
     const float r   = sqrt(max(0.0f, 1.0f - z * z));
     return float3(r * cos(phi), r * sin(phi), z);
+}
+
+float2 RandomInUnitDisk(inout uint state)
+{
+    const float r   = sqrt(RandomFloat(state));
+    const float phi = RandomFloat(state, 0.0f, 6.28318530718f);
+    return r * float2(cos(phi), sin(phi));
 }
 
 uint InitRandom(uint2 pixel, uint width, uint frame)
@@ -81,14 +95,19 @@ uint InitRandom(uint2 pixel, uint width, uint frame)
 Ray CalculateRay(in Camera cam, uint2 pixel, uint2 size)
 {
     const float2 jitter = float2(RandomFloat(g_Seed), RandomFloat(g_Seed));
-    float3  pixelSample = float3(pixel + jitter, 0.0f) / float3(size, 1.0f) * 2.0f - 1.0f;
+    float2  pixelSample = (pixel + jitter) / float2(size) * 2.0f - 1.0f;
     pixelSample.y = -pixelSample.y;
 
-    Ray ray;
-    ray.Origin    = cam.Position;
-    ray.Direction = normalize(cam.Forward
+    const float3 pinhole    = cam.Forward
                             + pixelSample.x * cam.Aspect * cam.TanHalfFovY * cam.Right
-                            + pixelSample.y *              cam.TanHalfFovY * cam.Up);
+                            + pixelSample.y *              cam.TanHalfFovY * cam.Up
+                            ;
+    const float3 focusPoint = cam.Position + cam.FocusDistance * pinhole;
+    const float2 lens       = cam.LensRadius * RandomInUnitDisk(g_Seed);
+
+    Ray ray;
+    ray.Origin    = cam.Position + lens.x * cam.Right + lens.y * cam.Up;
+    ray.Direction = normalize(focusPoint - ray.Origin);
     return ray;
 }
 
@@ -164,12 +183,6 @@ bool HitSpheres(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
     return hitAnything;
 }
 
-float reflectance(float cosine, float refractionIndex)
-{
-    float r0 = (1.0f - refractionIndex) / (1.0f + refractionIndex);
-    return (r0 * r0) + (1.0f - (r0 * r0)) * pow(1.0f - cosine, 5);
-}
-
 bool Scatter(in Material mat, inout Ray ray, in HitRecord hit, out float3 attenuation)
 {
     attenuation = mat.Albedo;
@@ -178,7 +191,7 @@ bool Scatter(in Material mat, inout Ray ray, in HitRecord hit, out float3 attenu
     {
         case g_MaterialLambertian:
         {
-            float3 direction = hit.Normal + RandomFloat3(g_Seed);
+            float3 direction = hit.Normal + RandomUnitVector(g_Seed);
             if (dot(direction, direction) < 1e-8f) direction = hit.Normal;
 
             ray.Origin    = hit.Position;
@@ -188,7 +201,7 @@ bool Scatter(in Material mat, inout Ray ray, in HitRecord hit, out float3 attenu
         case g_MaterialMetal:
         {
             ray.Origin    = hit.Position;
-            ray.Direction = normalize(reflect(ray.Direction, hit.Normal) + (mat.Fuzz * RandomFloat3(g_Seed)));
+            ray.Direction = normalize(reflect(ray.Direction, hit.Normal) + (mat.Fuzz * RandomUnitVector(g_Seed)));
             return dot(ray.Direction, hit.Normal) > 0;
         }
         case g_MaterialDielectric:
