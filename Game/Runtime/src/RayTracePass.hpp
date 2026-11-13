@@ -74,12 +74,12 @@ public:
     class RayTracerUI : public Gram::EditorPanel
     {
     public:
-        RayTracerUI(RayTracePass& rayPass) : EditorPanel("RayTracer"), RayTracePass(rayPass) { }
+        RayTracerUI(RayTracePass& rayPass) : EditorPanel("RayTracer"), m_RayPass(rayPass) { }
         
         void DrawContents() override;
     
     private:
-        RayTracePass& RayTracePass;
+        RayTracePass& m_RayPass;
     };
     
     void GenerateBookScene();

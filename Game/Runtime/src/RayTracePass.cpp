@@ -186,13 +186,13 @@ void RayTracePass::GenerateBookScene()
 
 void RayTracePass::RayTracerUI::DrawContents()
 {
-    ImGui::Text("%u Spheres", static_cast<uint32_t>(RayTracePass.m_Spheres.size()));   // the frame rate is in the editor's menu bar
+    ImGui::Text("%u Spheres", static_cast<uint32_t>(m_RayPass.m_Spheres.size()));   // the frame rate is in the editor's menu bar
 
     bool changed = false;
-    ImGui::BeginDisabled(RayTracePass.m_Spheres.size() >= RayTracePass.m_SphereCount);
+    ImGui::BeginDisabled(m_RayPass.m_Spheres.size() >= m_RayPass.m_SphereCount);
     if (ImGui::Button("Add Sphere"))
     {
-        RayTracePass.m_Materials.push_back({
+        m_RayPass.m_Materials.push_back({
             .Albedo             = glm::vec3(0.8f, 0.3f, 0.3f),
             .Fuzz               = 0.50f,
             .RefractIndex       = 1.5f,
@@ -200,11 +200,11 @@ void RayTracePass::RayTracerUI::DrawContents()
             .Type               = MaterialData::TypeEnum::Lambertian,
         });
 
-        RayTracePass.m_Spheres.push_back({
+        m_RayPass.m_Spheres.push_back({
             .Position      = glm::vec3(0.0f, 0.0f, -0.2f),
             .Radius        = 0.45f,
             .InnerRadius   = 0.40f,
-            .MaterialIndex = static_cast<uint32_t>(RayTracePass.m_Materials.size() - 1),
+            .MaterialIndex = static_cast<uint32_t>(m_RayPass.m_Materials.size() - 1),
         });
 
         changed = true;
@@ -214,12 +214,12 @@ void RayTracePass::RayTracerUI::DrawContents()
 
     if (ImGui::Button("Generate Scene"))
     {
-        RayTracePass.GenerateBookScene(); changed = true;
+        m_RayPass.GenerateBookScene(); changed = true;
     }
 
     if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
     {
-        CameraControls& c = RayTracePass.m_CameraControls;
+        CameraControls& c = m_RayPass.m_CameraControls;
         uint32_t minBounces = 3; uint32_t maxBounces = 100;
         changed |= ImGui::DragFloat3  ("Camera Position"       , &c.Position.x   , 0.05f);
         changed |= ImGui::DragFloat   ("Camera Yaw"            , &c.Yaw          , 0.05f);
@@ -237,7 +237,7 @@ void RayTracePass::RayTracerUI::DrawContents()
     {
         uint32_t index = 0;
         std::optional<size_t> toRemove = std::nullopt;
-        for (auto& s: RayTracePass.m_Spheres)
+        for (auto& s: m_RayPass.m_Spheres)
         {
             ImGui::PushID(std::format("_sphere#{}", index).c_str());
             if (ImGui::CollapsingHeader("Sphere Data", ImGuiTreeNodeFlags_CollapsingHeader))
@@ -250,7 +250,7 @@ void RayTracePass::RayTracerUI::DrawContents()
 
                 if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_CollapsingHeader))
                 {
-                    auto& m = RayTracePass.m_Materials[s.MaterialIndex];
+                    auto& m = m_RayPass.m_Materials[s.MaterialIndex];
                     int type = static_cast<int>(m.Type);
                     if (ImGui::Combo("Type", &type, MaterialData::TypeNames.data(), static_cast<int>(MaterialData::TypeNames.size())))
                     {
@@ -274,14 +274,14 @@ void RayTracePass::RayTracerUI::DrawContents()
 
         if (toRemove)
         {
-            const uint32_t removed = RayTracePass.m_Spheres[*toRemove].MaterialIndex;
-            RayTracePass.m_Materials.erase(RayTracePass.m_Materials.begin() + static_cast<std::ptrdiff_t>(removed));
-            RayTracePass.m_Spheres.erase(RayTracePass.m_Spheres.begin() + static_cast<std::ptrdiff_t>(*toRemove));
-            for (auto& s : RayTracePass.m_Spheres) if (s.MaterialIndex > removed) --s.MaterialIndex;
+            const uint32_t removed = m_RayPass.m_Spheres[*toRemove].MaterialIndex;
+            m_RayPass.m_Materials.erase(m_RayPass.m_Materials.begin() + static_cast<std::ptrdiff_t>(removed));
+            m_RayPass.m_Spheres.erase(m_RayPass.m_Spheres.begin() + static_cast<std::ptrdiff_t>(*toRemove));
+            for (auto& s : m_RayPass.m_Spheres) if (s.MaterialIndex > removed) --s.MaterialIndex;
         }
     }
 
-    if (changed) RayTracePass.m_SceneChanged = true;
+    if (changed) m_RayPass.m_SceneChanged = true;
 }
 #endif // #ifdef GRAM_IMGUI_ENABLED
 
