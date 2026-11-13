@@ -154,6 +154,21 @@ impl ModuleBackend for CMake {
         };
         replace_file(&from, &dest)?;
 
+        // With a multi-config generator (Visual Studio) vcpkg's toolchain copies the DLLs an
+        // executable needs (glfw3.dll, vulkan-1.dll, ...) next to it, in <build dir>/<Config>/.
+        // Without them Windows won't start the program at all (exit code 0xC0000135, no window,
+        // no output), so they travel with it. Single-config builds don't get this treatment.
+        let from_dir = from.parent().expect("artifact candidates are file names");
+        if module.kind == "runtime" && from_dir != Path::new(build_dir) {
+            let dll_dir = Path::new(out).parent().unwrap_or_else(|| Path::new("."));
+            for entry in fs::read_dir(from_dir)? {
+                let path = entry?.path();
+                if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("dll")) {
+                    replace_file(&path, &dll_dir.join(path.file_name().expect("a directory entry has a name")))?;
+                }
+            }
+        }
+
         // Runtime assets the executable loads from disk travel with it: compiled shaders (SPIR-V)
         // and textures, each in its own folder of the build dir (see GramShaders.cmake /
         // GramTextures.cmake). Stopgap until assets get their own module kind with N artifacts.
