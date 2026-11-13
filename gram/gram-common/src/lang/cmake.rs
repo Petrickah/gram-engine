@@ -70,7 +70,10 @@ impl ModuleBackend for CMake {
         // so reconfigure from scratch each build too — otherwise settings that only take
         // effect on a build dir's *first* configure (CMAKE_TOOLCHAIN_FILE among them) go
         // stale once a module gets vcpkg wired up on top of an already-configured build dir.
-        configure.args(["-S", manifest_dir, "-B", build_dir, "--fresh"]);
+        // The build type only matters to single-config generators (Makefiles, Ninja), where an empty
+        // one means no -g and no -O0: breakpoints would never hit. Multi-config ones pick it in
+        // `--build --config` and ignore this.
+        configure.args(["-S", manifest_dir, "-B", build_dir, "--fresh", &format!("-DCMAKE_BUILD_TYPE={BUILD_CONFIG}")]);
         // So editors (VS Code's C/C++ extension) can get accurate IntelliSense straight
         // from gram's own build dir, without needing a separate IDE-driven configure.
         configure.arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
