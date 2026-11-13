@@ -5,6 +5,12 @@
 // The one translation unit that compiles stb_image: its implementation has no include guard,
 // so a second STB_IMAGE_IMPLEMENTATION (or this header included again under it) redefines everything.
 #define STB_IMAGE_IMPLEMENTATION
+#ifdef __MINGW32__
+// mingw-w64's GCC 13 rejects stb_image's SSE2 resampler ("the last argument must be an 8-bit
+// immediate" from _mm_slli_si128 once inlined). stb only turns SIMD off for 32-bit mingw, so do it
+// here; the scalar path is plenty for loading a texture, and the other platforms keep their SIMD.
+#define STBI_NO_SIMD
+#endif
 #include <stb_image.h>
 
 #ifdef GRAM_VULKAN_RENDERER
