@@ -187,8 +187,25 @@ pub(crate) fn slash_path(path: &Path) -> String {
 /// caches an executable's code signature per file and kills the next launch of one changed in
 /// place (gram replacing its own binary, or a running Game), and a game watching its library
 /// to reload it could read it half-written.
+///
+/// Windows refuses to overwrite a running executable (gram rebuilding itself, a running Game) with
+/// "access denied", but does let it be renamed: when the rename is refused, the old file is moved
+/// aside to `<name>.old` and the new one takes its place. The `.old` file can only be deleted once
+/// that process has exited, so the next replacement removes it first.
 pub(crate) fn replace_file(from: &Path, to: &Path) -> io::Result<()> {
     let partial = to.with_extension("partial");
     std::fs::copy(from, &partial)?;
-    std::fs::rename(partial, to)
+
+    match std::fs::rename(&partial, to) {
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied && to.exists() => {
+            let old = to.with_extension("old");
+            let _ = std::fs::remove_file(&old);   // a leftover from an earlier replacement; fails while still running
+            if std::fs::rename(to, &old).is_err() {
+                let _ = std::fs::remove_file(&partial);
+                return Err(error);
+            }
+            std::fs::rename(&partial, to)
+        }
+        result => result,
+    }
 }
