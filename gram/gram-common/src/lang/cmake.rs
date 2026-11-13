@@ -125,15 +125,18 @@ impl ModuleBackend for CMake {
             return Err(io::Error::new(io::ErrorKind::Other, "cmake configure failed"));
         }
 
-        let status = Command::new("cmake").args(["--build", build_dir]).status()?;
+        // --config only matters to multi-config generators (Visual Studio): without it they build
+        // Debug anyway, but saying so keeps it in step with where the artifact is looked for below.
+        let status = Command::new("cmake").args(["--build", build_dir, "--config", BUILD_CONFIG]).status()?;
         if !status.success() {
             return Err(io::Error::new(io::ErrorKind::Other, "cmake build failed"));
         }
 
         // The CMakeLists decides whether a library is SHARED or STATIC, not gram, so look for
         // every naming the module could have produced. The copy keeps the real file name.
-        let candidates: Vec<_> = artifact_candidates(module, target).into_iter()
-            .map(|file| Path::new(build_dir).join(file))
+        // A multi-config generator (Visual Studio) puts the output one folder down, in <build dir>/<Config>/.
+        let candidates: Vec<_> = [Path::new(build_dir).to_path_buf(), Path::new(build_dir).join(BUILD_CONFIG)].iter()
+            .flat_map(|dir| artifact_candidates(module, target).into_iter().map(move |file| dir.join(file)))
             .collect();
         let from = candidates.iter().find(|path| path.exists()).ok_or_else(|| io::Error::new(
             io::ErrorKind::NotFound,
@@ -290,13 +293,20 @@ impl ModuleBackend for CMake {
 
 /// File names a cmake module's artifact can have on `target`. A runtime module is an
 /// executable; a library is either shared (the naming `artifact_naming` reports, used by
-/// gram's own scaffold) or static (lib*.a, which mingw also produces for Windows).
+/// gram's own scaffold) or static (lib*.a, which mingw also produces for Windows; <name>.lib
+/// with MSVC).
 fn artifact_candidates(module: &ModuleConfig, target: &str) -> Vec<String> {
     let (prefix, ext) = CMake.artifact_naming(module, target);
     let name = &module.name;
     let mut candidates = vec![format!("{prefix}{name}{ext}")];
     if module.kind == "library" {
         candidates.push(format!("lib{name}.a"));
+        if target == "windows" {
+            candidates.push(format!("{name}.lib"));
+        }
     }
     candidates
 }
+
+/// The configuration gram builds: it only makes debug builds (cargo's `target/debug`, too).
+const BUILD_CONFIG: &str = "Debug";
