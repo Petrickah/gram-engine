@@ -63,7 +63,12 @@ private:
 
         const Gram::VulkanShader shader = Gram::VulkanShader::Compute(spec.m_Workspace, "RayTracer", static_cast<vk::Device>(device.GetLogicalDevice()));
         RayTracePass& rayTracePass = m_VulkanRenderer->AddPass<RayTracePass>(device, shader, m_VulkanRenderer->GetSceneTarget());
-        GramImGuiOnly(rayTracePass.RegisterPanels(m_Editor));
+
+#ifdef GRAM_IMGUI_ENABLED
+        rayTracePass.RegisterPanels(m_Editor);
+#else
+        rayTracePass.GenerateBookScene();
+#endif // #ifdef GRAM_IMGUI_ENABLED
 
         const Gram::VulkanShader accumulate = Gram::VulkanShader::Graphics(spec.m_Workspace, "Accumulate", static_cast<vk::Device>(device.GetLogicalDevice()));
         auto& accumulatePass = m_VulkanRenderer->AddPass<PostProcessPass<AccumulationParams>>(device, accumulate, std::vector { rayTracePass.GetOutput() }, vk::Format::eR32G32B32A32Sfloat, [&state = m_Accumulation, &rayTracePass](const PostProcessPass<AccumulationParams>::Context& ctx)

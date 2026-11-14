@@ -36,6 +36,7 @@ public:
     // The first call of the frame clears the image (it comes from eUndefined); the later ones load, drawing on top.
     // The caller ends it with endRendering.
     void BeginSwapchainRendering(VulkanFrame::Active& frame, const VulkanSwapchain& swapChain) const;
+    void MarkSwapchainWritten(VulkanFrame::Active& frame) { frame.SwapchainRendered = true; }
 
 public:
     VkCommandBuffer GetCommandBuffer    (uint32_t frameIndex) const { return static_cast<VkCommandBuffer>(*m_CommandBuffers    [frameIndex]); }

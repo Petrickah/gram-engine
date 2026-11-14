@@ -69,19 +69,17 @@
 #endif // #ifndef GRAM_GEOMETRY_SHADERS
 #endif // #ifndef GRAM_PLATFORM_APPLE
 
-#ifdef GRAM_VULKAN_RENDERER
 // GRAM_IMGUI_ENABLED allows to render ImGui panels using the Vulkan Renderer;
-#ifndef GRAM_IMGUI_ENABLED
+#if defined(GRAM_VULKAN_RENDERER) && !defined(GRAM_CONFIG_FINAL)
 #define GRAM_IMGUI_ENABLED
-#include <imgui.h>
-#endif // #ifndef GRAM_IMGUI_ENABLED
+#endif // #if defined(GRAM_VULKAN_RENDERER) && !defined(GRAM_CONFIG_FINAL)
 
 #ifdef GRAM_IMGUI_ENABLED
+#include <imgui.h>
 #define GramImGuiOnly(...) __VA_ARGS__
 #else
 #define GramImGuiOnly(...)
 #endif // #ifdef GRAM_IMGUI_ENABLED
-#endif // #ifdef GRAM_VULKAN_RENDERER
 
 #ifndef GRAM_LOGGER_ENABLED
 #define GRAM_LOGGER_ENABLED

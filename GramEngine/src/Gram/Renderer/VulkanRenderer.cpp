@@ -46,7 +46,7 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
         m_VulkanDevice
         , vk::Extent2D { 1280, 720 }     // until the viewport panel asks for its own size
         , vk::Format::eR32G32B32A32Sfloat
-        , vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage
+        , vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc
     ))
     GramImGuiOnly(, m_VulkanImGui(
         & m_RendererSpec
@@ -57,6 +57,11 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
         , m_VulkanDevice.GetQueueFamilyIndices()
         , m_VulkanSwapchain.GetImageCount()
     ))
+#ifndef GRAM_IMGUI_ENABLED
+    , m_VulkanPresentPass(
+        m_VulkanDevice
+        , m_SceneTarget)
+#endif // #ifndef GRAM_IMGUI_ENABLED
 {
     // The game adds its own passes (AddPass); the editor's ImGui pass is a member, always drawn last.
 }
@@ -86,7 +91,11 @@ bool VulkanRenderer::OnDrawFrame()
         allRecorded = pass->Record(frame->CommandBuffer, ctx) && allRecorded;
     }
     
-    GramImGuiOnly(allRecorded = m_VulkanImGui.Record(frame->CommandBuffer, ctx) && allRecorded);
+#ifdef GRAM_IMGUI_ENABLED
+    allRecorded = m_VulkanImGui.Record(frame->CommandBuffer, ctx) && allRecorded;
+#else
+    allRecorded = m_VulkanPresentPass.Record(frame->CommandBuffer, ctx) && allRecorded;
+#endif // #ifdef GRAM_IMGUI_ENABLED
 
     // Always End, even after a failed pass: Begin reset the fence and began the command buffer, so
     // leaving now would keep the fence unsignaled and hang the next waitForFences on this frame.
@@ -96,7 +105,11 @@ bool VulkanRenderer::OnDrawFrame()
         allPresented = pass->OnPresented() && allPresented;
     }
 
-    GramImGuiOnly(allPresented = m_VulkanImGui.OnPresented() && allPresented);
+#ifdef GRAM_IMGUI_ENABLED
+    allPresented = m_VulkanImGui.OnPresented() && allPresented;
+#else
+    allPresented = m_VulkanPresentPass.OnPresented() && allPresented;
+#endif // #ifdef GRAM_IMGUI_ENABLED
 
     GramCheck(allRecorded, "pass recording failed");
     return allPresented;
@@ -114,7 +127,11 @@ bool VulkanRenderer::OnFinish()
         allFinished = pass->Finish() && allFinished;
     }
 
-    GramImGuiOnly(allFinished = m_VulkanImGui.Finish() && allFinished);
+#ifdef GRAM_IMGUI_ENABLED
+    allFinished = m_VulkanImGui.Finish() && allFinished;
+#else
+    allFinished = m_VulkanPresentPass.Finish() && allFinished;
+#endif // #ifdef GRAM_IMGUI_ENABLED
 
     return allFinished;
 }

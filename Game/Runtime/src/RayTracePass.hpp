@@ -68,6 +68,8 @@ class RayTracePass : public Gram::VulkanPass
 {
 public:
     RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, const std::shared_ptr<Gram::VulkanRenderTarget>& target);
+    
+    void GenerateBookScene();
 
 #ifdef GRAM_IMGUI_ENABLED
     // The game's own window: what only this game has.
@@ -82,7 +84,6 @@ public:
         RayTracePass& m_RayPass;
     };
     
-    void GenerateBookScene();
     void RegisterPanels(std::unique_ptr<Gram::Editor>& editor)
     {
         // The scene target: the editor's Viewport shows what this RenderPass renders into it.

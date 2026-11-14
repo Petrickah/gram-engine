@@ -11,6 +11,10 @@
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
+#ifndef GRAM_IMGUI_ENABLED
+#include "Gram/Renderer/VulkanPresentPass.hpp"
+#endif
+
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
 
@@ -56,6 +60,10 @@ private:
     VulkanFrame m_VulkanFrame;
     std::shared_ptr<VulkanRenderTarget> m_SceneTarget;
     GramImGuiOnly(VulkanImGui m_VulkanImGui);
+
+#ifndef GRAM_IMGUI_ENABLED
+    VulkanPresentPass m_VulkanPresentPass;
+#endif
 
 private:
     std::vector<std::unique_ptr<VulkanPass>> m_Passes;

@@ -14,6 +14,7 @@
 #include <glm/fwd.hpp>
 #include <glm/matrix.hpp>
 #include <imgui.h>
+#include <random>
 
 #ifdef GRAM_VULKAN_RENDERER
 
@@ -46,6 +47,59 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
     m_Descriptors.Write(device, 1, m_SphereStorages  , m_SphereCount   * sizeof(SphereData));
     m_Descriptors.Write(device, 2, m_MaterialStorages, m_MaterialCount * sizeof(MaterialData));
     m_Descriptors.Write(device, 0, m_CameraUniforms  , sizeof(CameraData));
+}
+
+// The book's final scene (ch. 14): a ground, a 22×22 grid of small random spheres, three big ones.
+void RayTracePass::GenerateBookScene()
+{
+    m_Spheres.clear();
+    m_Materials.clear();
+
+    std::mt19937 rng(1337);   // fixed seed: the same scene every time
+    auto random = [&](float lo = 0.0f, float hi = 1.0f) { return std::uniform_real_distribution<float>(lo, hi)(rng); };
+    auto randomColor = [&](float lo = 0.0f, float hi = 1.0f) { return glm::vec3(random(lo, hi), random(lo, hi), random(lo, hi)); };
+
+    auto add = [&](glm::vec3 position, float radius, MaterialData material)
+    {
+        m_Materials.push_back(material);
+        m_Spheres.push_back({
+            .Position      = position, 
+            .Radius        = radius, 
+            .InnerRadius   = 0.0f,
+            .MaterialIndex = static_cast<uint32_t>(m_Materials.size() - 1)
+        });
+    };
+
+    using Type = MaterialData::TypeEnum;
+    add({ 0.0f, -1000.0f, 0.0f }, 1000.0f, { .Albedo = glm::vec3(0.5f), .Type = Type::Lambertian });
+
+    for (int a = -11; a < 11; a++)
+    {
+        for (int b = -11; b < 11; b++)
+        {
+            const float     choose = random();
+            const glm::vec3 center(a + 0.9f * random(), 0.2f, b + 0.9f * random());
+            if (glm::length(center - glm::vec3(4.0f, 0.2f, 0.0f)) <= 0.9f) continue;   // room for the big metal one
+
+            if      (choose < 0.80f) add(center, 0.2f, { .Albedo = randomColor() * randomColor(), .Type = Type::Lambertian });
+            else if (choose < 0.95f) add(center, 0.2f, { .Albedo = randomColor(0.5f, 1.0f), .Fuzz = random(0.0f, 0.5f), .Type = Type::Metal });
+            else                     add(center, 0.2f, { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Type = Type::Dielectric });
+        }
+    }
+
+    add({  0.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Type = Type::Dielectric });
+    add({ -4.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = { 0.4f, 0.2f, 0.1f }, .Type = Type::Lambertian });
+    add({  4.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = { 0.7f, 0.6f, 0.5f }, .Fuzz = 0.0f, .Type = Type::Metal });
+
+    // The book's camera: from (13, 2, 3) looking at the origin, vfov 20°, focused at 10.
+    const glm::vec3 forward = glm::normalize(glm::vec3(0.0f) - glm::vec3(13.0f, 2.0f, 3.0f));
+    m_CameraControls.Position      = { 13.0f, 2.0f, 3.0f };
+    m_CameraControls.Pitch         = glm::degrees(std::asin(forward.y));              // inversul formulei din Record
+    m_CameraControls.Yaw           = glm::degrees(std::atan2(forward.x, -forward.z));
+    m_CameraControls.FovY          = 20.0f;
+    m_CameraControls.FocusDistance = 10.0f;
+
+    m_SceneChanged = true;
 }
 
 bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
@@ -129,61 +183,6 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 }
 
 #ifdef GRAM_IMGUI_ENABLED
-#include <random>
-
-// The book's final scene (ch. 14): a ground, a 22×22 grid of small random spheres, three big ones.
-void RayTracePass::GenerateBookScene()
-{
-    m_Spheres.clear();
-    m_Materials.clear();
-
-    std::mt19937 rng(1337);   // fixed seed: the same scene every time
-    auto random = [&](float lo = 0.0f, float hi = 1.0f) { return std::uniform_real_distribution<float>(lo, hi)(rng); };
-    auto randomColor = [&](float lo = 0.0f, float hi = 1.0f) { return glm::vec3(random(lo, hi), random(lo, hi), random(lo, hi)); };
-
-    auto add = [&](glm::vec3 position, float radius, MaterialData material)
-    {
-        m_Materials.push_back(material);
-        m_Spheres.push_back({
-            .Position      = position, 
-            .Radius        = radius, 
-            .InnerRadius   = 0.0f,
-            .MaterialIndex = static_cast<uint32_t>(m_Materials.size() - 1)
-        });
-    };
-
-    using Type = MaterialData::TypeEnum;
-    add({ 0.0f, -1000.0f, 0.0f }, 1000.0f, { .Albedo = glm::vec3(0.5f), .Type = Type::Lambertian });
-
-    for (int a = -11; a < 11; a++)
-    {
-        for (int b = -11; b < 11; b++)
-        {
-            const float     choose = random();
-            const glm::vec3 center(a + 0.9f * random(), 0.2f, b + 0.9f * random());
-            if (glm::length(center - glm::vec3(4.0f, 0.2f, 0.0f)) <= 0.9f) continue;   // room for the big metal one
-
-            if      (choose < 0.80f) add(center, 0.2f, { .Albedo = randomColor() * randomColor(), .Type = Type::Lambertian });
-            else if (choose < 0.95f) add(center, 0.2f, { .Albedo = randomColor(0.5f, 1.0f), .Fuzz = random(0.0f, 0.5f), .Type = Type::Metal });
-            else                     add(center, 0.2f, { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Type = Type::Dielectric });
-        }
-    }
-
-    add({  0.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Type = Type::Dielectric });
-    add({ -4.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = { 0.4f, 0.2f, 0.1f }, .Type = Type::Lambertian });
-    add({  4.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = { 0.7f, 0.6f, 0.5f }, .Fuzz = 0.0f, .Type = Type::Metal });
-
-    // The book's camera: from (13, 2, 3) looking at the origin, vfov 20°, focused at 10.
-    const glm::vec3 forward = glm::normalize(glm::vec3(0.0f) - glm::vec3(13.0f, 2.0f, 3.0f));
-    m_CameraControls.Position      = { 13.0f, 2.0f, 3.0f };
-    m_CameraControls.Pitch         = glm::degrees(std::asin(forward.y));              // inversul formulei din Record
-    m_CameraControls.Yaw           = glm::degrees(std::atan2(forward.x, -forward.z));
-    m_CameraControls.FovY          = 20.0f;
-    m_CameraControls.FocusDistance = 10.0f;
-
-    m_SceneChanged = true;
-}
-
 void RayTracePass::RayTracerUI::DrawContents()
 {
     ImGui::Text("%u Spheres", static_cast<uint32_t>(m_RayPass.m_Spheres.size()));   // the frame rate is in the editor's menu bar

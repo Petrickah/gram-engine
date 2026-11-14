@@ -53,6 +53,7 @@ public:
     void BeginRendering(vk::CommandBuffer cmd, vk::AttachmentLoadOp loadOp);
     bool IsValid() const { return m_Image && m_View && m_Sampler; }
 
+    vk::Image     GetHandle()  const { return *m_Image;   }
     vk::ImageView GetView()    const { return *m_View;    }
     vk::Sampler   GetSampler() const { return *m_Sampler; }
     vk::Extent2D  GetExtent()  const { return m_Extent;   }

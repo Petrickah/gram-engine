@@ -142,7 +142,7 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<VulkanImage::State>& swapchain
         .imageColorSpace       = surfaceFormat.colorSpace,
         .imageExtent           = extent,
         .imageArrayLayers      = 1,
-        .imageUsage            = vk::ImageUsageFlagBits::eColorAttachment,
+        .imageUsage            = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
         .imageSharingMode      = concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
         .queueFamilyIndexCount = concurrent ? static_cast<uint32_t>(uniqueIndices.size()) : 0,
         .pQueueFamilyIndices   = concurrent ? uniqueIndices.data() : nullptr,

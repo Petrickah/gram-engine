@@ -62,6 +62,7 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanImGui.cpp
     src/Gram/Renderer/VulkanInstance.cpp
     src/Gram/Renderer/VulkanPipeline.cpp
+    src/Gram/Renderer/VulkanPresentPass.cpp
     src/Gram/Renderer/VulkanRenderer.cpp
     src/Gram/Renderer/VulkanRenderTarget.cpp
     src/Gram/Renderer/VulkanShader.cpp
