@@ -2,7 +2,7 @@
 #include "Gram/Editor/LoggerPanel.hpp"
 #include "Gram/Logging/GramLogger.hpp"
 
-#if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_LOGGER_ENABLED)
+#if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_LOGGER_ENABLED)
 GRAM_NAMESPACE_BEGIN
 
 namespace
@@ -213,4 +213,4 @@ void LoggerPanel::DrawContents()
 }
 
 GRAM_NAMESPACE_END
-#endif // #if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_LOGGER_ENABLED)
+#endif // #if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_LOGGER_ENABLED)

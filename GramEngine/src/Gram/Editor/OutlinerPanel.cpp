@@ -3,7 +3,7 @@
 #include "Gram/Editor/InspectorPanel.hpp"
 #include "Gram/Editor/OutlinerPanel.hpp"
 
-#ifdef GRAM_IMGUI_ENABLED
+#ifdef GRAM_EDITOR_ENABLED
 GRAM_NAMESPACE_BEGIN
 
 void OutlinerPanel::DrawContents()
@@ -29,4 +29,4 @@ void OutlinerPanel::DrawContents()
 }
 
 GRAM_NAMESPACE_END
-#endif // #ifdef GRAM_IMGUI_ENABLED
+#endif // #ifdef GRAM_EDITOR_ENABLED

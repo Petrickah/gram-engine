@@ -2,7 +2,7 @@
 
 #include "Gram/Editor/EditorPanel.hpp"
 
-#ifdef GRAM_IMGUI_ENABLED
+#ifdef GRAM_EDITOR_ENABLED
 GRAM_NAMESPACE_BEGIN
 
 class GameAPILoader;
@@ -21,4 +21,4 @@ private:
 };
 
 GRAM_NAMESPACE_END
-#endif // #ifdef GRAM_IMGUI_ENABLED
+#endif // #ifdef GRAM_EDITOR_ENABLED

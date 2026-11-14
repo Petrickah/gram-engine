@@ -13,13 +13,18 @@ bool EditorMenuBar::OnDrawFrame()
 {
     if (ImGui::BeginMainMenuBar())
     {
-        if (ImGui::BeginMenu("Window"))
+        // A menu per owner, only when it has panels (Release has no engine panels).
+        auto menu = [](const char* name, const std::vector<EditorPanel*>& panels)
         {
-            for (EditorPanel* panel : m_Panels)
+            if (panels.empty() || !ImGui::BeginMenu(name)) return;
+
+            for (EditorPanel* panel : panels)
                 ImGui::MenuItem(panel->GetName(), nullptr, &panel->IsOpen());
 
             ImGui::EndMenu();
-        }
+        };
+        menu("Engine", m_EnginePanels);
+        menu("Game",   m_GamePanels);
 
         // The frame rate, right-aligned: ImGui's own running average over the last frames.
         const ImGuiIO& io = ImGui::GetIO();
@@ -34,22 +39,24 @@ bool EditorMenuBar::OnDrawFrame()
     return true;
 }
 
-Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, std::shared_ptr<VulkanRenderTarget> sceneTarget)
+Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& world, [[maybe_unused]] GameAPILoader& loader, [[maybe_unused]] std::shared_ptr<VulkanRenderTarget> sceneTarget)
     : m_UI(ui)
 {
     GramCheckVoid(m_UI.RegisterLayer<EditorMenuBar>(m_MenuBar), "couldn't create the editor's menu bar");
 
+#ifdef GRAM_EDITOR_ENABLED
     // The inspector first: the outliner selects into it.
-    m_Inspector = AddPanel<InspectorPanel>(world);
+    m_Inspector = Register<InspectorPanel>(PanelOwner::Engine, world);
     GramCheckVoid(m_Inspector, "couldn't create the Inspector");
-    m_Outliner  = AddPanel<OutlinerPanel>(world, *m_Inspector);
-    m_Systems   = AddPanel<SystemsPanel>(loader);
+    m_Outliner  = Register<OutlinerPanel>(PanelOwner::Engine, world, *m_Inspector);
+    m_Systems   = Register<SystemsPanel>(PanelOwner::Engine, loader);
 #ifdef GRAM_LOGGER_ENABLED
-    m_Logger    = AddPanel<LoggerPanel>();
+    m_Logger    = Register<LoggerPanel>(PanelOwner::Engine);
 #endif // #ifdef GRAM_LOGGER_ENABLED
 #ifdef GRAM_VULKAN_RENDERER
-    if (sceneTarget) m_Viewport = AddPanel<ViewportPanel>(*sceneTarget);
+    if (sceneTarget) m_Viewport = Register<ViewportPanel>(PanelOwner::Engine, *sceneTarget);
 #endif // #ifdef GRAM_VULKAN_RENDERER
+#endif // #ifdef GRAM_EDITOR_ENABLED
 }
 
 GRAM_NAMESPACE_END

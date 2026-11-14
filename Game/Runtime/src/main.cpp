@@ -142,10 +142,11 @@ private:
 
     void RegisterPanels()
     {
-        // The scene target: the editor's Viewport shows what TrianglePass renders into it.
+        // The scene target: the editor's Viewport (Debug only) shows what the passes render into it.
         m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI, m_VulkanRenderer->GetSceneTarget());
+        // The game's own panels: in Debug next to the engine's, in Release the only ones, to test the game with.
         m_Editor->AddPanel<GameUI>(*this);
-        m_Editor->GetInspector().Select(m_GreetingEntity);
+        GramEditorOnly(m_Editor->GetInspector().Select(m_GreetingEntity));
     }
     
     std::unique_ptr<Gram::Editor> m_Editor = nullptr;

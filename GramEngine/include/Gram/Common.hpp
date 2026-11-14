@@ -81,6 +81,16 @@
 #define GramImGuiOnly(...)
 #endif // #ifdef GRAM_IMGUI_ENABLED
 
+// GRAM_EDITOR_ENABLED: the engine's own panels (Outliner, Inspector, Systems, Log, Viewport), only in
+// Debug, where the game is written. Release keeps ImGui for the game's own panels only, to test it with,
+// and shows the scene through the present pass instead of the Viewport. Final has no ImGui at all.
+#if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_CONFIG_DEBUG)
+#define GRAM_EDITOR_ENABLED
+#define GramEditorOnly(...) __VA_ARGS__
+#else
+#define GramEditorOnly(...)
+#endif // #if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_CONFIG_DEBUG)
+
 #ifndef GRAM_LOGGER_ENABLED
 #define GRAM_LOGGER_ENABLED
 #endif // #ifndef GRAM_LOGGER_ENABLED

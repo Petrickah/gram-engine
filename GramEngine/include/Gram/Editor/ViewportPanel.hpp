@@ -2,7 +2,7 @@
 
 #include "Gram/Editor/EditorPanel.hpp"
 
-#if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_VULKAN_RENDERER)
+#if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_VULKAN_RENDERER)
 GRAM_NAMESPACE_BEGIN
 
 class VulkanRenderTarget;
@@ -30,4 +30,4 @@ private:
 };
 
 GRAM_NAMESPACE_END
-#endif // #if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_VULKAN_RENDERER)
+#endif // #if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_VULKAN_RENDERER)

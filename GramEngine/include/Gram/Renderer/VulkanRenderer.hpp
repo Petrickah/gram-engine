@@ -11,9 +11,9 @@
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
-#ifndef GRAM_IMGUI_ENABLED
+#ifndef GRAM_EDITOR_ENABLED
 #include "Gram/Renderer/VulkanPresentPass.hpp"
-#endif
+#endif // #ifndef GRAM_EDITOR_ENABLED
 
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
@@ -61,9 +61,11 @@ private:
     std::shared_ptr<VulkanRenderTarget> m_SceneTarget;
     GramImGuiOnly(VulkanImGui m_VulkanImGui);
 
-#ifndef GRAM_IMGUI_ENABLED
+#ifndef GRAM_EDITOR_ENABLED
+    // Without the editor's Viewport (Release, Final), the scene goes straight to the swapchain, under
+    // the game's own ImGui panels in Release.
     VulkanPresentPass m_VulkanPresentPass;
-#endif
+#endif // #ifndef GRAM_EDITOR_ENABLED
 
 private:
     std::vector<std::unique_ptr<VulkanPass>> m_Passes;

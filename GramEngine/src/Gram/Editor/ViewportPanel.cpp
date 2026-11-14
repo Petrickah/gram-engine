@@ -2,7 +2,7 @@
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Editor/ViewportPanel.hpp"
 
-#if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_VULKAN_RENDERER)
+#if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_VULKAN_RENDERER)
 #include <imgui_impl_vulkan.h>
 
 GRAM_NAMESPACE_BEGIN
@@ -39,4 +39,4 @@ bool ViewportPanel::OnStop()
 }
 
 GRAM_NAMESPACE_END
-#endif // #if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_VULKAN_RENDERER)
+#endif // #if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_VULKAN_RENDERER)

@@ -2,7 +2,7 @@
 #include "Gram/Scripting/ECS/World.hpp"
 #include "Gram/Editor/InspectorPanel.hpp"
 
-#ifdef GRAM_IMGUI_ENABLED
+#ifdef GRAM_EDITOR_ENABLED
 GRAM_NAMESPACE_BEGIN
 
 void InspectorPanel::DrawContents()
@@ -37,4 +37,4 @@ void InspectorPanel::DrawComponent(const ComponentDescriptor& desc, void* data)
 }
 
 GRAM_NAMESPACE_END
-#endif // #ifdef GRAM_IMGUI_ENABLED
+#endif // #ifdef GRAM_EDITOR_ENABLED

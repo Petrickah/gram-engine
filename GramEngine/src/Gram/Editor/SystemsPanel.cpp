@@ -2,7 +2,7 @@
 #include "Gram/Scripting/GameAPI.hpp"
 #include "Gram/Editor/SystemsPanel.hpp"
 
-#ifdef GRAM_IMGUI_ENABLED
+#ifdef GRAM_EDITOR_ENABLED
 GRAM_NAMESPACE_BEGIN
 
 void SystemsPanel::DrawContents()
@@ -58,4 +58,4 @@ void SystemsPanel::DrawContents()
 }
 
 GRAM_NAMESPACE_END
-#endif // #ifdef GRAM_IMGUI_ENABLED
+#endif // #ifdef GRAM_EDITOR_ENABLED

@@ -2,7 +2,7 @@
 
 #include "Gram/Editor/EditorPanel.hpp"
 
-#if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_LOGGER_ENABLED)
+#if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_LOGGER_ENABLED)
 GRAM_NAMESPACE_BEGIN
 
 // The last messages of every logger (the engine's, Vulkan's and the game's), read back from the
@@ -51,4 +51,4 @@ private:
 };
 
 GRAM_NAMESPACE_END
-#endif // #if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_LOGGER_ENABLED)
+#endif // #if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_LOGGER_ENABLED)
