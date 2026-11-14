@@ -1,5 +1,5 @@
 //! `gram run [--module <name>] [-- <args>...]`: runs an already-built runtime module's binary
-//! from `build/<project>/<target>/`. It never builds first; anything after `--` goes to the
+//! from `build/<project>/<target>/<config>/`. It never builds first; anything after `--` goes to the
 //! binary, and the binary's exit code becomes gram's.
 
 mod support;
@@ -58,6 +58,17 @@ fn passes_the_exit_code_through() {
     let run = project.gram(&["run"]);
 
     assert_eq!(run.code, Some(3));
+}
+
+#[test]
+fn runs_the_config_it_is_given() {
+    let project = Sandbox::project("demo", &[]);
+    project.gram(&["build", "--config", "release"]).succeeds();
+
+    project.gram(&["run"]).fails_with("run `gram build --config debug` first");
+    let run = project.gram(&["run", "--config", "release"]).succeeds();
+
+    assert_contains(&run.stdout, "Hello, world!");
 }
 
 #[test]

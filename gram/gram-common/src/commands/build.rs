@@ -1,6 +1,7 @@
 use std::io;
 use clap::Args;
 use crate::BuildConfig;
+use crate::profile::Profile;
 
 #[derive(Args)]
 pub struct BuildCommand {
@@ -16,6 +17,11 @@ pub struct BuildCommand {
     /// Build only this module instead of the whole tree; for a gram module (a nested project), every module inside it. What it references is still compiled, by cargo or cmake themselves.
     #[arg(short, long, default_value = "")]
     module: String,
+    /// Build configuration: "debug" (no optimization, the editor, Vulkan validation), "release"
+    /// (optimized, with symbols, the editor) or "final" (optimized, LTO, stripped, no editor).
+    /// Each lands in its own folder, build/<project>/<target>/<config>/.
+    #[arg(short, long, default_value = "debug")]
+    config: Profile,
 }
 
 pub fn project(command: BuildCommand) -> io::Result<()> {
@@ -23,5 +29,5 @@ pub fn project(command: BuildCommand) -> io::Result<()> {
     if !path.is_empty() {
         std::env::set_current_dir(path)?;
     }
-    BuildConfig::open(".")?.build(&command.ci, &command.target, &command.module)
+    BuildConfig::open(".")?.build(&command.ci, &command.target, &command.module, command.config)
 }

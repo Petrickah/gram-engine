@@ -54,7 +54,7 @@ struct VulkanRendererSpecification
 private:
     std::vector<const char*> m_RequiredExtensionsLayers = { GramAppleOnly("VK_KHR_portability_enumeration",) "VK_EXT_debug_utils" };
     std::vector<const char*> m_RequiredDeviceExtensions = { "VK_KHR_swapchain" };
-    std::vector<const char*> m_RequiredValidationLayers = { "VK_LAYER_KHRONOS_validation" };
+    std::vector<const char*> m_RequiredValidationLayers = { GramValidationOnly("VK_LAYER_KHRONOS_validation") };
 
 protected:
     static std::vector<const char*> ToCStrings(const std::vector<std::string>& strings)

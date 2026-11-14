@@ -103,8 +103,8 @@ fn builds_a_nested_module_into_the_root_build_directory() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("app"))));
-    assert!(project.exists(&format!("game/app/build-{}/CMakeCache.txt", host())));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("app"))));
+    assert!(project.exists(&format!("game/app/build-{}-debug/CMakeCache.txt", host())));
 }
 
 #[test]
@@ -114,8 +114,8 @@ fn building_a_gram_module_builds_everything_inside_it() {
 
     project.gram(&["build", "--module", "game"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("app"))));
-    assert!(!project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))), "main is outside game");
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("app"))));
+    assert!(!project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))), "main is outside game");
 }
 
 #[test]
@@ -126,8 +126,8 @@ fn a_nested_projects_main_module_is_named_after_the_nested_project() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("game"))));
-    assert!(!project.exists(&format!("build/demo/{}/{}", host(), exe("app"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("game"))));
+    assert!(!project.exists(&format!("build/demo/{}/debug/{}", host(), exe("app"))));
 }
 
 #[test]

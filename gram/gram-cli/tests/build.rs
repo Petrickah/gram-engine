@@ -1,6 +1,6 @@
-//! `gram build`: builds every module and copies each artifact to `build/<project>/<target>/`.
+//! `gram build`: builds every module and copies each artifact to `build/<project>/<target>/<config>/`.
 //! A plain build is for the host OS; `--target` picks one other target; `--ci` builds every
-//! target each module declares, into `build/<project>_<version>_<target>/`.
+//! target each module declares, into `build/<project>_<version>_<target>_<config>/`.
 //!
 //! These tests run the real cargo and cmake (plus a C++ compiler), so they take a few seconds
 //! each. Cross-compiling to Windows (mingw) isn't covered here.
@@ -16,7 +16,7 @@ fn builds_a_cargo_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
 }
 
 #[test]
@@ -25,9 +25,9 @@ fn builds_a_cmake_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
     // cmake's own build directory lives inside the module, one per target.
-    assert!(project.exists(&format!("main/build-{}/CMakeCache.txt", host())));
+    assert!(project.exists(&format!("main/build-{}-debug/CMakeCache.txt", host())));
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn builds_a_cmake_shared_library() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), shared_lib("main"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("main"))));
 }
 
 #[test]
@@ -50,9 +50,9 @@ fn builds_a_cargo_dynamic_library_next_to_the_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), shared_lib("GameLogic"))));
-    assert!(!project.exists(&format!("build/demo/{}/{}", host(), shared_lib("game_logic"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("GameLogic"))));
+    assert!(!project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("game_logic"))));
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn finds_a_cmake_library_built_as_static() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/libmain.a", host())));
+    assert!(project.exists(&format!("build/demo/{}/debug/libmain.a", host())));
 }
 
 #[test]
@@ -76,8 +76,8 @@ fn builds_a_referenced_library_as_part_of_the_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), shared_lib("engine"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("engine"))));
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn copies_compiled_shaders_next_to_the_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert_eq!(project.read(&format!("build/demo/{}/shaders/Default.vert.spv", host())), "spirv");
+    assert_eq!(project.read(&format!("build/demo/{}/debug/shaders/Default.vert.spv", host())), "spirv");
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn copies_textures_next_to_the_executable() {
 
     project.gram(&["build"]).succeeds();
 
-    assert_eq!(project.read(&format!("build/demo/{}/textures/texture.jpg", host())), "pixels");
+    assert_eq!(project.read(&format!("build/demo/{}/debug/textures/texture.jpg", host())), "pixels");
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn builds_a_cargo_workspace_member() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))),
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))),
         "the artifact is named after the project (main is its main module), not the cargo package");
 }
 
@@ -127,8 +127,8 @@ fn only_the_main_runtime_module_is_named_after_the_project() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("tool"))), "not the main module: keeps its name");
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("tool"))), "not the main module: keeps its name");
 }
 
 #[test]
@@ -139,8 +139,8 @@ fn module_builds_only_that_module() {
 
     project.gram(&["build", "--module", "tool"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("tool"))));
-    assert!(!project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("tool"))));
+    assert!(!project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
 }
 
 #[test]
@@ -148,6 +148,62 @@ fn module_must_exist() {
     let project = Sandbox::project("demo", &[]);
 
     project.gram(&["build", "--module", "nowhere"]).fails_with("module not found: nowhere");
+}
+
+// --- configurations (--config) ------------------------------------------------------------------
+
+#[test]
+fn release_lands_in_its_own_folder() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--config", "release"]).succeeds();
+
+    assert!(project.exists(&format!("build/demo/{}/release/{}", host(), exe("demo"))));
+    assert!(!project.exists(&format!("build/demo/{}/debug", host())));
+    // cargo really built with --release.
+    assert!(project.exists(&format!("main/target/release/{}", exe("main"))));
+}
+
+#[test]
+fn cmake_gets_one_build_dir_per_config_with_its_build_type() {
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+
+    project.gram(&["build", "--config", "release"]).succeeds();
+
+    let cache = project.read(&format!("main/build-{}-release/CMakeCache.txt", host()));
+    assert_contains(&cache, "CMAKE_BUILD_TYPE:STRING=Release");
+    // Release keeps symbols: the compiler's RelWithDebInfo flags (GramConfigurationFlags.cmake).
+    assert_contains(&cache, "CMAKE_CXX_FLAGS_RELEASE:STRING=-O2 -g -DNDEBUG");
+    assert!(project.exists(&format!("build/demo/{}/release/{}", host(), exe("demo"))));
+}
+
+#[test]
+fn cmake_learns_the_final_config_from_gram() {
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+
+    project.gram(&["build", "--config", "final"]).succeeds();
+
+    // The compiler's own Release flags, plus LTO: CMake knows nothing of a "Final" configuration by itself.
+    let cache = project.read(&format!("main/build-{}-final/CMakeCache.txt", host()));
+    assert_contains(&cache, "CMAKE_CXX_FLAGS_FINAL:STRING=-O3 -DNDEBUG");
+    assert_contains(&project.read(&format!("main/build-{}-final/compile_commands.json", host())), "-flto");
+    assert!(project.exists(&format!("build/demo/{}/final/{}", host(), exe("demo"))));
+}
+
+#[test]
+fn ci_names_the_config_in_its_directories() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--ci", "--config", "final"]).succeeds();
+
+    assert!(project.exists(&format!("build/demo_0.1.0_{}_final/{}", host(), exe("demo"))));
+}
+
+#[test]
+fn rejects_an_unknown_config() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--config", "fast"]).fails_with("unknown profile: fast");
 }
 
 // --- targets ------------------------------------------------------------------------------------
@@ -158,7 +214,7 @@ fn ci_builds_every_declared_target_into_versioned_directories() {
 
     project.gram(&["build", "--ci"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo_0.1.0_{}/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo_0.1.0_{}_debug/{}", host(), exe("demo"))));
 }
 
 #[test]
@@ -169,8 +225,8 @@ fn ci_skips_targets_this_host_cannot_build() {
     let run = project.gram(&["build", "--ci"]).succeeds();
 
     assert!(run.printed(&format!("skipping module main target \"{other}\"")));
-    assert!(project.exists(&format!("build/demo_0.1.0_{}/{}", host(), exe("demo"))));
-    assert!(!project.exists(&format!("build/demo_0.1.0_{other}")));
+    assert!(project.exists(&format!("build/demo_0.1.0_{}_debug/{}", host(), exe("demo"))));
+    assert!(!project.exists(&format!("build/demo_0.1.0_{other}_debug")));
 }
 
 #[test]
@@ -205,7 +261,7 @@ fn warns_when_building_a_target_the_module_does_not_declare() {
     let run = project.gram(&["build"]).succeeds();
 
     assert!(run.printed(&format!("does not declare \"{}\"", host())));
-    assert!(project.exists(&format!("build/demo/{}/{}", host(), exe("demo"))));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
 }
 
 // --- vcpkg ----------------------------------------------------------------------------------------
@@ -233,13 +289,13 @@ fn merges_the_vcpkg_manifests_of_referenced_modules() {
 
     project.gram_with_env(&["build"], &[("VCPKG_ROOT", &display(&vcpkg_root))]).succeeds();
 
-    let merged = project.read(&format!("main/build-{}/vcpkg-manifest/vcpkg.json", host()));
+    let merged = project.read(&format!("main/build-{}-debug/vcpkg-manifest/vcpkg.json", host()));
     assert_contains(&merged, r#""name": "main""#);
     assert_eq!(merged.matches(r#""glm""#).count(), 1, "a port both modules use appears once:\n{merged}");
     assert_eq!(merged.matches(r#""imgui""#).count(), 1, "{merged}");
     assert_contains(&merged, r#""docking""#);
     assert_contains(&merged, r#""vulkan-binding""#);
-    assert!(!project.exists(&format!("engine/build-{}/vcpkg-manifest", host())),
+    assert!(!project.exists(&format!("engine/build-{}-debug/vcpkg-manifest", host())),
         "engine references nothing, so its own vcpkg.json is used as-is");
 }
 

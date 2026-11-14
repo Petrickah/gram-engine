@@ -1,6 +1,7 @@
 use std::io;
 use clap::Args;
 use crate::BuildConfig;
+use crate::profile::Profile;
 
 #[derive(Args)]
 pub struct RunCommand {
@@ -13,6 +14,9 @@ pub struct RunCommand {
     /// Build target to run ("linux"/"windows"/"macos"). Omit to use the host OS.
     #[arg(short, long, default_value = "")]
     pub(crate) target: String,
+    /// Build configuration to run ("debug"/"release"/"final"): the one `gram build --config` built.
+    #[arg(short, long, default_value = "debug")]
+    pub(crate) config: Profile,
     /// Arguments passed through to the running binary. Put `--` before them, e.g. `gram run -- --help`.
     #[arg(last = true)]
     pub(crate) args: Vec<String>,

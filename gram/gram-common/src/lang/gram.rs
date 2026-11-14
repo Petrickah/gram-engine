@@ -11,6 +11,7 @@ use crate::lang::DependencySpec;
 use crate::lang::Gram;
 use crate::lang::ModuleBackend;
 use crate::lang::ResolvedModule;
+use crate::profile::Profile;
 
 const NOT_A_TARGET: &str = "a gram module is a collection of modules: add dependencies to one of its modules instead";
 
@@ -24,7 +25,7 @@ impl ModuleBackend for Gram {
             .write_file(self.manifest_file(), &BuildConfig::new(&module.name, "0.1.0")?)
     }
 
-    fn compile(&self, _module: &ModuleConfig, _refs: &[ResolvedModule], _out: &str, _target: &str) -> io::Result<()> {
+    fn compile(&self, _module: &ModuleConfig, _refs: &[ResolvedModule], _out: &str, _target: &str, _profile: Profile) -> io::Result<()> {
         // Its modules are in the same build list as the parent's and get built on their own.
         Ok(())
     }

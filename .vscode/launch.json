@@ -3,32 +3,32 @@
     // that matches the machine you're on. Each builds first (the "gram build" task, host target only).
     //   - Linux / macOS: CodeLLDB (extension vadimcn.vscode-lldb)
     //   - Windows: the C/C++ extension's Visual Studio debugger (ms-vscode.cpptools), which reads the
-    //     .pdb the MSVC build leaves in Game/Runtime/build-windows/Debug/ (the path is in the .exe).
-    // gram builds with the Debug configuration (-g / .pdb), which breakpoints need.
+    //     .pdb the MSVC build leaves in Game/Runtime/build-windows-debug/Debug/ (the path is in the .exe).
+    // They run the debug configuration (gram build's default, -g / .pdb), which breakpoints need.
     "version": "0.2.0",
     "configurations": [
         {
             "name": "Game (Linux)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/build/gram-engine/linux/Game",
-            "cwd": "${workspaceFolder}/build/gram-engine/linux",
+            "program": "${workspaceFolder}/build/gram-engine/linux/debug/Game",
+            "cwd": "${workspaceFolder}/build/gram-engine/linux/debug",
             "preLaunchTask": "gram build"
         },
         {
             "name": "Game (macOS)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/build/gram-engine/macos/Game",
-            "cwd": "${workspaceFolder}/build/gram-engine/macos",
+            "program": "${workspaceFolder}/build/gram-engine/macos/debug/Game",
+            "cwd": "${workspaceFolder}/build/gram-engine/macos/debug",
             "preLaunchTask": "gram build"
         },
         {
             "name": "Game (Windows)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}\\build\\gram-engine\\windows\\Game.exe",
-            "cwd": "${workspaceFolder}\\build\\gram-engine\\windows",
+            "program": "${workspaceFolder}\\build\\gram-engine\\windows\\debug\\Game.exe",
+            "cwd": "${workspaceFolder}\\build\\gram-engine\\windows\\debug",
             "preLaunchTask": "gram build"
         },
         {

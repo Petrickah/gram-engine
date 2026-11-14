@@ -19,6 +19,17 @@
 #include <string>
 #include <vector>
 
+#if !defined(GRAM_CONFIG_RELEASE) && !defined(GRAM_CONFIG_FINAL)
+#define GRAM_CONFIG_DEBUG
+#endif // #if !defined(GRAM_CONFIG_RELEASE) && !defined(GRAM_CONFIG_FINAL)
+
+#ifdef GRAM_CONFIG_DEBUG
+#define GRAM_VULKAN_VALIDATION
+#define GramValidationOnly(...) __VA_ARGS__
+#else
+#define GramValidationOnly(...)
+#endif // #ifdef GRAM_CONFIG_DEBUG
+
 #ifdef __APPLE__
 #ifndef GRAM_PLATFORM_APPLE
 #define GRAM_PLATFORM_APPLE

@@ -12,6 +12,7 @@ use crate::lang::ResolvedModule;
 use crate::lang::replace_file;
 use crate::lang::slash_path;
 use crate::lang::vcpkg;
+use crate::profile::Profile;
 
 // Marker lines bracketing the block of gram-managed FetchContent dependencies
 // inside a cmake module's CMakeLists.txt, so add/remove can edit that region
@@ -59,9 +60,11 @@ impl ModuleBackend for CMake {
         }
     }
     
-    fn compile(&self, module: &ModuleConfig, refs: &[ResolvedModule], out: &str, target: &str) -> io::Result<()> {
+    fn compile(&self, module: &ModuleConfig, refs: &[ResolvedModule], out: &str, target: &str, profile: Profile) -> io::Result<()> {
         let manifest_dir = Path::new(&module.src).parent().unwrap_or_else(|| Path::new("."));
-        let build_dir = manifest_dir.join(format!("build-{target}"));
+        // One build dir per (target, profile): switching configurations keeps the other one's objects.
+        let build_dir = manifest_dir.join(format!("build-{target}-{profile}"));
+        let config = profile.cmake_config();
         let build_dir = build_dir.to_str().expect("build dir path is not valid UTF-8");
         let manifest_dir = manifest_dir.to_str().expect("module src path is not valid UTF-8");
 
@@ -73,10 +76,13 @@ impl ModuleBackend for CMake {
         // The build type only matters to single-config generators (Makefiles, Ninja), where an empty
         // one means no -g and no -O0: breakpoints would never hit. Multi-config ones pick it in
         // `--build --config` and ignore this.
-        configure.args(["-S", manifest_dir, "-B", build_dir, "--fresh", &format!("-DCMAKE_BUILD_TYPE={BUILD_CONFIG}")]);
+        configure.args(["-S", manifest_dir, "-B", build_dir, "--fresh", &format!("-DCMAKE_BUILD_TYPE={config}")]);
         // So editors (VS Code's C/C++ extension) can get accurate IntelliSense straight
         // from gram's own build dir, without needing a separate IDE-driven configure.
         configure.arg("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON");
+        // Forward slashes: CMake reads backslashes in a -D value as escapes (a Windows host).
+        let configurations = write_configurations(Path::new(build_dir))?.display().to_string().replace('\\', "/");
+        configure.arg(format!("-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES={configurations}"));
 
         let vcpkg_manifest = vcpkg::build_manifest(module, refs, Path::new(build_dir))?;
         let has_vcpkg = vcpkg_manifest.is_some();
@@ -128,9 +134,9 @@ impl ModuleBackend for CMake {
             return Err(io::Error::new(io::ErrorKind::Other, "cmake configure failed"));
         }
 
-        // --config only matters to multi-config generators (Visual Studio): without it they build
-        // Debug anyway, but saying so keeps it in step with where the artifact is looked for below.
-        let status = Command::new("cmake").args(["--build", build_dir, "--config", BUILD_CONFIG]).status()?;
+        // --config only matters to multi-config generators (Visual Studio): it picks the configuration
+        // there (Debug without it), and the artifact is looked for in the folder of the same name below.
+        let status = Command::new("cmake").args(["--build", build_dir, "--config", config]).status()?;
         if !status.success() {
             return Err(io::Error::new(io::ErrorKind::Other, "cmake build failed"));
         }
@@ -138,7 +144,7 @@ impl ModuleBackend for CMake {
         // The CMakeLists decides whether a library is SHARED or STATIC, not gram, so look for
         // every naming the module could have produced. The copy keeps the real file name.
         // A multi-config generator (Visual Studio) puts the output one folder down, in <build dir>/<Config>/.
-        let candidates: Vec<_> = [Path::new(build_dir).to_path_buf(), Path::new(build_dir).join(BUILD_CONFIG)].iter()
+        let candidates: Vec<_> = [Path::new(build_dir).to_path_buf(), Path::new(build_dir).join(config)].iter()
             .flat_map(|dir| artifact_candidates(module, target).into_iter().map(move |file| dir.join(file)))
             .collect();
         let from = candidates.iter().find(|path| path.exists()).ok_or_else(|| io::Error::new(
@@ -309,6 +315,24 @@ impl ModuleBackend for CMake {
     }
 }
 
+/// The build configurations gram knows (Debug/Release/Final, see `Profile`) taught to CMake. The first
+/// file runs at the top-level `project()`, before the compiler is known (configuration list, LTO and the
+/// imported-config mapping for Final); it registers the second as `CMAKE_USER_MAKE_RULES_OVERRIDE`, which
+/// runs once the compiler is known and derives each configuration's flags from the compiler's own.
+const CONFIGURATIONS: &str = include_str!("GramConfigurations.cmake");
+const CONFIGURATION_FLAGS: &str = include_str!("GramConfigurationFlags.cmake");
+
+/// Writes the two configuration files into `<build dir>/gram/` and returns the first one's absolute path,
+/// for `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` (it finds the second through `CMAKE_CURRENT_LIST_DIR`).
+fn write_configurations(build_dir: &Path) -> io::Result<std::path::PathBuf> {
+    let dir = std::env::current_dir()?.join(build_dir).join("gram");
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join("GramConfigurationFlags.cmake"), CONFIGURATION_FLAGS)?;
+    let configurations = dir.join("GramConfigurations.cmake");
+    fs::write(&configurations, CONFIGURATIONS)?;
+    Ok(configurations)
+}
+
 /// File names a cmake module's artifact can have on `target`. A runtime module is an
 /// executable; a library is either shared (the naming `artifact_naming` reports, used by
 /// gram's own scaffold) or static (lib*.a, which mingw also produces for Windows; <name>.lib
@@ -325,6 +349,3 @@ fn artifact_candidates(module: &ModuleConfig, target: &str) -> Vec<String> {
     }
     candidates
 }
-
-/// The configuration gram builds: it only makes debug builds (cargo's `target/debug`, too).
-const BUILD_CONFIG: &str = "Debug";

@@ -9,6 +9,7 @@ use crate::commands::remove::RemoveCommand;
 use crate::commands::run::RunCommand;
 use crate::directory::Directory;
 use crate::lang::{DependencySpec, backend_for, slash_path};
+use crate::profile::Profile;
 use crate::schema;
 use crate::target::validate_targets;
 
@@ -251,10 +252,10 @@ impl BuildConfig {
         self.modules.iter()
             .find(|m| m.name == module)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("module not found: {module}")))?
-            .run(self, target, &command.args)
+            .run(self, target, command.config, &command.args)
     }
 
-    pub fn build(&self, ci: &bool, target: &str, module: &str) -> io::Result<()> {
+    pub fn build(&self, ci: &bool, target: &str, module: &str, profile: Profile) -> io::Result<()> {
         if *ci && !target.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -283,7 +284,7 @@ impl BuildConfig {
         };
 
         let name = self.name.clone();
-        println!("gram build (name={name}, ci={ci})");
+        println!("gram build (name={name}, ci={ci}, config={profile})");
         // Always the whole tree, whatever module is built: a cmake module may include a cargo
         // module's header (Runtime → GameLogic's Components.generated.hpp). Unchanged files
         // aren't rewritten, so nothing recompiles for nothing.
@@ -293,7 +294,7 @@ impl BuildConfig {
             }
         }
         for curr_module in modules {
-            curr_module.build(&self, &ci, target)?;
+            curr_module.build(&self, &ci, target, profile)?;
         }
         Ok(())
     }

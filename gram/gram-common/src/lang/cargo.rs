@@ -11,6 +11,7 @@ use crate::lang::ModuleBackend;
 use crate::lang::ResolvedModule;
 use crate::lang::replace_file;
 use crate::lang::slash_path;
+use crate::profile::Profile;
 use crate::target::cargo_cross_triple;
 
 impl ModuleBackend for Cargo {
@@ -87,9 +88,13 @@ impl ModuleBackend for Cargo {
         }
     }
     
-    fn compile(&self, module: &ModuleConfig, _refs: &[ResolvedModule], out: &str, target: &str) -> io::Result<()> {
+    fn compile(&self, module: &ModuleConfig, _refs: &[ResolvedModule], out: &str, target: &str, profile: Profile) -> io::Result<()> {
         let mut command = Command::new("cargo");
         command.args(["build", "--manifest-path", &module.src.clone()]);
+        // The profile's cargo flags (--release) and CARGO_PROFILE_RELEASE_* overrides (symbols, LTO,
+        // strip): no [profile] section to keep in every Cargo.toml. The artifact's path (target/debug
+        // or target/release) comes from cargo's JSON messages below, so nothing else changes.
+        command.args(profile.cargo_args()).envs(profile.cargo_env().iter().copied());
         if let Some(triple) = cargo_cross_triple(target)? {
             command.args(["--target", triple]);
         }

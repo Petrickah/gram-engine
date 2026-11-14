@@ -8,7 +8,7 @@ Why breakpoints never hit on macOS/Linux: the CMake modules were configured with
 
 What changed:
 
-- `gram` now passes `-DCMAKE_BUILD_TYPE=Debug` when it configures a cmake module (`BUILD_CONFIG` in `gram/gram-common/src/lang/cmake.rs`, the same constant used for `cmake --build --config` and for the multi-config artifact folder). Cargo modules were already debug builds.
+- `gram` now passes `-DCMAKE_BUILD_TYPE=Debug` when it configures a cmake module (since 2026-11-14 the build type comes from `gram build --config`, `Profile::cmake_config()` in `gram/gram-common/src/profile.rs`, also used for `cmake --build --config` and the multi-config artifact folder; `debug` is the default). Cargo modules were already debug builds.
 - A side effect worth knowing: with a build type set, vcpkg's toolchain links the `debug/` libraries of the dependencies instead of the release ones.
 - `.vscode/launch.json` is one file for every machine, with one configuration per target — `Game (Linux)`, `Game (macOS)`, `Game (Windows)` — instead of editing paths per platform. Linux and macOS use CodeLLDB (`vadimcn.vscode-lldb`); Windows uses the C/C++ extension's `cppvsdbg` (`ms-vscode.cpptools`), which reads the `.pdb` that stays in `Game/Runtime/build-windows/Debug/` (its path is embedded in the `.exe`, so it isn't copied next to it). The two `gram` (cargo) configurations are kept for debugging the tool itself.
 - `.vscode/tasks.json` has the `gram build` task every Game configuration runs first (`preLaunchTask`), so F5 builds the whole tree for the host and then launches. It calls `gram/target/debug/gram`, not the copy under `build/`, which is the file `gram build` replaces.
@@ -18,7 +18,7 @@ What changed:
 
 ### Why there is no single project today
 
-`gram` builds each module in its own CMake build directory (`GramEngine/build-<target>/`, `Game/Runtime/build-<target>/`) and Rust modules through cargo. CMake already writes a Visual Studio `.sln` or an Xcode `.xcodeproj` for each of those, so there is nothing to generate by hand — but none of them holds the whole game, and none of them builds the Rust part.
+`gram` builds each module in its own CMake build directory (`GramEngine/build-<target>-<config>/`, `Game/Runtime/build-<target>-<config>/`) and Rust modules through cargo. CMake already writes a Visual Studio `.sln` or an Xcode `.xcodeproj` for each of those, so there is nothing to generate by hand — but none of them holds the whole game, and none of them builds the Rust part.
 
 ### Proposed shape
 

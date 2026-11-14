@@ -16,10 +16,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # - VULKAN_HPP_NO_CONSTRUCTORS: vk:: structs become aggregates, so designated initializers work.
 # - VULKAN_HPP_NO_EXCEPTIONS: errors come back as vk::Result; the enhanced calls (createShaderModuleUnique
 #   & co., mapMemory) return a vk::ResultValue{ result, value } to check.
-set(GRAM_VULKAN_HPP_DEFINITIONS VULKAN_HPP_NO_CONSTRUCTORS VULKAN_HPP_NO_EXCEPTIONS)
+set(GRAM_VULKAN_HPP_DEFINITIONS
+    VULKAN_HPP_NO_CONSTRUCTORS
+    VULKAN_HPP_NO_EXCEPTIONS)
 
-# Disable ImGui Panels
-set(GRAM_IMGUI_ENABLED)
+set(GRAM_CONFIG_DEFINITIONS
+    $<$<CONFIG:Debug>:GRAM_CONFIG_DEBUG>
+    $<$<CONFIG:Release>:GRAM_CONFIG_RELEASE>
+    $<$<CONFIG:Final>:GRAM_CONFIG_FINAL>)
 
 include(FetchContent)
 
@@ -67,7 +71,7 @@ add_library(GramRenderer STATIC
 target_include_directories(GramRenderer PUBLIC include)
 # stb_image is an implementation detail of VulkanImage.cpp (its only user): kept out of the public headers.
 target_include_directories(GramRenderer PRIVATE ${Stb_INCLUDE_DIR})
-target_compile_definitions(GramRenderer PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS})
+target_compile_definitions(GramRenderer PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS} ${GRAM_CONFIG_DEFINITIONS})
 target_link_libraries(GramRenderer PUBLIC glfw Vulkan::Vulkan glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramRenderer PUBLIC include/Gram/Renderer/Common.hpp)
 
@@ -79,7 +83,7 @@ add_library(GramScripting STATIC
     src/Gram/Scripting/GameAPI.cpp
 )
 target_include_directories(GramScripting PUBLIC include)
-target_compile_definitions(GramScripting PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS})
+target_compile_definitions(GramScripting PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS} ${GRAM_CONFIG_DEFINITIONS})
 target_link_libraries(GramScripting PUBLIC glm::glm imgui::imgui spdlog::spdlog)
 target_precompile_headers(GramScripting PUBLIC include/Gram/Scripting/Common.hpp)
 
@@ -98,6 +102,6 @@ add_library(GramEngine STATIC
     src/Gram/Platform.cpp
 )
 target_include_directories(GramEngine PUBLIC include)
-target_compile_definitions(GramEngine PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS})
+target_compile_definitions(GramEngine PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS} ${GRAM_CONFIG_DEFINITIONS})
 target_link_libraries(GramEngine PUBLIC GramScripting GramRenderer)
 target_precompile_headers(GramEngine PUBLIC include/Gram/Common.hpp)

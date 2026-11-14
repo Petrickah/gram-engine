@@ -8,6 +8,7 @@ use crate::config::BuildConfig;
 use crate::directory::Directory;
 use crate::lang::DependencySpec;
 use crate::lang::ResolvedModule;
+use crate::profile::Profile;
 use crate::target::buildable_on_host;
 
 fn default_kind() -> String {
@@ -56,10 +57,10 @@ impl ModuleConfig {
         self.backend()?.rm_dependency(self, dependency)
     }
 
-    pub fn build(&self, project: &BuildConfig, ci: &bool, target: &str) -> io::Result<()> {
+    pub fn build(&self, project: &BuildConfig, ci: &bool, target: &str, profile: Profile) -> io::Result<()> {
         let name = self.name.clone();
         let lang = self.lang.clone();
-        println!("gram module (name={name}, lang={lang}, ci={ci})");
+        println!("gram module (name={name}, lang={lang}, ci={ci}, config={profile})");
 
         match ci {
             true => {
@@ -71,7 +72,7 @@ impl ModuleConfig {
                         );
                         continue;
                     }
-                    self.build_target(project, ci, target)?;
+                    self.build_target(project, ci, target, profile)?;
                 }
                 Ok(())
             },
@@ -89,23 +90,16 @@ impl ModuleConfig {
                         format!("can't build target {target} from a {} host", std::env::consts::OS),
                     ));
                 }
-                self.build_target(project, ci, target)
+                self.build_target(project, ci, target, profile)
             },
         }
     }
 
-    fn build_target(&self, project: &BuildConfig, ci: &bool, target: &str) -> io::Result<()> {
+    fn build_target(&self, project: &BuildConfig, ci: &bool, target: &str, profile: Profile) -> io::Result<()> {
         let name = self.name.clone();
-        println!("gram target (name={name}, target={target})");
-        
-        let project_name = project.name.clone();
-        let builds = match ci {
-            true => {
-                let version = project.version.clone();
-                format!("build/{project_name}_{version}_{target}")
-            },
-            false => format!("build/{project_name}/{target}"),
-        };
+        println!("gram target (name={name}, target={target}, config={profile})");
+
+        let builds = output_dir(project, *ci, target, profile);
 
         let backend = self.backend()?;
         fs::create_dir_all(&builds)?;
@@ -113,10 +107,10 @@ impl ModuleConfig {
         let out = format!("{builds}/{prefix}{}{ext}", project.artifact_name(self));
 
         let refs = project.module_refs(self)?;
-        backend.compile(self, &refs, &out, target)
+        backend.compile(self, &refs, &out, target, profile)
     }
 
-    pub fn run(&self, project: &BuildConfig, target: &str, args: &[String]) -> io::Result<i32> {
+    pub fn run(&self, project: &BuildConfig, target: &str, profile: Profile, args: &[String]) -> io::Result<i32> {
         if self.lang == "gram" {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -131,12 +125,12 @@ impl ModuleConfig {
         }
 
         let (prefix, ext) = self.backend()?.artifact_naming(self, target);
-        let path = format!("build/{}/{target}/{prefix}{}{ext}", project.name, project.artifact_name(self));
+        let path = format!("{}/{prefix}{}{ext}", output_dir(project, false, target, profile), project.artifact_name(self));
 
         if !Path::new(&path).exists() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("build artifact not found at {path} — run `gram build` first"),
+                format!("build artifact not found at {path} — run `gram build --config {profile}` first"),
             ));
         }
 
@@ -150,5 +144,15 @@ impl ModuleConfig {
         let lang = self.lang.clone();
         println!("gram module (name={name}, lang={lang})");
         self.backend()?.scaffold(self, project)
+    }
+}
+
+/// Where a module's artifacts land, relative to the project root: `build/<project>/<target>/<profile>/`,
+/// or `build/<project>_<version>_<target>_<profile>/` for a `--ci` build.
+fn output_dir(project: &BuildConfig, ci: bool, target: &str, profile: Profile) -> String {
+    let name = &project.name;
+    match ci {
+        true => format!("build/{name}_{}_{target}_{profile}", project.version),
+        false => format!("build/{name}/{target}/{profile}"),
     }
 }
