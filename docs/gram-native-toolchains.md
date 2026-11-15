@@ -52,23 +52,50 @@ Expect MSVC to bring its own set (stricter or different warnings, `/W4`, extensi
 
 `--toolchain` can't be combined with `--ci` (which builds every target with its default). The existing command tests passed unchanged, which is the proof that the defaults are today's behaviour.
 
-## Phase 4 — on a Windows machine
+## Phase 4 — on a Windows machine (handoff)
 
-What isn't done yet, and can only be tested there:
+Phases 1–3 (build configurations, toolchains, `gram ide xcode`) were done on macOS on 2026-11-14/15; what's left needs a Windows machine. This section is meant to be enough on its own: read it with `CLAUDE.md`, `.gram.kanban.md` (Tasks 0.8, 0.9) and `docs/gram-ide-projects.md`.
 
-1. **Msvc settings** (`settings`, the `Msvc` arm): a Visual Studio generator (multi-config: the artifact lands in `<build dir>/<Config>/`, which `artifact_candidates` already looks into) or Ninja, `x64-windows-static`, `x86_64-pc-windows-msvc`, a consistent `/MT` CRT, the subsystem decided on purpose (see above). Add the `env` field to `ToolchainSettings` then, if gram has to load `vcvars` itself.
-2. **Detection with vswhere** (`installed(Msvc)`): `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`, so a plain PowerShell finds Visual Studio, not only a Developer Console.
-3. **The mingw fallback on Windows**: `.cargo/config.toml` sets the `x86_64-pc-windows-gnu` linker to `x86_64-w64-mingw32-gcc`, which a native mingw (MSYS2, w64devkit) calls `gcc`. Override it there (`CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=gcc`, through the `env` field) and check `mingw32-make` is on the `PATH` for `MinGW Makefiles`.
+### How the work is split
 
-Test matrix:
+- The user writes what has learning value (here: the `Msvc` arm of `toolchain::settings` and anything else that's new MSVC/Visual Studio knowledge), Claude Code writes the plumbing (detection, flags, tests, docs) and reviews the user's code. The user wants short, exact instructions ("what to write, where, what the test expects"), and explanations at a junior level for build-system topics (CMake, MSVC flags).
+- Commit only when asked; `.vscode/settings.json` holds machine-local settings and is never committed. Commands for the user to copy carry no inline comments.
+
+### The machine
+
+- Visual Studio 2026 with the *Desktop development with C++* workload (MSVC, the Windows SDK, its own CMake).
+- The Vulkan SDK (`VULKAN_SDK` set by its installer; `dxc` is found from it).
+- vcpkg, with `VCPKG_ROOT` set.
+- rustup: `x86_64-pc-windows-msvc` is the host default; add `x86_64-pc-windows-gnu` only to test the mingw fallback.
+- Bootstrap: `cargo build --manifest-path gram/Cargo.toml`, then `gram\target\debug\gram.exe build` from the repo root.
+
+### Steps, in order
+
+0. **Try it as it is**, from a *Developer PowerShell for VS*: `gram build`. The `Msvc` arm sets nothing, so CMake picks the Visual Studio generator and vcpkg `x64-windows` on its own; `artifact_candidates` already looks in the multi-config `<build dir>/<Config>/`. Write down what breaks (code that GCC/clang accept and MSVC doesn't: see above) before changing anything.
+1. **Detection with vswhere** (Claude, `toolchain::installed`, `Msvc` arm): `%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`, so a plain PowerShell finds Visual Studio too, not only a Developer Console (`cl` on the `PATH`, today's check). The Visual Studio generator doesn't need the vcvars environment; Ninja would (then add an `env` field to `ToolchainSettings`, filled from `vcvars64.bat`).
+2. **Msvc settings** (user, `toolchain::settings`, with a test like `mingw_cross_compile_matches_todays_build`): the generator (check the exact name with `cmake --help`: `Visual Studio 18 2026` expected), `-A x64`, the vcpkg triplet `x64-windows-static` and `-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>` together (a static CRT on both sides, like mingw's standalone `.exe`; mixing `/MT` and `/MD` fails at link time), `cargo_triple: None` (the host's msvc triple). The `.cargo/config.toml` linker entry is for `-gnu` only and doesn't apply.
+3. **The configurations under MSVC**: `GramConfigurationFlags.cmake` derives Final from Release's flags and Release from RelWithDebInfo's, compiler-independently; check the cache (`CMAKE_CXX_FLAGS_FINAL` ≈ `/O2 /Ob2 /DNDEBUG`, Release with `/Zi`), that `CMAKE_INTERPROCEDURAL_OPTIMIZATION_FINAL` turns into `/GL` + `/LTCG`, and that Final links vcpkg's release libraries (`CMAKE_MAP_IMPORTED_CONFIG_FINAL`).
+4. **Subsystem**: a console application today (a console window with the logs next to the game). Decide on purpose for Final (`/SUBSYSTEM:WINDOWS` needs `WinMain`, which `EntryPoint.hpp` already has).
+5. **The mingw fallback on Windows**: `.cargo/config.toml` names the `x86_64-pc-windows-gnu` linker `x86_64-w64-mingw32-gcc`, which a native mingw (MSYS2, w64devkit) calls `gcc`: override it (`CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=gcc`, through an `env` field) and check `mingw32-make` is on the `PATH` for the `MinGW Makefiles` generator.
+6. **`gram ide vs`** (Claude; the code exists, `config/ide.rs`, untested): check
+   - the generator name, and the solution's file name: `ide()` returns `<project>.sln`, but CMake may write `.slnx` for Visual Studio 2026;
+   - the `PATH` baked into the `GameLogic` target (`cmake -E env "PATH=..."`): Windows separates it with `;`, which CMake may split into a list; if it does, escape it (`$<SEMICOLON>`);
+   - the startup project: add `set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT <runtime>)` to the superproject, so F5 starts the game, not `ALL_BUILD`;
+   - the debugger's working directory doesn't matter (the game finds its files next to the executable, `GetExecutableDirectory`), the `.pdb` stays in the build directory, where the debugger finds it;
+   - hot reload: building `GameLogic` while the game runs (the loader copies the `.dll` before loading it, so the file isn't locked).
+
+### Test matrix
 
 | Where | Command | Expected |
 |---|---|---|
-| WSL2 (a Linux host) | `gram build --target windows` | mingw, as today: `Game.exe` runs on Windows |
-| WSL2 | `gram build --toolchain msvc --target windows` | error: msvc can't build windows from a linux host |
-| Developer Console | `gram build` | msvc, no warning |
-| PowerShell, Visual Studio installed | `gram build` | msvc (needs vswhere, step 2) |
-| PowerShell, only mingw | `gram build` | warning, then mingw (step 3) |
+| WSL2 (a Linux host) | `gram build --target windows` | mingw, as before: `Game.exe` runs on Windows |
+| WSL2 | `gram build --toolchain msvc --target windows` | error: msvc can't build target windows from a linux host |
+| Developer PowerShell | `gram build` | msvc, no warning |
+| PowerShell, Visual Studio installed | `gram build` | msvc (step 1) |
+| PowerShell, only mingw | `gram build` | warning, then mingw (step 5) |
 | PowerShell, only mingw | `gram build --toolchain msvc` | error: msvc isn't installed, no fallback |
+| PowerShell | `gram build --config release`, `--config final` | both build and run; Final without ImGui |
+| PowerShell | `gram ide vs --open` | the solution opens; F5 starts `Game` at a breakpoint; building `GameLogic` reloads it |
+| any | `cargo test --manifest-path gram/Cargo.toml` | passes (the `build`/`run` tests need cmake and a C++ compiler) |
 
 Then re-check Linux on a real machine (the section above).
