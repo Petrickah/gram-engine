@@ -3,6 +3,7 @@ use clap::Subcommand;
 use crate::commands::add::AddCommand;
 use crate::commands::build::BuildCommand;
 use crate::commands::generate::GenerateCommand;
+use crate::commands::ide::IdeCommand;
 use crate::commands::init::InitCommand;
 use crate::commands::remove::RemoveCommand;
 use crate::commands::run::RunCommand;
@@ -10,6 +11,7 @@ use crate::commands::run::RunCommand;
 pub mod add;
 pub mod build;
 pub mod generate;
+pub mod ide;
 pub mod init;
 pub mod remove;
 pub mod run;
@@ -38,5 +40,8 @@ pub enum Commands {
     Run(RunCommand),
     /// Generate the component code (components.generated.rs, Components.generated.hpp) of
     /// each cargo module from the .ron schemas in its directory.
-    Generate(GenerateCommand)
+    Generate(GenerateCommand),
+    /// Generate one IDE project (Xcode or Visual Studio) for the whole tree: the cmake modules,
+    /// plus a target per Rust dynamic module that runs `gram build --module` on it.
+    Ide(IdeCommand),
 }

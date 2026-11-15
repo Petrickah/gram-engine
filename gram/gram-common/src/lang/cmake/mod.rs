@@ -308,7 +308,7 @@ const CONFIGURATION_FLAGS: &str = include_str!("GramConfigurationFlags.cmake");
 
 /// Writes the two configuration files into `<build dir>/gram/` and returns the first one's absolute path,
 /// for `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` (it finds the second through `CMAKE_CURRENT_LIST_DIR`).
-fn write_configurations(build_dir: &Path) -> io::Result<std::path::PathBuf> {
+pub(crate) fn write_configurations(build_dir: &Path) -> io::Result<std::path::PathBuf> {
     let dir = std::env::current_dir()?.join(build_dir).join("gram");
     fs::create_dir_all(&dir)?;
     fs::write(dir.join("GramConfigurationFlags.cmake"), CONFIGURATION_FLAGS)?;

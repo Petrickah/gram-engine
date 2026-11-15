@@ -14,6 +14,7 @@ use crate::toolchain::Toolchain;
 use crate::schema;
 use crate::target::validate_targets;
 
+pub mod ide;
 pub mod module;
 
 use module::ModuleConfig;

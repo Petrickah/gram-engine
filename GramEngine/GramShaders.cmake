@@ -13,6 +13,19 @@ find_program(GRAM_DXC_EXECUTABLE dxc
     REQUIRED
 )
 
+# gram_copy_next_to(<target> <folder> <files>...): after <target> is built, copies <files> into
+# <folder>/ next to its executable. Under `gram build` that's the build dir itself (nothing to copy:
+# gram copies the folder next to the executable it places); in an IDE project (`gram ide`) the
+# executable lands elsewhere, and this is how its shaders and textures follow it. Called from the
+# directory that created <target>, which is where CMake accepts a POST_BUILD command for it.
+function(gram_copy_next_to target folder)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${target}>/${folder}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ARGN} $<TARGET_FILE_DIR:${target}>/${folder}
+        VERBATIM
+    )
+endfunction()
+
 # gram_add_hlsl_raster_shader(<target> <source>): called by the module that owns the shader (the game,
 # for its own content), after add_subdirectory(GramEngine). Compiles <source> (a .hlsl path,
 # relative to the caller's CMakeLists or absolute: the game keeps its shaders in Content/),
@@ -35,6 +48,7 @@ function(gram_add_hlsl_raster_shader target source)
     )
     add_custom_target(${target}_${name}_spirv DEPENDS ${vert} ${frag})
     add_dependencies(${target} ${target}_${name}_spirv)
+    gram_copy_next_to(${target} shaders ${vert} ${frag})
 endfunction()
 
 # gram_add_hlsl_compute_shader(<target> <source>): called by the module that owns the shader (the game,
@@ -56,4 +70,5 @@ function(gram_add_hlsl_compute_shader target source)
     )
     add_custom_target(${target}_${name}_spirv DEPENDS ${compute})
     add_dependencies(${target} ${target}_${name}_spirv)
+    gram_copy_next_to(${target} shaders ${compute})
 endfunction()

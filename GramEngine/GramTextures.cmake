@@ -25,4 +25,5 @@ function(gram_add_texture target source)
     string(MAKE_C_IDENTIFIER ${file} id)
     add_custom_target(${target}_${id}_texture DEPENDS ${output})
     add_dependencies(${target} ${target}_${id}_texture)
+    gram_copy_next_to(${target} textures ${output})   # GramShaders.cmake
 endfunction()

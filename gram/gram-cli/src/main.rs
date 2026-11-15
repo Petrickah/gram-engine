@@ -6,6 +6,7 @@ use gram_common::commands::Commands;
 use gram_common::commands::add;
 use gram_common::commands::build;
 use gram_common::commands::generate;
+use gram_common::commands::ide;
 use gram_common::commands::init;
 use gram_common::commands::remove;
 use gram_common::commands::run;
@@ -54,6 +55,14 @@ fn main() {
         Commands::Remove(command) => 
             match remove::module(command) {
                 Ok(_) => println!("Module dependency removed successfully."),
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(1)
+                }
+            }
+        Commands::Ide(command) =>
+            match ide::project(command) {
+                Ok(path) => println!("IDE project ready: {}", path.display()),
                 Err(err) => {
                     eprintln!("Error: {err}");
                     std::process::exit(1)

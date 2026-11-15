@@ -49,6 +49,7 @@ gram build [--path <dir>] [--ci] [--target linux|windows|macos] [--config debug|
 gram add [<dependency>] [--module <name>] [--lang cargo|cmake|gram] [--parent <gram module>] [--kind runtime|library|dynamic] [--target linux,windows,macos] [--url <git-url> --tag <tag>] [--vcpkg] [--module-ref]
 gram remove [<dependency>] [--module <name>] [--purge]
 gram run [--module <name>] [--target linux|windows|macos] [-- <args>]
+gram ide xcode|vs [--open] [--generate-only]
 ```
 
 - `gram init` scaffolds `<name>/Gram.ron` plus the initial module (`--lang cargo` delegates to a real Cargo crate; `--lang cmake` scaffolds a multi-file `src/` + `include/<name>/` CMake project). That module also becomes the project's `main`, the default for `gram run`. `--target` sets which platforms the module declares (`linux`/`windows`/`macos`); omit it to default to just the host OS.
@@ -62,4 +63,5 @@ gram run [--module <name>] [--target linux|windows|macos] [-- <args>]
   - `gram remove --module <name>` (no dependency given) only removes the module from `Gram.ron` by default; add `--purge` to also delete its directory from disk. Removing from a module that doesn't exist is an error.
 - `gram generate [--module <name>]` finds the component schemas of each cargo module (`.ron` files whose first item is `Component(`, outside `target/` and `build*/`) and writes `components.generated.rs` and `Components.generated.hpp` next to its `Cargo.toml`, only when their content changes. `gram build` runs it first, for the whole tree; the generated files are git-ignored. Field types: `Str(N)`, `F32`, `I32`, `U32`, `Bool`.
 - `gram run` executes an already-built `kind: "runtime"` module's binary from its `build/<project>/<target>/<config>/` output (`--config`, default `debug`); it doesn't trigger a build first. Omit `--module` to run the project's main module; anything after `--` is forwarded verbatim to the binary. CI doesn't use this; it runs the `gram build --ci` artifact directly.
+- `gram ide xcode` (macOS; `vs` on Windows, not tried yet) generates one IDE project for the whole tree in `build/ide/<ide>/`: a CMake superproject (`add_subdirectory` of every cmake module no other one references, a custom target per cargo `dynamic` module running `gram build --module <name> --config <the IDE's configuration>`, the game executable named and placed where `gram build` puts it, next to its library) configured with the IDE's generator. Its configurations are Debug/Release/Final; building the Rust target while the game runs reloads it. `--open` opens it, `--generate-only` only writes the `CMakeLists.txt`.
 - `gram init`/`add`/`remove` also keep `.vscode/settings.json` in sync (`rust-analyzer.linkedProjects` for every cargo module), merging with any settings already there.

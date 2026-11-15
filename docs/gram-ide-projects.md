@@ -1,6 +1,6 @@
 # Notes — IDE projects and debugging (Task 0.9)
 
-Status as of 2026-11-13: **debugging in VS Code is done; the Xcode / Visual Studio projects are planned, not started.** Statements about Xcode and Visual Studio behaviour come from general knowledge, not from trying them here — check them when the task starts.
+Status as of 2026-11-15: **debugging in VS Code is done; `gram ide xcode` is done (built with `xcodebuild` in Debug and Release); Visual Studio (`gram ide vs`) is written but untested, for phase 4 on Windows.**
 
 ## Debugging in VS Code (done)
 
@@ -14,7 +14,20 @@ What changed:
 - `.vscode/tasks.json` has the `gram build` task every Game configuration runs first (`preLaunchTask`), so F5 builds the whole tree for the host and then launches. It calls `gram/target/debug/gram`, not the copy under `build/`, which is the file `gram build` replaces.
 - `.vscode/extensions.json` recommends the three extensions.
 
-## IDE projects (planned)
+## IDE projects
+
+### As built (Xcode, 2026-11-15)
+
+`gram ide xcode` writes `build/ide/xcode/CMakeLists.txt` (`config/ide.rs`, `superproject`) and configures it with `-G Xcode` into the same directory: `gram-engine.xcodeproj`. What's in it:
+
+- `add_subdirectory` of the cmake modules no other cmake module references (`Game/Runtime`; `GramEngine` comes in through it).
+- `GameLogic`, a custom target running `gram build --module GameLogic --config $<LOWER_CASE:$<CONFIG>>` from the root: the schemas, cargo and the library's name are gram's, not reimplemented in CMake. It's the path of the gram that generated the project, run through `cmake -E env` with the `PATH` `gram ide` was run with: Xcode opened from the Finder or `open` doesn't get the shell's `PATH`, so gram wouldn't find `cargo` ("Command PhaseScriptExecution failed"). Run `gram ide` again after changing the `PATH`.
+- `Runtime` named `Game` and output where `gram build` puts it (`build/gram-engine/macos/<config>/`), next to `libGameLogic.dylib`: building `GameLogic` in Xcode while the game runs reloads it. `add_dependencies(Runtime GameLogic)`, since gram also generates `Components.generated.hpp`.
+- What's shown next to what's compiled (`ide_sources`, appended to the superproject): every cmake module's `.hpp`/`.h`, each on the target compiling the sources next to it (`gram_ide_headers`, a CMake function in the superproject: the one target of the module's directory with a source under the header's folder, `include/` read as `src/`, else the module's own target — so GramEngine's headers split between GramRenderer, GramScripting and GramEngine), and the `.rs`/`.ron`/`.toml`/`.hlsl` files of each cargo `dynamic` module (on its custom target) and of the cargo modules it references (`gram-core`, on a target holding only files). Globbed by CMake with `CONFIGURE_DEPENDS`, so a new file appears at the next build; `target/` and `build*/` left out, folders kept with `source_group(TREE ...)`. Xcode edits them but has no Rust highlighting or completion: rust-analyzer stays in VS Code.
+- The shaders and textures follow the executable through `gram_copy_next_to` in `GramShaders.cmake`/`GramTextures.cmake`: CMake refuses a `POST_BUILD` command on a target from another directory, so the superproject can't do it.
+- Configure: the configurations (`GramConfigurations.cmake`, so the scheme menu has Debug/Release/Final), vcpkg with the merged manifest, `CMAKE_OSX_ARCHITECTURES` = the host's (Xcode would build universal binaries in Release, which vcpkg's arm64 libraries can't link), `CMAKE_XCODE_GENERATE_SCHEME`, and `DEVELOPER_DIR=/Applications/Xcode.app/...` when `xcode-select` points at the Command Line Tools.
+
+### Planned shape (kept for Visual Studio)
 
 ### Why there is no single project today
 
