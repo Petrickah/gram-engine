@@ -13,6 +13,7 @@ use crate::lang::replace_file;
 use crate::lang::slash_path;
 use crate::lang::vcpkg;
 use crate::profile::Profile;
+use crate::toolchain::ToolchainSettings;
 
 // Marker lines bracketing the block of gram-managed FetchContent dependencies
 // inside a cmake module's CMakeLists.txt, so add/remove can edit that region
@@ -60,7 +61,7 @@ impl ModuleBackend for CMake {
         }
     }
     
-    fn compile(&self, module: &ModuleConfig, refs: &[ResolvedModule], out: &str, target: &str, profile: Profile) -> io::Result<()> {
+    fn compile(&self, module: &ModuleConfig, refs: &[ResolvedModule], out: &str, target: &str, profile: Profile, toolchain: &ToolchainSettings) -> io::Result<()> {
         let manifest_dir = Path::new(&module.src).parent().unwrap_or_else(|| Path::new("."));
         // One build dir per (target, profile): switching configurations keeps the other one's objects.
         let build_dir = manifest_dir.join(format!("build-{target}-{profile}"));
@@ -99,35 +100,18 @@ impl ModuleBackend for CMake {
             }
         }
 
-        match target {
-            // Native host build — cmake/vcpkg pick the host compiler and triplet on their own.
-            _ if target == std::env::consts::OS => {},
-            "windows" => {
-                // Cross-compiles the project itself. Without an explicit VCPKG_TARGET_TRIPLET,
-                // vcpkg defaults to the MSVC-based x64-windows triplet for any Windows target —
-                // it ignores CMAKE_C_COMPILER/CMAKE_CXX_COMPILER for that guess — so a vcpkg
-                // module needs to be told explicitly to resolve its dependencies against the
-                // mingw triplet instead (which chainloads scripts/toolchains/mingw.cmake for
-                // vcpkg's own port builds; it doesn't affect the outer project's compiler choice
-                // below, which is set the same way regardless of vcpkg).
-                if has_vcpkg {
-                    configure.arg("-DVCPKG_TARGET_TRIPLET=x64-mingw-static");
-                }
-                configure.args([
-                    "-DCMAKE_SYSTEM_NAME=Windows",
-                    "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc",
-                    "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
-                    // mingw dynamically links libstdc++/libgcc/winpthread by default, so the
-                    // .exe needs their DLLs alongside it. Static-link them instead — same
-                    // standalone-binary goal as +crt-static in .cargo/config.toml for the
-                    // cargo cross-compile path.
-                    "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -static",
-                ]);
-            },
-            other => return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("unsupported target: {other}"),
-            )),
+        // What the toolchain changes (toolchain.rs: the compilers, the static mingw runtime, a cross
+        // build's CMAKE_SYSTEM_NAME). Nothing for a native or msvc build: cmake/vcpkg pick the host's
+        // compiler and triplet on their own.
+        if let Some(generator) = toolchain.generator {
+            configure.args(["-G", generator]);
+        }
+        configure.args(&toolchain.cmake_args);
+        // Without an explicit triplet vcpkg picks the MSVC-based x64-windows for any Windows target,
+        // whatever CMAKE_<LANG>_COMPILER says; the mingw one chainloads scripts/toolchains/mingw.cmake
+        // for vcpkg's own port builds.
+        if let (true, Some(triplet)) = (has_vcpkg, toolchain.vcpkg_triplet) {
+            configure.arg(format!("-DVCPKG_TARGET_TRIPLET={triplet}"));
         }
 
         if !configure.status()?.success() {

@@ -253,6 +253,46 @@ fn refuses_a_target_this_host_cannot_build() {
         .fails_with(&format!("can't build target {} from a {} host", unbuildable_target(), host()));
 }
 
+// --- toolchains (toolchain.rs) ---------------------------------------------------------------------
+
+/// A toolchain that can't build this host's own OS: msvc from linux/macos, native on Windows.
+fn wrong_toolchain() -> &'static str {
+    if host() == "windows" { "native" } else { "msvc" }
+}
+
+#[test]
+fn the_native_toolchain_builds_like_the_default() {
+    if host() == "windows" { return; }   // no native toolchain there: msvc or mingw
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+
+    project.gram(&["build", "--toolchain", "native"]).succeeds();
+
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
+}
+
+#[test]
+fn refuses_a_toolchain_that_cannot_build_the_target() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--toolchain", wrong_toolchain()])
+        .fails_with(&format!("{} can't build target {} from a {} host", wrong_toolchain(), host(), host()));
+}
+
+#[test]
+fn rejects_an_unknown_toolchain() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--toolchain", "clang"]).fails_with("unknown toolchain: clang");
+}
+
+#[test]
+fn ci_and_toolchain_cannot_be_combined() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--ci", "--toolchain", "mingw"])
+        .fails_with("--toolchain can't be combined with --ci");
+}
+
 #[test]
 fn warns_when_building_a_target_the_module_does_not_declare() {
     // Only a warning: the build still happens.

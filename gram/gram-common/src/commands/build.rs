@@ -2,6 +2,7 @@ use std::io;
 use clap::Args;
 use crate::BuildConfig;
 use crate::profile::Profile;
+use crate::toolchain::Toolchain;
 
 #[derive(Args)]
 pub struct BuildCommand {
@@ -22,6 +23,12 @@ pub struct BuildCommand {
     /// Each lands in its own folder, build/<project>/<target>/<config>/.
     #[arg(short, long, default_value = "debug")]
     config: Profile,
+    /// Compiler toolchain: "native" (the host's own compiler, linux/macos), "mingw" (Windows, from
+    /// anywhere) or "msvc" (Windows, from Windows). Omit to use the host's default: native, or for a
+    /// Windows build mingw from linux/macos and msvc on Windows, falling back to mingw with a warning
+    /// when Visual Studio isn't found. An explicit one never falls back. Can't be combined with --ci.
+    #[arg(long)]
+    toolchain: Option<Toolchain>,
 }
 
 pub fn project(command: BuildCommand) -> io::Result<()> {
@@ -29,5 +36,5 @@ pub fn project(command: BuildCommand) -> io::Result<()> {
     if !path.is_empty() {
         std::env::set_current_dir(path)?;
     }
-    BuildConfig::open(".")?.build(&command.ci, &command.target, &command.module, command.config)
+    BuildConfig::open(".")?.build(&command.ci, &command.target, &command.module, command.config, command.toolchain)
 }

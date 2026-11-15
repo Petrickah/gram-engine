@@ -12,6 +12,7 @@ use crate::BuildConfig;
 use crate::Directory;
 use crate::ModuleConfig;
 use crate::profile::Profile;
+use crate::toolchain::ToolchainSettings;
 
 pub mod cargo;
 pub mod cmake;
@@ -51,9 +52,10 @@ pub(crate) trait ModuleBackend {
     fn manifest_file(&self) -> &'static str;
     /// Creates the module's files on disk (`gram init` / `gram add` of a new module).
     fn scaffold(&self, module: &ModuleConfig, project: &Directory) -> io::Result<()>;
-    /// Builds the module for `target` in the `profile` configuration and places its artifact at `out`.
-    /// `refs` are the module's `DependencySpec::Module` dependencies, already resolved.
-    fn compile(&self, module: &ModuleConfig, refs: &[ResolvedModule], out: &str, target: &str, profile: Profile) -> io::Result<()>;
+    /// Builds the module for `target` in the `profile` configuration with the `toolchain`'s settings,
+    /// and places its artifact at `out`. `refs` are the module's `DependencySpec::Module` dependencies,
+    /// already resolved.
+    fn compile(&self, module: &ModuleConfig, refs: &[ResolvedModule], out: &str, target: &str, profile: Profile, toolchain: &ToolchainSettings) -> io::Result<()>;
     /// (filename prefix, extension) of the module's build artifact on `target`.
     fn artifact_naming(&self, module: &ModuleConfig, target: &str) -> (&'static str, &'static str);
     fn add_dependency(&self, module: &mut ModuleConfig, dep: &DependencySpec) -> io::Result<()>;

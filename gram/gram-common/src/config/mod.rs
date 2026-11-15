@@ -10,6 +10,7 @@ use crate::commands::run::RunCommand;
 use crate::directory::Directory;
 use crate::lang::{DependencySpec, backend_for, slash_path};
 use crate::profile::Profile;
+use crate::toolchain::Toolchain;
 use crate::schema;
 use crate::target::validate_targets;
 
@@ -255,11 +256,17 @@ impl BuildConfig {
             .run(self, target, command.config, &command.args)
     }
 
-    pub fn build(&self, ci: &bool, target: &str, module: &str, profile: Profile) -> io::Result<()> {
+    pub fn build(&self, ci: &bool, target: &str, module: &str, profile: Profile, toolchain: Option<Toolchain>) -> io::Result<()> {
         if *ci && !target.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "--target can't be combined with --ci — --ci already builds every target declared in a module's targets",
+            ));
+        }
+        if *ci && toolchain.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "--toolchain can't be combined with --ci — --ci builds every target with its default toolchain",
             ));
         }
         if !target.is_empty() {
@@ -294,7 +301,7 @@ impl BuildConfig {
             }
         }
         for curr_module in modules {
-            curr_module.build(&self, &ci, target, profile)?;
+            curr_module.build(&self, &ci, target, profile, toolchain)?;
         }
         Ok(())
     }

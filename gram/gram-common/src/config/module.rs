@@ -9,7 +9,7 @@ use crate::directory::Directory;
 use crate::lang::DependencySpec;
 use crate::lang::ResolvedModule;
 use crate::profile::Profile;
-use crate::target::buildable_on_host;
+use crate::toolchain::{self, Toolchain, ToolchainSettings};
 
 fn default_kind() -> String {
     String::from("runtime")
@@ -57,7 +57,8 @@ impl ModuleConfig {
         self.backend()?.rm_dependency(self, dependency)
     }
 
-    pub fn build(&self, project: &BuildConfig, ci: &bool, target: &str, profile: Profile) -> io::Result<()> {
+    /// `toolchain` is the one `--toolchain` asked for (never with `--ci`), or None for the host's default.
+    pub fn build(&self, project: &BuildConfig, ci: &bool, target: &str, profile: Profile, toolchain: Option<Toolchain>) -> io::Result<()> {
         let name = self.name.clone();
         let lang = self.lang.clone();
         println!("gram module (name={name}, lang={lang}, ci={ci}, config={profile})");
@@ -65,14 +66,18 @@ impl ModuleConfig {
         match ci {
             true => {
                 for target in &self.targets {
-                    if !buildable_on_host(target) {
-                        eprintln!(
-                            "warning: skipping module {name} target \"{target}\" — can't be built from a {} host",
-                            std::env::consts::OS
-                        );
-                        continue;
-                    }
-                    self.build_target(project, ci, target, profile)?;
+                    let settings = match self.toolchain_for(target, None) {
+                        Ok(settings) => settings,
+                        Err(err) if err.kind() == io::ErrorKind::Unsupported => {
+                            eprintln!(
+                                "warning: skipping module {name} target \"{target}\" — can't be built from a {} host",
+                                std::env::consts::OS
+                            );
+                            continue;
+                        }
+                        Err(err) => return Err(err),
+                    };
+                    self.build_target(project, ci, target, profile, &settings)?;
                 }
                 Ok(())
             },
@@ -84,18 +89,27 @@ impl ModuleConfig {
                         self.targets
                     );
                 }
-                if !buildable_on_host(target) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("can't build target {target} from a {} host", std::env::consts::OS),
-                    ));
-                }
-                self.build_target(project, ci, target, profile)
+                let settings = self.toolchain_for(target, toolchain)?;
+                self.build_target(project, ci, target, profile, &settings)
             },
         }
     }
 
-    fn build_target(&self, project: &BuildConfig, ci: &bool, target: &str, profile: Profile) -> io::Result<()> {
+    /// The toolchain building `target` from this host (toolchain.rs: `resolve`, then its `settings`).
+    /// A fallback (mingw on Windows without Visual Studio) is only a warning: the build goes on.
+    fn toolchain_for(&self, target: &str, requested: Option<Toolchain>) -> io::Result<ToolchainSettings> {
+        let host = std::env::consts::OS;
+        let resolution = toolchain::resolve(host, target, requested, &toolchain::installed)?;
+        if let Some(preferred) = resolution.fell_back_from {
+            eprintln!(
+                "warning: module {}: {preferred} isn't installed, building {target} with {} instead",
+                self.name, resolution.toolchain
+            );
+        }
+        Ok(toolchain::settings(host, target, resolution.toolchain))
+    }
+
+    fn build_target(&self, project: &BuildConfig, ci: &bool, target: &str, profile: Profile, toolchain: &ToolchainSettings) -> io::Result<()> {
         let name = self.name.clone();
         println!("gram target (name={name}, target={target}, config={profile})");
 
@@ -107,7 +121,7 @@ impl ModuleConfig {
         let out = format!("{builds}/{prefix}{}{ext}", project.artifact_name(self));
 
         let refs = project.module_refs(self)?;
-        backend.compile(self, &refs, &out, target, profile)
+        backend.compile(self, &refs, &out, target, profile, toolchain)
     }
 
     pub fn run(&self, project: &BuildConfig, target: &str, profile: Profile, args: &[String]) -> io::Result<i32> {

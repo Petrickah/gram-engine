@@ -5,6 +5,7 @@ pub mod lang;
 pub mod profile;
 pub mod schema;
 pub mod target;
+pub mod toolchain;
 mod vscode;
 
 pub use config::{AddOutcome, BuildConfig, Generation};
