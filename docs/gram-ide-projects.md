@@ -31,6 +31,12 @@ What changed:
 
 `gram ide vs [--open]` runs the same code with the `Visual Studio 18 2026` generator and msvc's settings (`-A x64`, the static CRT, `x64-windows-static`) into `build/ide/vs/gram-engine.slnx`. Verified in Visual Studio: F5 starts `Game` (`VS_STARTUP_PROJECT`), breakpoints hit. What differed from Xcode (the `PATH`'s escaping, `.slnx`, FXC compiling the shown `.hlsl` files) and why hot reload goes through the editor's Play button there (Visual Studio doesn't build while it debugs): `docs/gram-windows-visual-studio.md`.
 
+## Breakpoints in Rust (GameLogic)
+
+- **Visual Studio**: set them in the `.rs` file itself; its debugger accepts a breakpoint in any text file and finds the line in the `.pdb` rustc writes.
+- **Xcode**: refuses breakpoints in files it doesn't compile itself (a `.rs` is only shown). LLDB underneath knows Rust, so set them from the LLDB console while the game runs: `breakpoint set --file greeter.rs --line 17` or `breakpoint set --name greet`; they stay pending until `libGameLogic.dylib` loads (and come back after a Play reload). Variables show as raw structures (no `rust-lldb` formatters). Untried as of 2026-11-16.
+- **VS Code** (CodeLLDB, `cppvsdbg` on Windows): only on a process it debugs. Either launch `Game (<platform>)`, or start the game anywhere else and use `Attach to Game (<platform>)` (`.vscode/launch.json`): the editor is part of the `Game` process, so Play / Stop work the same. Verified on macOS 2026-11-16: `gram run --module Runtime` in a terminal, then *Attach to Game (macOS)*, and a breakpoint in a Rust system hits when it runs. A process takes one debugger at a time: to start it from Xcode without LLDB, uncheck *Debug executable* in the scheme (Product › Scheme › Edit Scheme… › Run › Info); ⌃⌘R is *Run Without Building* and still debugs.
+
 ## Related
 
 - `docs/gram-native-toolchains.md` — native compilers per platform (Task 0.8).

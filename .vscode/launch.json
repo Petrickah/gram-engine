@@ -31,6 +31,27 @@
             "cwd": "${workspaceFolder}\\build\\gram-engine\\windows\\debug",
             "preLaunchTask": "gram build"
         },
+        // Attach to a Game that's already running, started from anywhere (a terminal: gram run --module
+        // Runtime; Xcode with "Debug executable" unchecked in the scheme): the editor is part of the Game process, so Play / Stop and the Rust
+        // breakpoints work as when launched from here. A process takes one debugger at a time.
+        {
+            "name": "Attach to Game (Linux)",
+            "type": "lldb",
+            "request": "attach",
+            "program": "${workspaceFolder}/build/gram-engine/linux/debug/Game"
+        },
+        {
+            "name": "Attach to Game (macOS)",
+            "type": "lldb",
+            "request": "attach",
+            "program": "${workspaceFolder}/build/gram-engine/macos/debug/Game"
+        },
+        {
+            "name": "Attach to Game (Windows)",
+            "type": "cppvsdbg",
+            "request": "attach",
+            "processId": "${command:pickProcess}"
+        },
         {
             "name": "gram (cargo run)",
             "type": "lldb",
