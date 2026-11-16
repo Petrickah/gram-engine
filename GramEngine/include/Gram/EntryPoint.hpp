@@ -5,10 +5,11 @@
 // so its CMake target must be a static library instead of an executable.
 #include "Gram/Common.hpp"
 
-// mingw builds enter through WinMain; MSVC doesn't: the game is a console application (no WIN32
-// in its CMake target), whose entry point the linker expects to be main. It also keeps <windows.h>
-// out of every translation unit that includes this header, and with it the min/max macros that
-// break std::min/std::max.
+// mingw builds enter through WinMain; MSVC doesn't: the game is a console application in Debug and
+// Release, entered through main, and in Final a windows-subsystem one told to start at main all the
+// same (/ENTRY:mainCRTStartup, GramEngine/CMakeLists.txt). It also keeps <windows.h> out of every
+// translation unit that includes this header, and with it the min/max macros that break
+// std::min/std::max.
 #if defined(_WIN32) && !defined(_MSC_VER)
     #define GRAM_WINMAIN_ENTRY
 #endif

@@ -82,6 +82,15 @@ pub struct ToolchainSettings {
 /// gets the defaults too.
 pub fn settings(host: &str, target: &str, toolchain: Toolchain) -> ToolchainSettings {
     match (host, target, toolchain) {
+        ("windows", "windows", Toolchain::Msvc) => ToolchainSettings {
+            generator: Some("Visual Studio 18 2026"),
+            cmake_args: [
+                "-A", "x64",
+                "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+            ].to_vec(),
+            vcpkg_triplet: Some("x64-windows-static"),
+            cargo_triple: None,
+        },
         ("windows", "windows", Toolchain::Mingw) => ToolchainSettings {
             generator: Some("MinGW Makefiles"),
             cmake_args: [
@@ -282,8 +291,17 @@ mod tests {
     }
 
     #[test]
-    fn msvc_sets_nothing_for_now() {
-        assert_eq!(settings("windows", "windows", Toolchain::Msvc), ToolchainSettings::default());
+    fn msvc_compile_matches_todays_build() {
+        let settings = settings("windows", "windows", Toolchain::Msvc);
+        assert_eq!(settings, ToolchainSettings {
+            generator: Some("Visual Studio 18 2026"),
+            cmake_args: [
+                "-A", "x64",
+                "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+            ].to_vec(),
+            vcpkg_triplet: Some("x64-windows-static"),
+            cargo_triple: None,
+        });
     }
 
     #[test]

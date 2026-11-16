@@ -214,6 +214,13 @@ impl BuildConfig {
         let configurations = write_configurations(&dir)?.display().to_string().replace('\\', "/");
         configure.arg(format!("-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES={configurations}"));
 
+        // Visual Studio builds like `gram build` with msvc (toolchain.rs): the same static CRT and vcpkg
+        // triplet, so the IDE's build and gram's link the same libraries.
+        let msvc = (ide == Ide::Vs).then(|| crate::toolchain::settings("windows", "windows", crate::toolchain::Toolchain::Msvc));
+        if let Some(msvc) = &msvc {
+            configure.args(&msvc.cmake_args);
+        }
+
         let mut manifest = None;
         for module in self.ide_roots() {
             let found = vcpkg::build_manifest(module, &self.module_refs(module)?, &dir)?;
@@ -234,6 +241,9 @@ impl BuildConfig {
             ))?;
             configure.arg(format!("-DCMAKE_TOOLCHAIN_FILE={vcpkg_root}/scripts/buildsystems/vcpkg.cmake"));
             configure.arg(format!("-DVCPKG_MANIFEST_DIR={}", manifest.display().to_string().replace('\\', "/")));
+            if let Some(triplet) = msvc.as_ref().and_then(|msvc| msvc.vcpkg_triplet) {
+                configure.arg(format!("-DVCPKG_TARGET_TRIPLET={triplet}"));
+            }
         }
 
         if ide == Ide::Xcode {

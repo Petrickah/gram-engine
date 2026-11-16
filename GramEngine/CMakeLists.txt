@@ -106,4 +106,14 @@ add_library(GramEngine STATIC
 target_include_directories(GramEngine PUBLIC include)
 target_compile_definitions(GramEngine PUBLIC ${GRAM_VULKAN_HPP_DEFINITIONS} ${GRAM_CONFIG_DEFINITIONS})
 target_link_libraries(GramEngine PUBLIC GramScripting GramRenderer)
+
+# Final ships without a console window next to the game; Debug and Release keep it, for the logs. An
+# INTERFACE link option: it lands on the executable linking GramEngine (the game), whatever it's called.
+# The entry point stays main (EntryPoint.hpp): MSVC's windows subsystem would look for WinMain, so it's
+# told to start at main's CRT startup instead; mingw already enters through WinMain.
+set(GRAM_FINAL_WINDOWS $<AND:$<CONFIG:Final>,$<PLATFORM_ID:Windows>>)
+target_link_options(GramEngine INTERFACE
+    $<$<AND:${GRAM_FINAL_WINDOWS},$<CXX_COMPILER_ID:MSVC>>:/SUBSYSTEM:WINDOWS>
+    $<$<AND:${GRAM_FINAL_WINDOWS},$<CXX_COMPILER_ID:MSVC>>:/ENTRY:mainCRTStartup>
+    $<$<AND:${GRAM_FINAL_WINDOWS},$<CXX_COMPILER_ID:GNU>>:-mwindows>)
 target_precompile_headers(GramEngine PUBLIC include/Gram/Common.hpp)

@@ -1,6 +1,6 @@
 # Notes — IDE projects and debugging (Task 0.9)
 
-Status as of 2026-11-15: **debugging in VS Code is done; `gram ide xcode` is done (built with `xcodebuild` in Debug and Release); Visual Studio (`gram ide vs`) is written but untested, for phase 4 on Windows.**
+Status as of 2026-11-16: **debugging in VS Code is done; `gram ide xcode` is done (built with `xcodebuild` in Debug and Release); `gram ide vs` is done and verified in Visual Studio (phase 4, `docs/gram-windows-visual-studio.md`).**
 
 ## Debugging in VS Code (done)
 
@@ -27,9 +27,9 @@ What changed:
 - The shaders and textures follow the executable through `gram_copy_next_to` in `GramShaders.cmake`/`GramTextures.cmake`: CMake refuses a `POST_BUILD` command on a target from another directory, so the superproject can't do it.
 - Configure: the configurations (`GramConfigurations.cmake`, so the scheme menu has Debug/Release/Final), vcpkg with the merged manifest, `CMAKE_OSX_ARCHITECTURES` = the host's (Xcode would build universal binaries in Release, which vcpkg's arm64 libraries can't link), `CMAKE_XCODE_GENERATE_SCHEME`, and `DEVELOPER_DIR=/Applications/Xcode.app/...` when `xcode-select` points at the Command Line Tools.
 
-### Visual Studio (next, on Windows)
+### As built (Visual Studio, 2026-11-16)
 
-`gram ide vs` runs the same code with the `Visual Studio 18 2026` generator; nothing of it has been tried yet. What to check and add is listed in `docs/gram-native-toolchains.md`, *Phase 4*, step 6 (solution file name, the `PATH` with `;`, `VS_STARTUP_PROJECT`, hot reload).
+`gram ide vs [--open]` runs the same code with the `Visual Studio 18 2026` generator and msvc's settings (`-A x64`, the static CRT, `x64-windows-static`) into `build/ide/vs/gram-engine.slnx`. Verified in Visual Studio: F5 starts `Game` (`VS_STARTUP_PROJECT`), breakpoints hit. What differed from Xcode (the `PATH`'s escaping, `.slnx`, FXC compiling the shown `.hlsl` files) and why hot reload goes through the editor's Play button there (Visual Studio doesn't build while it debugs): `docs/gram-windows-visual-studio.md`.
 
 ## Related
 

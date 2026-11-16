@@ -1,6 +1,6 @@
 # Notes — native toolchains per platform (Task 0.8)
 
-Status as of 2026-11-13: **notes for future work, nothing implemented.** Written so the differences found while building on three platforms aren't rediscovered. Statements about MSVC and vcpkg triplets come from general knowledge, not from a build on native Windows — verify them when the task starts.
+Status as of 2026-11-16: **implemented** (phase 2 on macOS, phase 4 on Windows: see the sections at the end); the mingw fallback on Windows is untested. Originally, 2026-11-13: notes for future work, nothing implemented. Written so the differences found while building on three platforms aren't rediscovered. Statements about MSVC and vcpkg triplets come from general knowledge, not from a build on native Windows — verify them when the task starts.
 
 ## Where things stand
 
@@ -51,6 +51,10 @@ Expect MSVC to bring its own set (stricter or different warnings, `/W4`, extensi
 - `settings(host, target, toolchain) -> ToolchainSettings { generator, cmake_args, vcpkg_triplet, cargo_triple }`, read by the cmake and cargo backends. Native and Msvc set nothing (CMake/cargo pick the host's compiler, as before); mingw cross-compiling sets `CMAKE_SYSTEM_NAME=Windows`, the `x86_64-w64-mingw32-*` compilers, the static runtime, `x64-mingw-static` and `x86_64-pc-windows-gnu`; mingw on Windows (the fallback) the same without `CMAKE_SYSTEM_NAME`, with `gcc`/`g++` and the `MinGW Makefiles` generator.
 
 `--toolchain` can't be combined with `--ci` (which builds every target with its default). The existing command tests passed unchanged, which is the proof that the defaults are today's behaviour.
+
+## Phase 4 — done 2026-11-16
+
+Steps 0–4 and 6 below are done; what was built and found is in `docs/gram-windows-visual-studio.md`. Left: step 5 (the mingw fallback on Windows, untested: no mingw on the machine) and the re-checks on macOS and a real Linux. The handoff stays below as it was written.
 
 ## Phase 4 — on a Windows machine (handoff)
 
