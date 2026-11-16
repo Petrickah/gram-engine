@@ -28,7 +28,6 @@ GameAPILoader::GameAPILoader(World& world, const std::filesystem::path& workspac
     : m_World(world)
     , m_Name(libraryName)
     , m_Workspace(workspace)
-    , m_StartTime(std::chrono::steady_clock::now())
     , m_LastFrame(std::chrono::steady_clock::now())
     , m_Host(Gram::HostAPI {
         .Host = this,
@@ -91,19 +90,28 @@ const GameAPILoader::GameAPI* GameAPILoader::FindGameAPI()
 
 bool GameAPILoader::OnDrawFrame()
 {
+    if (m_ReplayState == ReplayState::Building) FinishBuild();   // first: EnterPlaying resets m_LastFrame
+
     const auto now = std::chrono::steady_clock::now();
-
-    System::Context ctx {
-        .DeltaTime = std::chrono::duration<float>(now - m_LastFrame).count(),
-        .Time        = std::chrono::duration<double>(now - m_StartTime).count(),
-        .EventTarget = InvalidObjectID,   // left out, it would be {0, 0}: a live entity for the Update systems
-    };
-
+    const float deltaTime = std::chrono::duration<float>(now - m_LastFrame).count();
     m_LastFrame = now;
     auto events = std::exchange(m_PendingEvents, {});
 
-    if (m_Game)
+    // A rebuild pressed while playing (Building, coming from Playing) keeps the game running until the new
+    // library is there.
+    const bool running = m_ReplayState == ReplayState::Playing
+                      || (m_ReplayState == ReplayState::Building && m_PreviousReplayState == ReplayState::Playing);
+    if (m_Game && running)
     {
+        m_PlayTime += deltaTime;
+
+        System::Context ctx
+        {
+            .DeltaTime = deltaTime,
+            .Time = m_PlayTime,
+            .EventTarget = InvalidObjectID,
+        };
+
         for (RegisteredSystem& system : m_Systems)
         {
             if (system.Descriptor.Stage != System::Stage::Update) continue;
@@ -131,6 +139,74 @@ bool GameAPILoader::OnDrawFrame()
     if (!error && writeTime != m_LoadedWriteTime) Reload();
 
     return true;
+}
+
+void GameAPILoader::Play()
+{
+    // From Playing too: a rebuild and reload without stopping (a failed build goes back to Playing).
+    if (m_ReplayState == ReplayState::Building) return;
+    m_PreviousReplayState = m_ReplayState;
+
+    std::optional<ProcessCommand> command = ReadProcessCommand(m_Workspace / (m_Name + ".gram-build"));
+    if (!command)
+    {
+        // Not built by gram (a copied game folder): play what's loaded.
+        GramWarning("{}: no build command next to the executable, playing what's loaded", m_Name);
+        EnterPlaying();
+        return;
+    }
+
+    // Taken on the main thread: the thread only logs through it, and its sinks are thread-safe (_mt).
+    spdlog::logger* logger = GetEditorLogger();
+    m_Build = std::async(std::launch::async, [command = std::move(*command), logger]
+        {
+            return RunProcess(command, [logger](std::string_view line) { if (logger) logger->info("{}", line); });
+        });
+    m_ReplayState = ReplayState::Building;
+}
+
+void GameAPILoader::FinishBuild()
+{
+    if (m_Build.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+
+    const int exitCode = m_Build.get();
+    if (exitCode != 0)
+    {
+        GramError("{}: the build failed (exit code {}), see the log above", m_Name, exitCode);
+        m_ReplayState = m_PreviousReplayState;
+        return;
+    }
+
+    std::error_code error;
+    const auto writeTime = std::filesystem::last_write_time(m_Workspace / GetDynamicLibraryFileName(m_Name), error);
+    if (!error && writeTime != m_LoadedWriteTime) Reload();
+    EnterPlaying();
+}
+
+void GameAPILoader::EnterPlaying()
+{
+    if (m_PreviousReplayState == ReplayState::Stopped)
+    {
+        m_Snapshot = m_World.TakeSnapshot();
+        m_PlayTime = 0.0;
+    }
+    m_LastFrame = std::chrono::steady_clock::now();   // the time spent building isn't a frame
+    m_ReplayState = ReplayState::Playing;
+}
+
+void GameAPILoader::Pause()
+{
+    if (m_ReplayState == ReplayState::Playing) m_ReplayState = ReplayState::Paused;
+}
+
+void GameAPILoader::Stop()
+{
+    if (m_ReplayState != ReplayState::Playing && m_ReplayState != ReplayState::Paused) return;
+
+    if (m_Snapshot) m_World.RestoreSnapshot(*m_Snapshot);
+    m_Snapshot.reset();
+    m_PendingEvents.clear();
+    m_ReplayState = ReplayState::Stopped;
 }
 
 void GameAPILoader::Run(RegisteredSystem& system, System::Context& ctx)

@@ -7,6 +7,7 @@ GRAM_NAMESPACE_BEGIN
 
 class World;
 class GameAPILoader;
+class EditorToolbar;
 class InspectorPanel;
 class LoggerPanel;
 class OutlinerPanel;
@@ -71,6 +72,7 @@ private:
     LayerOwner<ImGuiApplicationLayer>& m_UI;
     std::shared_ptr<EditorMenuBar>     m_MenuBar;
 #ifdef GRAM_EDITOR_ENABLED
+    std::shared_ptr<EditorToolbar>     m_Toolbar;
     std::shared_ptr<OutlinerPanel>     m_Outliner;
     std::shared_ptr<InspectorPanel>    m_Inspector;
     std::shared_ptr<LoggerPanel>       m_Logger;

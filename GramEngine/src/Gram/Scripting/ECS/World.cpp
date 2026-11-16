@@ -98,4 +98,21 @@ void World::RemoveComponent(ComponentStorage& storage, uint32_t entityIndex)
     storage.SlotOf.erase(slot);
 }
 
+World::Snapshot World::TakeSnapshot() const
+{
+    return Snapshot
+    {
+        .Slots      = m_Slots,      // indexed directly by ObjectID::Index; every slot ever used, alive or free
+        .FreeSlots  = m_FreeSlots,  // free slot indexes ready to use by CreateEntity
+        .Components = m_Components, // one storage per component type
+    };
+}
+
+void World::RestoreSnapshot(const Snapshot& snapshot)
+{
+	m_Slots = snapshot.Slots;
+	m_FreeSlots = snapshot.FreeSlots;
+	m_Components = snapshot.Components;
+}
+
 GRAM_NAMESPACE_END

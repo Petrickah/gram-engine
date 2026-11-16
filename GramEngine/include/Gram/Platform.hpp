@@ -29,4 +29,22 @@ private:
     void* m_Handle = nullptr;
 };
 
+// A program to run: what a `<module>.gram-build` file next to the executable holds (written by gram build:
+// how the editor builds the game's library again).
+struct ProcessCommand
+{
+    std::filesystem::path                            Directory;    // its working directory; empty: this process's
+    std::vector<std::pair<std::string, std::string>> Environment;  // set on top of this process's own
+    std::vector<std::string>                         Arguments;    // the program (a full path) first
+};
+
+// Reads a `<key> <value>` per line (`dir`, `env NAME=value`, `arg`; `#` comments). nullopt when the file
+// can't be read or names no program.
+std::optional<ProcessCommand> ReadProcessCommand(const std::filesystem::path& path);
+
+// Runs `command` to its end, blocking, calling `onLine` with every line it writes (stdout and stderr
+// together, in order, without the line break). Returns its exit code, or -1 when it couldn't be started.
+// Meant for a worker thread: `onLine` runs on the calling thread. No console window opens on Windows.
+int RunProcess(const ProcessCommand& command, const std::function<void(std::string_view)>& onLine);
+
 GRAM_NAMESPACE_END

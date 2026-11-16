@@ -15,6 +15,11 @@ public:
         std::vector<uint32_t>                  Owners;   // Owners[i] = index of the entity that owns this component
         std::unordered_map<uint32_t, uint32_t> SlotOf;   // map between the entity index and position i
     };
+    struct Snapshot {
+        std::vector<Slot>     Slots     = { }; // indexed directly by ObjectID::Index; every slot ever used, alive or free
+        std::vector<uint32_t> FreeSlots = { }; // free slot indexes ready to use by CreateEntity
+        std::unordered_map<ComponentID, ComponentStorage> Components; // one storage per component type
+    };
     
 public:
     ObjectID CreateEntity();
@@ -45,6 +50,9 @@ public:
                 f(*storage.Descriptor, storage.Data.data() + slot->second * storage.Descriptor->Size);
         }
     }
+
+    Snapshot TakeSnapshot() const;
+	void RestoreSnapshot(const Snapshot& snapshot);
     
 private:
     static void RemoveComponent(ComponentStorage& storage, uint32_t entityIndex);

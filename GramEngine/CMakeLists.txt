@@ -94,6 +94,7 @@ target_precompile_headers(GramScripting PUBLIC include/Gram/Scripting/Common.hpp
 add_library(GramEngine STATIC
     src/Gram/Application/GLFWApplication.cpp
     src/Gram/Editor/Editor.cpp
+    src/Gram/Editor/EditorToolbar.cpp
     src/Gram/Editor/InspectorPanel.cpp
     src/Gram/Editor/LoggerPanel.cpp
     src/Gram/Editor/OutlinerPanel.cpp

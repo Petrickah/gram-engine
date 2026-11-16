@@ -1,5 +1,6 @@
 #include "Gram/Scripting/Common.hpp"
 #include "Gram/Editor/Editor.hpp"
+#include "Gram/Editor/EditorToolbar.hpp"
 #include "Gram/Editor/InspectorPanel.hpp"
 #include "Gram/Editor/LoggerPanel.hpp"
 #include "Gram/Editor/OutlinerPanel.hpp"
@@ -45,6 +46,8 @@ Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& wo
     GramCheckVoid(m_UI.RegisterLayer<EditorMenuBar>(m_MenuBar), "couldn't create the editor's menu bar");
 
 #ifdef GRAM_EDITOR_ENABLED
+    // Right after the menu bar: layers draw in registration order, and the toolbar goes under the menu.
+    GramCheckVoid(m_UI.RegisterLayer<EditorToolbar>(m_Toolbar, loader), "couldn't create the editor's toolbar");
     // The inspector first: the outliner selects into it.
     m_Inspector = Register<InspectorPanel>(PanelOwner::Engine, world);
     GramCheckVoid(m_Inspector, "couldn't create the Inspector");
