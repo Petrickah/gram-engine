@@ -115,6 +115,10 @@ impl ModuleBackend for CMake {
         if let (true, Some(triplet)) = (has_vcpkg, toolchain.vcpkg_triplet) {
             configure.arg(format!("-DVCPKG_TARGET_TRIPLET={triplet}"));
         }
+        if has_vcpkg && target == "macos" {
+            let triplets = write_macos_triplet(Path::new(build_dir))?;
+            configure.arg(format!("-DVCPKG_OVERLAY_TRIPLETS={}", triplets.display()));
+        }
 
         if !configure.status()?.success() {
             return Err(io::Error::new(io::ErrorKind::Other, "cmake configure failed"));
@@ -310,6 +314,28 @@ const CONFIGURATION_FLAGS: &str = include_str!("GramConfigurationFlags.cmake");
 
 /// Writes the two configuration files into `<build dir>/gram/` and returns the first one's absolute path,
 /// for `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` (it finds the second through `CMAKE_CURRENT_LIST_DIR`).
+/// vcpkg sets a port's oldest macOS only from its triplet (`VCPKG_OSX_DEPLOYMENT_TARGET`); the built-in
+/// `arm64-osx`/`x64-osx` set none, so the ports take the SDK's version (see
+/// `toolchain::MACOS_DEPLOYMENT_TARGET`). An overlay triplet named like the built-in one replaces it:
+/// the same settings plus the deployment target. Written to `<build dir>/gram/triplets/`, passed as
+/// `VCPKG_OVERLAY_TRIPLETS`; changing it changes the ports' ABI hash, so vcpkg rebuilds them once.
+pub(crate) fn write_macos_triplet(build_dir: &Path) -> io::Result<std::path::PathBuf> {
+    let (triplet, arch) = if std::env::consts::ARCH == "aarch64" { ("arm64", "arm64") } else { ("x64", "x86_64") };
+    let dir = std::env::current_dir()?.join(build_dir).join("gram").join("triplets");
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join(format!("{triplet}-osx.cmake")), format!(
+        "# Written by gram: vcpkg's {triplet}-osx with the deployment target set.\n\
+         set(VCPKG_TARGET_ARCHITECTURE {triplet})\n\
+         set(VCPKG_CRT_LINKAGE dynamic)\n\
+         set(VCPKG_LIBRARY_LINKAGE static)\n\
+         set(VCPKG_CMAKE_SYSTEM_NAME Darwin)\n\
+         set(VCPKG_OSX_ARCHITECTURES {arch})\n\
+         set(VCPKG_OSX_DEPLOYMENT_TARGET {})\n",
+        crate::toolchain::MACOS_DEPLOYMENT_TARGET,
+    ))?;
+    Ok(dir)
+}
+
 pub(crate) fn write_configurations(build_dir: &Path) -> io::Result<std::path::PathBuf> {
     let dir = std::env::current_dir()?.join(build_dir).join("gram");
     fs::create_dir_all(&dir)?;

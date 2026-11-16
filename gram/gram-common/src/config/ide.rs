@@ -15,7 +15,7 @@ use clap::ValueEnum;
 use crate::config::BuildConfig;
 use crate::config::module::ModuleConfig;
 use crate::lang::DependencySpec;
-use crate::lang::cmake::write_configurations;
+use crate::lang::cmake::{write_configurations, write_macos_triplet};
 use crate::lang::slash_path;
 use crate::lang::vcpkg;
 
@@ -244,6 +244,9 @@ impl BuildConfig {
             if let Some(triplet) = msvc.as_ref().and_then(|msvc| msvc.vcpkg_triplet) {
                 configure.arg(format!("-DVCPKG_TARGET_TRIPLET={triplet}"));
             }
+            if ide == Ide::Xcode {
+                configure.arg(format!("-DVCPKG_OVERLAY_TRIPLETS={}", write_macos_triplet(&dir)?.display()));
+            }
         }
 
         if ide == Ide::Xcode {
@@ -252,6 +255,9 @@ impl BuildConfig {
             let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { std::env::consts::ARCH };
             configure.arg(format!("-DCMAKE_OSX_ARCHITECTURES={arch}"));
             configure.arg("-DCMAKE_XCODE_GENERATE_SCHEME=ON");
+            // The same oldest macOS as `gram build` and vcpkg's ports (toolchain::MACOS_DEPLOYMENT_TARGET),
+            // instead of the SDK's own: Xcode's can be older than the Command Line Tools'.
+            configure.arg(format!("-DCMAKE_OSX_DEPLOYMENT_TARGET={}", crate::toolchain::MACOS_DEPLOYMENT_TARGET));
             // CMake asks xcodebuild about Xcode, which fails while xcode-select points at the Command
             // Line Tools (which clangd and plain builds are happy with): point this one run at Xcode.
             let selected = Command::new("xcodebuild").arg("-version").output().is_ok_and(|out| out.status.success());

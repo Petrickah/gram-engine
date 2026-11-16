@@ -35,9 +35,9 @@ struct VulkanRendererSpecification
         , m_ProjectWorkspace(spec.m_Workspace)
         , m_DisplayDebug(spec.m_EnableLogging)
     {
-        m_ExtensionLayers  = spec.GetRequiredInstanceExtensions(this, m_RequiredExtensionsLayers.size(), m_RequiredExtensionsLayers.data(), m_DisplayDebug);
-        m_DeviceExtensions = spec.GetRequiredDeviceExtensions  (this, m_RequiredDeviceExtensions.size(), m_RequiredDeviceExtensions.data(), m_DisplayDebug);
-        m_ValidationLayers = spec.GetRequiredValidationLayers  (this, m_RequiredValidationLayers.size(), m_RequiredValidationLayers.data(), m_DisplayDebug);
+        m_ExtensionLayers  = spec.GetRequiredInstanceExtensions(this, static_cast<uint32_t>(m_RequiredExtensionsLayers.size()), m_RequiredExtensionsLayers.data(), m_DisplayDebug);
+        m_DeviceExtensions = spec.GetRequiredDeviceExtensions  (this, static_cast<uint32_t>(m_RequiredDeviceExtensions.size()), m_RequiredDeviceExtensions.data(), m_DisplayDebug);
+        m_ValidationLayers = spec.GetRequiredValidationLayers  (this, static_cast<uint32_t>(m_RequiredValidationLayers.size()), m_RequiredValidationLayers.data(), m_DisplayDebug);
     }
 
     bool AreDeviceExtensionsSupported(const std::vector<std::string>& extensions, bool displayDebug = false) const;

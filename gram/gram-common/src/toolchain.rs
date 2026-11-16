@@ -80,8 +80,18 @@ pub struct ToolchainSettings {
 /// What `toolchain` sets to build `target` from `host`. Native and msvc set nothing: cmake and cargo pick
 /// the host's compiler on their own. Called after `resolve`, so the combination is valid; anything else
 /// gets the defaults too.
+/// The oldest macOS a build runs on (`RunProcess`'s `posix_spawn_file_actions_addchdir` needs 26), set
+/// both on gram's own code (`settings`) and on vcpkg's ports (lang/cmake: `write_macos_triplet`). Left
+/// to themselves they'd each take their SDK's version, and the Command Line Tools' SDK (vcpkg, `gram
+/// build`) can be newer than Xcode's: the linker then warns about every vcpkg library.
+pub const MACOS_DEPLOYMENT_TARGET: &str = "26.0";
+
 pub fn settings(host: &str, target: &str, toolchain: Toolchain) -> ToolchainSettings {
     match (host, target, toolchain) {
+        ("macos", "macos", Toolchain::Native) => ToolchainSettings {
+            cmake_args: vec!["-DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"],   // = MACOS_DEPLOYMENT_TARGET
+            ..ToolchainSettings::default()
+        },
         ("windows", "windows", Toolchain::Msvc) => ToolchainSettings {
             generator: Some("Visual Studio 18 2026"),
             cmake_args: [
@@ -284,10 +294,15 @@ mod tests {
     }
 
     #[test]
-    fn native_sets_nothing() {
-        for (host, target) in [("macos", "macos"), ("linux", "linux")] {
-            assert_eq!(settings(host, target, Toolchain::Native), ToolchainSettings::default());
-        }
+    fn native_sets_nothing_on_linux() {
+        assert_eq!(settings("linux", "linux", Toolchain::Native), ToolchainSettings::default());
+    }
+
+    #[test]
+    fn native_on_macos_only_pins_the_deployment_target() {
+        let native = settings("macos", "macos", Toolchain::Native);
+        assert_eq!(native.cmake_args, [format!("-DCMAKE_OSX_DEPLOYMENT_TARGET={}", super::MACOS_DEPLOYMENT_TARGET)]);
+        assert_eq!((native.generator, native.vcpkg_triplet, native.cargo_triple), (None, None, None));
     }
 
     #[test]

@@ -26,7 +26,7 @@ public:
             });
     }
 
-    constexpr const uint32_t size() const { return m_ShaderStageCreateInfos.size(); }
+    constexpr const uint32_t size() const { return static_cast<uint32_t>(m_ShaderStageCreateInfos.size()); }
     constexpr const vk::PipelineShaderStageCreateInfo* data() const { return m_ShaderStageCreateInfos.data(); }
     
 private:

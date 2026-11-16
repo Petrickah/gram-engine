@@ -22,7 +22,9 @@
 #include <vector>
 
 #if !defined(GRAM_CONFIG_RELEASE) && !defined(GRAM_CONFIG_FINAL)
+#ifndef GRAM_CONFIG_DEBUG
 #define GRAM_CONFIG_DEBUG
+#endif // #ifndef GRAM_CONFIG_DEBUG
 #endif // #if !defined(GRAM_CONFIG_RELEASE) && !defined(GRAM_CONFIG_FINAL)
 
 #ifdef GRAM_CONFIG_DEBUG
