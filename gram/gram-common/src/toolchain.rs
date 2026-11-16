@@ -1,4 +1,7 @@
 use std::{fmt::Display, io, str::FromStr};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Toolchain { Native, Mingw, Msvc }   // Native: the system compiler CMake picks on Linux/macOS (GCC, Apple clang)
@@ -106,16 +109,48 @@ pub fn settings(host: &str, target: &str, toolchain: Toolchain) -> ToolchainSett
 
 
 /// Whether `toolchain` is on this machine, for `resolve`. Native is always there: gram never checked
-/// the system compiler, CMake finds (or fails to find) it. Mingw and msvc are found by their compiler
-/// on the PATH: `x86_64-w64-mingw32-gcc` for a cross build, `gcc` on Windows, `cl` from a Developer
-/// Console (vswhere comes later, with the msvc build itself).
+/// the system compiler, CMake finds (or fails to find) it. Mingw is found by its compiler on the PATH:
+/// `x86_64-w64-mingw32-gcc` for a cross build, `gcc` on Windows. Msvc by `cl` on the PATH (a Developer
+/// Console) or, from a plain terminal, by vswhere: the Visual Studio generator finds the compiler on
+/// its own, without the Developer Console's environment.
 pub fn installed(toolchain: Toolchain) -> bool {
     match (toolchain, std::env::consts::OS) {
         (Toolchain::Native, _)        => true,
         (Toolchain::Mingw, "windows") => on_path("gcc"),
         (Toolchain::Mingw, _)         => on_path("x86_64-w64-mingw32-gcc"),
-        (Toolchain::Msvc, "windows")  => on_path("cl"),
+        (Toolchain::Msvc, "windows")  => on_path("cl") || visual_studio().is_some(),
         (Toolchain::Msvc, _)          => false,
+    }
+}
+
+/// The installation folder of the newest Visual Studio with the C++ tools, asked once from vswhere
+/// (installed with Visual Studio, always at the same place). None off Windows or without one.
+pub fn visual_studio() -> Option<&'static Path> {
+    static FOUND: OnceLock<Option<PathBuf>> = OnceLock::new();
+    FOUND.get_or_init(|| {
+        let program_files = std::env::var_os("ProgramFiles(x86)")?;
+        let vswhere = Path::new(&program_files).join(r"Microsoft Visual Studio\Installer\vswhere.exe");
+        let out = Command::new(vswhere)
+            .args(["-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"])
+            .output().ok()?;
+        let path = String::from_utf8(out.stdout).ok()?;
+        let path = path.lines().next()?.trim();
+        (out.status.success() && !path.is_empty()).then(|| PathBuf::from(path))
+    }).as_deref()
+}
+
+/// The cmake to run: the one on the PATH, else (Windows, a plain terminal) the one Visual Studio ships
+/// with. Errors when there's neither, instead of the OS's "program not found".
+pub fn cmake() -> io::Result<Command> {
+    if on_path("cmake") {
+        return Ok(Command::new("cmake"));
+    }
+    let bundled = visual_studio()
+        .map(|vs| vs.join(r"Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"))
+        .filter(|cmake| cmake.is_file());
+    match bundled {
+        Some(cmake) => Ok(Command::new(cmake)),
+        None => Err(io::Error::new(io::ErrorKind::NotFound, "cmake isn't on the PATH (and no Visual Studio with CMake was found): install CMake, or run gram from a Developer PowerShell")),
     }
 }
 

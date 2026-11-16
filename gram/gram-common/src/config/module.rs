@@ -121,7 +121,30 @@ impl ModuleConfig {
         let out = format!("{builds}/{prefix}{}{ext}", project.artifact_name(self));
 
         let refs = project.module_refs(self)?;
-        backend.compile(self, &refs, &out, target, profile, toolchain)
+        backend.compile(self, &refs, &out, target, profile, toolchain)?;
+
+        // A library the game loads at runtime: the editor's Play button rebuilds it, so it needs to know how.
+        // Only for this machine (a --ci build or another target's library is never rebuilt from its game).
+        if self.kind == "dynamic" && !*ci && target == std::env::consts::OS {
+            write_if_changed(Path::new(&format!("{builds}/{}.gram-build", self.name)), &self.rebuild_command(profile)?)?;
+        }
+        Ok(())
+    }
+
+    /// How to build this module again, for the editor (`<module>.gram-build`, next to the library): one
+    /// entry per line, `<key> <value>`, so the engine reads it without quoting rules: `dir` (gram's cwd, the
+    /// project root), `env` (`NAME=value`: the PATH, which a game started from an IDE or the Finder doesn't
+    /// get from the shell: no cargo) and `arg` (the command line, the program first).
+    fn rebuild_command(&self, profile: Profile) -> io::Result<String> {
+        let forward = |path: &Path| path.display().to_string().replace('\\', "/");
+        let mut text = String::from("# Written by gram build: how the editor builds this module again. Don't edit it.\n");
+        text += &format!("dir {}\n", forward(&std::env::current_dir()?));
+        text += &format!("env PATH={}\n", std::env::var("PATH").unwrap_or_default());
+        text += &format!("arg {}\n", forward(&std::env::current_exe()?));
+        for arg in ["build", "--module", &self.name, "--config", &profile.to_string()] {
+            text += &format!("arg {arg}\n");
+        }
+        Ok(text)
     }
 
     pub fn run(&self, project: &BuildConfig, target: &str, profile: Profile, args: &[String]) -> io::Result<i32> {
@@ -159,6 +182,14 @@ impl ModuleConfig {
         println!("gram module (name={name}, lang={lang})");
         self.backend()?.scaffold(self, project)
     }
+}
+
+/// Leaves the file (and its write time) alone when its content is the same.
+fn write_if_changed(path: &Path, contents: &str) -> io::Result<()> {
+    if fs::read_to_string(path).is_ok_and(|old| old == contents) {
+        return Ok(());
+    }
+    fs::write(path, contents)
 }
 
 /// Where a module's artifacts land, relative to the project root: `build/<project>/<target>/<profile>/`,

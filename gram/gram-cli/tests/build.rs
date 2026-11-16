@@ -53,6 +53,23 @@ fn builds_a_cargo_dynamic_library_next_to_the_executable() {
     assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
     assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("GameLogic"))));
     assert!(!project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("game_logic"))));
+
+    // How the editor's Play button builds it again: one `<key> <value>` per line.
+    let command = project.read(&format!("build/demo/{}/debug/GameLogic.gram-build", host()));
+    let args: Vec<&str> = command.lines().filter_map(|line| line.strip_prefix("arg ")).collect();
+    assert!(args[0].ends_with(&exe("gram")), "the program first: {command}");
+    assert_eq!(args[1..], ["build", "--module", "GameLogic", "--config", "debug"]);
+    assert!(command.lines().any(|line| line.starts_with("dir ")));
+    assert!(command.lines().any(|line| line.starts_with("env PATH=")));
+}
+
+#[test]
+fn only_a_dynamic_module_gets_a_rebuild_command() {
+    let project = Sandbox::project("demo", &[]);
+
+    project.gram(&["build", "--config", "release"]).succeeds();
+
+    assert!(!project.exists(&format!("build/demo/{}/release/main.gram-build", host())));
 }
 
 #[test]
@@ -63,7 +80,9 @@ fn finds_a_cmake_library_built_as_static() {
 
     project.gram(&["build"]).succeeds();
 
-    assert!(project.exists(&format!("build/demo/{}/debug/libmain.a", host())));
+    // MSVC names a static library <name>.lib, GCC/clang (mingw too) lib<name>.a.
+    let file = if host() == "windows" { "main.lib" } else { "libmain.a" };
+    assert!(project.exists(&format!("build/demo/{}/debug/{file}", host())));
 }
 
 #[test]
@@ -171,9 +190,15 @@ fn cmake_gets_one_build_dir_per_config_with_its_build_type() {
     project.gram(&["build", "--config", "release"]).succeeds();
 
     let cache = project.read(&format!("main/build-{}-release/CMakeCache.txt", host()));
-    assert_contains(&cache, "CMAKE_BUILD_TYPE:STRING=Release");
     // Release keeps symbols: the compiler's RelWithDebInfo flags (GramConfigurationFlags.cmake).
-    assert_contains(&cache, "CMAKE_CXX_FLAGS_RELEASE:STRING=-O2 -g -DNDEBUG");
+    // On Windows that's MSVC through the Visual Studio generator, which is multi-config: it ignores the
+    // build type (left UNINITIALIZED) and picks the configuration in `cmake --build --config`.
+    if host() == "windows" {
+        assert_contains(&cache, "CMAKE_CXX_FLAGS_RELEASE:STRING=/Zi /O2 /Ob1 /DNDEBUG");
+    } else {
+        assert_contains(&cache, "CMAKE_BUILD_TYPE:STRING=Release");
+        assert_contains(&cache, "CMAKE_CXX_FLAGS_RELEASE:STRING=-O2 -g -DNDEBUG");
+    }
     assert!(project.exists(&format!("build/demo/{}/release/{}", host(), exe("demo"))));
 }
 
@@ -185,8 +210,15 @@ fn cmake_learns_the_final_config_from_gram() {
 
     // The compiler's own Release flags, plus LTO: CMake knows nothing of a "Final" configuration by itself.
     let cache = project.read(&format!("main/build-{}-final/CMakeCache.txt", host()));
-    assert_contains(&cache, "CMAKE_CXX_FLAGS_FINAL:STRING=-O3 -DNDEBUG");
-    assert_contains(&project.read(&format!("main/build-{}-final/compile_commands.json", host())), "-flto");
+    if host() == "windows" {
+        // MSVC: Release's /O2 /Ob2; the Visual Studio generator writes no compile_commands.json, LTO
+        // shows in the project instead (/GL + /LTCG).
+        assert_contains(&cache, "CMAKE_CXX_FLAGS_FINAL:STRING=/O2 /Ob2 /DNDEBUG");
+        assert_contains(&project.read(&format!("main/build-{}-final/main.vcxproj", host())), "<WholeProgramOptimization>true</WholeProgramOptimization>");
+    } else {
+        assert_contains(&cache, "CMAKE_CXX_FLAGS_FINAL:STRING=-O3 -DNDEBUG");
+        assert_contains(&project.read(&format!("main/build-{}-final/compile_commands.json", host())), "-flto");
+    }
     assert!(project.exists(&format!("build/demo/{}/final/{}", host(), exe("demo"))));
 }
 

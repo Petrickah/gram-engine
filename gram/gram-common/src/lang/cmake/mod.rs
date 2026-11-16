@@ -1,7 +1,6 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::process::Command;
 
 use crate::config::module::ModuleConfig;
 use crate::directory::Directory;
@@ -13,6 +12,7 @@ use crate::lang::replace_file;
 use crate::lang::slash_path;
 use crate::lang::vcpkg;
 use crate::profile::Profile;
+use crate::toolchain;
 use crate::toolchain::ToolchainSettings;
 
 // Marker lines bracketing the block of gram-managed FetchContent dependencies
@@ -32,8 +32,10 @@ impl ModuleBackend for CMake {
         let name = &module.name;
 
         let target = match module.kind.as_str() {
+            // MSVC exports nothing from a DLL without __declspec(dllexport), so it would write no import
+            // library (<name>.lib) to link against: export everything, as GCC/clang do by default.
             "library" => format!(
-                "add_library({name} SHARED src/{name}.cpp)\ntarget_include_directories({name} PUBLIC include)\n"
+                "add_library({name} SHARED src/{name}.cpp)\ntarget_include_directories({name} PUBLIC include)\nset_target_properties({name} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)\n"
             ),
             _ => format!("add_executable({name} src/main.cpp)\n"),
         };
@@ -69,7 +71,7 @@ impl ModuleBackend for CMake {
         let build_dir = build_dir.to_str().expect("build dir path is not valid UTF-8");
         let manifest_dir = manifest_dir.to_str().expect("module src path is not valid UTF-8");
 
-        let mut configure = Command::new("cmake");
+        let mut configure = toolchain::cmake()?;
         // --fresh:  and CMakeLists.txt are regenerated on every add/remove,
         // so reconfigure from scratch each build too — otherwise settings that only take
         // effect on a build dir's *first* configure (CMAKE_TOOLCHAIN_FILE among them) go
@@ -120,7 +122,7 @@ impl ModuleBackend for CMake {
 
         // --config only matters to multi-config generators (Visual Studio): it picks the configuration
         // there (Debug without it), and the artifact is looked for in the folder of the same name below.
-        let status = Command::new("cmake").args(["--build", build_dir, "--config", config]).status()?;
+        let status = toolchain::cmake()?.args(["--build", build_dir, "--config", config]).status()?;
         if !status.success() {
             return Err(io::Error::new(io::ErrorKind::Other, "cmake build failed"));
         }

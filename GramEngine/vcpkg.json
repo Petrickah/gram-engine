@@ -1,6 +1,7 @@
 {
     "name": "gramengine",
     "version": "0.1.0",
+    "builtin-baseline": "fe8e78fac7df2793f9848ed0d27aa59d9c035998",
     "dependencies": [
         { "name": "vulkan", "platform": "windows" },
         { "name": "vulkan-headers", "platform": "!windows" },
