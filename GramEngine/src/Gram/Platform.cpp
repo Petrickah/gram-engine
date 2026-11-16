@@ -305,7 +305,12 @@ int RunProcess(const ProcessCommand& command, const std::function<void(std::stri
     posix_spawn_file_actions_adddup2(&actions, pipeEnds[1], STDERR_FILENO);
     posix_spawn_file_actions_addclose(&actions, pipeEnds[1]);
     const std::string directory = command.Directory.string();
+    // POSIX's own name since macOS 26 (the _np one is deprecated there); glibc has had the _np one since 2.29.
+#ifdef GRAM_PLATFORM_APPLE
+    if (!directory.empty()) posix_spawn_file_actions_addchdir(&actions, directory.c_str());
+#else
     if (!directory.empty()) posix_spawn_file_actions_addchdir_np(&actions, directory.c_str());
+#endif
 
     // This process's environment with the command's variables set on top.
     std::vector<std::string> environment;
