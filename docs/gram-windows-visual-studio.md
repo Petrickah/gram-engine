@@ -1,6 +1,6 @@
 # Report — Windows, MSVC and Visual Studio (phase 4 of Tasks 0.8 / 0.9, 2026-11-16)
 
-Phases 1–3 of the configurations/toolchains/IDE plan (`docs/salutare-p-n-acum-am-unified-mountain.md`) were done on macOS; this is phase 4, done on a Windows 11 machine with Visual Studio 2026 Community (MSVC 14.52, its bundled CMake 4.3.1), the Vulkan SDK 1.4.363, vcpkg in `C:\vcpkg` and Rust's `x86_64-pc-windows-msvc`. It follows the handoff in `docs/gram-native-toolchains.md` (*Phase 4*) and adds what came up on the way: a Play / Pause / Stop toolbar, because Visual Studio can't build while it debugs.
+Phases 1–3 of the configurations/toolchains/IDE plan (`docs/gram-configurations-toolchains-ide-plan.md`) were done on macOS; this is phase 4, done on a Windows 11 machine with Visual Studio 2026 Community (MSVC 14.52, its bundled CMake 4.3.1), the Vulkan SDK 1.4.363, vcpkg in `C:\vcpkg` and Rust's `x86_64-pc-windows-msvc`. It follows the handoff in `docs/gram-native-toolchains.md` (*Phase 4*) and adds what came up on the way: a Play / Pause / Stop toolbar, because Visual Studio can't build while it debugs.
 
 Who wrote what: the user wrote the `Msvc` settings, the `World` snapshot and the loader's play state (`ReplayState`); Claude wrote the plumbing (vswhere, `gram ide vs`'s fixes, `.gram-build`, `RunProcess`, the toolbar, the Final subsystem, tests) and reviewed.
 
