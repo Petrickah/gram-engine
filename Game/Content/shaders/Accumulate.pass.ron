@@ -1,0 +1,9 @@
+Pass(
+    name: "Accumulate",
+    stage: Raster,
+    uniform: [
+        Field(name: "frame_count", ty: U32),
+        Field(name: "reset", ty: U32),
+    ],
+    inputs: [ Sampled(name: "color") ],
+)

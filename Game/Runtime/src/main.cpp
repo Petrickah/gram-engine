@@ -8,30 +8,9 @@
 #include "Gram/Editor/InspectorPanel.hpp"
 
 #include "Components.generated.hpp"
+#include "Passes.generated.hpp"
 #include "PostProcessPass.hpp"
 #include "RayTracePass.hpp"
-
-struct SSAAParams
-{
-    glm::vec2 TexelSize; float ScaleFactor; float Padding0;
-};
-
-struct AccumulationParams
-{
-    uint32_t FrameCount = 0; bool Reset = true;
-};
-
-// DepthOfField.hlsl's uniform. CoC = circle of confusion: the diameter, in input pixels, of the disc a point
-// at depth d blurs into: CoCScale * |d - FocusDistance| / d, capped at MaxCoC.
-struct DepthOfFieldParams
-{
-    glm::vec2 TexelSize; float FocusDistance; float    CoCScale;
-    float     MaxCoC;    uint32_t Enabled;    glm::vec2 Padding0;
-};
-
-static_assert(sizeof(SSAAParams) == 16);
-static_assert(sizeof(DepthOfFieldParams) == 32);
-static_assert(sizeof(AccumulationParams) == 8);
 
 class RuntimeApplication : public Gram::GLFWApplication
 {
@@ -62,7 +41,7 @@ private:
 
         Gram::VulkanDevice& device = m_VulkanRenderer->GetDevice();
 
-        const Gram::VulkanShader shader = Gram::VulkanShader::Compute(spec.m_Workspace, "RayTracer", static_cast<vk::Device>(device.GetLogicalDevice()));
+        const Gram::VulkanShader shader = Gram::VulkanShader::Compute(spec.m_Workspace, RayTracerParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
         RayTracePass& rayTracePass = m_VulkanRenderer->AddPass<RayTracePass>(device, shader, *m_World, m_VulkanRenderer->GetSceneTarget());
 
 #ifdef GRAM_IMGUI_ENABLED
@@ -71,16 +50,16 @@ private:
         rayTracePass.GenerateBookScene();
 #endif // #ifdef GRAM_IMGUI_ENABLED
 
-        const Gram::VulkanShader accumulate = Gram::VulkanShader::Graphics(spec.m_Workspace, "Accumulate", static_cast<vk::Device>(device.GetLogicalDevice()));
-        auto& accumulatePass = m_VulkanRenderer->AddPass<PostProcessPass<AccumulationParams>>(device, accumulate, std::vector { rayTracePass.GetOutput() }, vk::Format::eR32G32B32A32Sfloat, [&state = m_Accumulation, &rayTracePass](const PostProcessPass<AccumulationParams>::Context& ctx)
+        const Gram::VulkanShader accumulate = Gram::VulkanShader::Graphics(spec.m_Workspace, AccumulateParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
+        auto& accumulatePass = m_VulkanRenderer->AddPass<PostProcessPass<AccumulateParams>>(device, accumulate, std::vector { rayTracePass.GetOutput() }, vk::Format::eR32G32B32A32Sfloat, [&state = m_Accumulation, &rayTracePass](const PostProcessPass<AccumulateParams>::Context& ctx)
         {
             if (state.Reset || ctx.OutputRecreated || rayTracePass.ConsumeSceneChanged()) { state.FrameCount = 0; state.Reset = false; }
-            return AccumulationParams { .FrameCount = state.FrameCount++ };
+            return AccumulateParams { .FrameCount = state.FrameCount++ };
         });
 
         // After the accumulation (it blurs the clean image), before SSAA (at the depth output's resolution).
         // Set 1: binding 0 = the accumulated color, binding 1 = the ray tracer's depth (metres along the camera's axis).
-        const Gram::VulkanShader dof = Gram::VulkanShader::Graphics(spec.m_Workspace, "DepthOfField", static_cast<vk::Device>(device.GetLogicalDevice()));
+        const Gram::VulkanShader dof = Gram::VulkanShader::Graphics(spec.m_Workspace, DepthOfFieldParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
         auto& dofPass = m_VulkanRenderer->AddPass<PostProcessPass<DepthOfFieldParams>>(device, dof, std::vector { accumulatePass.GetOutput(), rayTracePass.GetOutputDepth() }, vk::Format::eR32G32B32A32Sfloat, [&rayTracePass](const PostProcessPass<DepthOfFieldParams>::Context& ctx)
         {
             const CameraControls& c = rayTracePass.GetCameraControls();
@@ -99,13 +78,13 @@ private:
             return DepthOfFieldParams {
                 .TexelSize     = 1.0f / glm::vec2(ctx.InputExtent.width, ctx.InputExtent.height),
                 .FocusDistance = focus,
-                .CoCScale      = cocScale,
-                .MaxCoC        = 64.0f,   // pixels of the 2x image: bounds the shader's loop
+                .CocScale      = cocScale,
+                .MaxCoc        = 64.0f,   // pixels of the 2x image: bounds the shader's loop
                 .Enabled       = c.PostProcessDoF ? 1u : 0u,
             };
         });
 
-        const Gram::VulkanShader ssaa = Gram::VulkanShader::Graphics(spec.m_Workspace, "SSAA", static_cast<vk::Device>(device.GetLogicalDevice()));
+        const Gram::VulkanShader ssaa = Gram::VulkanShader::Graphics(spec.m_Workspace, SSAAParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
         m_VulkanRenderer->AddPass<PostProcessPass<SSAAParams>>(device, ssaa, std::vector { dofPass.GetOutput() }, m_VulkanRenderer->GetSceneTarget(), [](const PostProcessPass<SSAAParams>::Context& ctx)
         {
             return SSAAParams {
@@ -115,13 +94,13 @@ private:
         });
 
         // Kept for backwards compatibility: used to test graphics shaders / pipeline and upload data through buffers.
-        // const Gram::VulkanShader shader = Gram::VulkanShader::Graphics(spec.m_Workspace, "Default", static_cast<vk::Device>(device.GetLogicalDevice()));
-        // m_VulkanRenderer->AddPass<TrianglePass>(spec.m_Workspace / "textures" / "texture.jpg", device, shader, m_VulkanRenderer->GetSceneTarget());
+        // const Gram::VulkanShader triangle = Gram::VulkanShader::Graphics(spec.m_Workspace, DefaultParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
+        // m_VulkanRenderer->AddPass<TrianglePass>(spec.m_Workspace / "textures" / "texture.jpg", device, triangle, *m_VulkanRenderer->GetSceneTarget());
     }
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
     Gram::ObjectID m_GreetingEntity = {};
-    AccumulationParams m_Accumulation = {};
+    AccumulateParams m_Accumulation = {};
     std::shared_ptr<Gram::GameAPILoader> m_GameAPI;
     std::shared_ptr<Gram::World> m_World;
 

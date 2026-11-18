@@ -1,32 +1,9 @@
+#include "RayTracer.generated.hlsli"
+
 struct Ray
 {
     float3 Origin;
     float3 Direction;
-};
-
-struct Camera
-{
-    float3 Position     ; float TanHalfFovY;
-    float3 Right        ; float Aspect     ;
-    float3 Up           ; uint  SphereCount;
-    float3 Forward      ; uint  FrameIndex ;
-    uint   Samples      ; float SampleScale;
-    uint   MaxBounces   ; float LensRadius ;   // LensRadius 0 = pinhole, everything sharp
-    float  FocusDistance; float3 Padding0  ;   // distance to the sharp plane, along Forward
-};
-
-// Layout kept 1:1 with SphereData (RayTracePass.hpp): 32 bytes.
-struct Sphere
-{
-    float3 Position   ; float  Radius       ;
-    float  InnerRadius; uint   MaterialIndex; float2 Padding0;   // InnerRadius 0 = plină
-};
-
-// Layout kept 1:1 with MaterialData (RayTracePass.hpp): 32 bytes.
-struct Material
-{
-    float3 Albedo      ; float Fuzz              ;
-    float  RefractIndex; float AbsorptionDistance; uint Type; float Padding0;
 };
 
 struct HitRecord
@@ -87,13 +64,8 @@ uint InitRandom(uint2 pixel, uint width, uint frame)
     return PcgHash(pixel.y * width + pixel.x) ^ PcgHash(frame);
 }
 
-[[vk::binding(0, 0)]] ConstantBuffer<Camera>     camera;
-[[vk::binding(1, 0)]] StructuredBuffer<Sphere>   spheres;
-[[vk::binding(2, 0)]] StructuredBuffer<Material> materials;
-[[vk::binding(0, 1)]] [[vk::image_format("rgba32f")]] RWTexture2D<float4> result;
-[[vk::binding(1, 1)]] [[vk::image_format("r32f")]]    RWTexture2D<float>  depth;
 
-Ray CalculateRay(in Camera cam, uint2 pixel, uint2 size)
+Ray CalculateRay(in RayTracerParams cam, uint2 pixel, uint2 size)
 {
     const float2 jitter = float2(RandomFloat(g_Seed), RandomFloat(g_Seed));
     float2  pixelSample = (pixel + jitter) / float2(size) * 2.0f - 1.0f;
@@ -147,7 +119,7 @@ bool HitSurface(float3 center, float radius, float outwardSign, in Ray ray, floa
     return true;
 }
 
-bool HitSphere(in Sphere s, in Ray ray, float tmin, float tmax, out HitRecord rec)
+bool HitSphere(in SphereData s, in Ray ray, float tmin, float tmax, out HitRecord rec)
 {
     bool hit = HitSurface(s.Position, s.Radius, 1.0f, ray, tmin, tmax, rec);
 
@@ -171,9 +143,9 @@ bool HitSpheres(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
     bool hitAnything = false;
     float hitClosest = tmax;
 
-    for (uint index = 0; index < camera.SphereCount; index++)
+    for (uint index = 0; index < Params.SphereCount; index++)
     {
-        if (HitSphere(spheres[index], ray, tmin, hitClosest, temp))
+        if (HitSphere(Spheres[index], ray, tmin, hitClosest, temp))
         {
             hitAnything = true;
             hitClosest  = temp.Distance;
@@ -184,7 +156,7 @@ bool HitSpheres(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
     return hitAnything;
 }
 
-bool Scatter(in Material mat, inout Ray ray, in HitRecord hit, out float3 attenuation)
+bool Scatter(in MaterialData mat, inout Ray ray, in HitRecord hit, out float3 attenuation)
 {
     attenuation = mat.Albedo;
 
@@ -228,7 +200,7 @@ float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
 {
     float3 attenuation = 1.0f;
 
-    for (uint bounce = 0; bounce < camera.MaxBounces; bounce++)
+    for (uint bounce = 0; bounce < Params.MaxBounces; bounce++)
     {
         HitRecord hitRecord;
         if (!HitSpheres(ray, 0.01f, 3.402823466e+38f, hitRecord))
@@ -236,7 +208,7 @@ float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
             return attenuation * lerp(startColor, endColor, 0.5 * (ray.Direction.y + 1.0f));
         }
 
-        const Material mat = materials[hitRecord.MaterialIndex];
+        const MaterialData mat = Materials[hitRecord.MaterialIndex];
 
         // Lovită din spate: raza a parcurs hitRecord.Distance prin interiorul materialului.
         if (mat.Type == g_MaterialDielectric && !hitRecord.FrontFace)
@@ -246,14 +218,14 @@ float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
         }
 
         float3 materialAttenuation;
-        if (!Scatter(materials[hitRecord.MaterialIndex], ray, hitRecord, materialAttenuation)) return 0.0f;
+        if (!Scatter(Materials[hitRecord.MaterialIndex], ray, hitRecord, materialAttenuation)) return 0.0f;
         attenuation *= materialAttenuation;
     }
 
     return 0.0f;
 }
 
-float PrimaryDepth(in Camera cam, uint2 pixel, uint2 size)
+float PrimaryDepth(in RayTracerParams cam, uint2 pixel, uint2 size)
 {
     float2 ndc = (pixel + 0.5f) / float2(size) * 2.0f - 1.0f;
     ndc.y = -ndc.y;
@@ -273,21 +245,21 @@ float PrimaryDepth(in Camera cam, uint2 pixel, uint2 size)
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
     uint width, height;
-    result.GetDimensions(width, height);
+    Result.GetDimensions(width, height);
 
     if (id.x >= width || id.y >= height) return;
 
-    g_Seed = InitRandom(id.xy, width, camera.FrameIndex);
+    g_Seed = InitRandom(id.xy, width, Params.FrameIndex);
 
     float3 viewColor = float3(0.0f, 0.0f, 0.0f);
-    float  viewDepth = PrimaryDepth(camera, id.xy, uint2(width, height));
+    float  viewDepth = PrimaryDepth(Params, id.xy, uint2(width, height));
 
-    depth[id.xy] = viewDepth;
+    Depth[id.xy] = viewDepth;
 
-    for (uint sampleCount = 0; sampleCount < camera.Samples; sampleCount++)
+    for (uint sampleCount = 0; sampleCount < Params.Samples; sampleCount++)
     {
-        viewColor += RayColor(CalculateRay(camera, id.xy, uint2(width, height)), float3(1.0f, 1.0f, 1.0f), float3(0.5f, 0.7f, 1.0f)) * camera.SampleScale;
+        viewColor += RayColor(CalculateRay(Params, id.xy, uint2(width, height)), float3(1.0f, 1.0f, 1.0f), float3(0.5f, 0.7f, 1.0f)) * Params.SampleScale;
     }
 
-    result[id.xy] = float4(viewColor, 1.0f);
+    Result[id.xy] = float4(viewColor, 1.0f);
 }

@@ -1,0 +1,10 @@
+Pass(
+    name: "Default",
+    stage: Raster,
+    uniform: [                         // the textured quad's transforms (TrianglePass)
+        Field(name: "model", ty: Mat4),
+        Field(name: "view",  ty: Mat4),
+        Field(name: "proj",  ty: Mat4),
+    ],
+    inputs: [ Sampled(name: "albedo") ],
+)

@@ -73,10 +73,10 @@ fn main() {
                 Ok(generations) => {
                     for generation in generations {
                         match generation.written.as_slice() {
-                            [] => println!("{}: {} schema(s), generated code unchanged", generation.module, generation.schemas),
+                            [] => println!("{}: {} schema(s), {} pass(es), generated code unchanged", generation.module, generation.schemas, generation.passes),
                             written => println!(
-                                "{}: {} schema(s), wrote {}",
-                                generation.module, generation.schemas,
+                                "{}: {} schema(s), {} pass(es), wrote {}",
+                                generation.module, generation.schemas, generation.passes,
                                 written.iter().map(|path| path.display().to_string()).collect::<Vec<_>>().join(", ")
                             ),
                         }

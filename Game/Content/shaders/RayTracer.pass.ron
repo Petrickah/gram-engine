@@ -1,0 +1,38 @@
+Pass(
+    name: "RayTracer",
+    stage: Compute,
+    uniform: [                                         // the camera, and what the shader needs per frame
+        Field(name: "position",       ty: Vec3),
+        Field(name: "tan_half_fov_y", ty: F32),
+        Field(name: "right",          ty: Vec3),
+        Field(name: "aspect",         ty: F32),
+        Field(name: "up",             ty: Vec3),
+        Field(name: "sphere_count",   ty: U32),
+        Field(name: "forward",        ty: Vec3),
+        Field(name: "frame_index",    ty: U32),
+        Field(name: "samples",        ty: U32),
+        Field(name: "sample_scale",   ty: F32),
+        Field(name: "max_bounces",    ty: U32),
+        Field(name: "lens_radius",    ty: F32),          // 0 = pinhole, everything sharp
+        Field(name: "focus_distance", ty: F32),          // distance to the sharp plane, along forward
+    ],
+    buffers: [
+        Buffer(name: "spheres", element: "SphereData", fields: [
+            Field(name: "position",       ty: Vec3),
+            Field(name: "radius",         ty: F32),
+            Field(name: "inner_radius",   ty: F32),      // 0 = solid
+            Field(name: "material_index", ty: U32),
+        ]),
+        Buffer(name: "materials", element: "MaterialData", fields: [
+            Field(name: "albedo",              ty: Vec3),
+            Field(name: "fuzz",                ty: F32),
+            Field(name: "refract_index",       ty: F32),
+            Field(name: "absorption_distance", ty: F32),
+            Field(name: "type",                ty: U32), // MaterialType: 0 Lambertian, 1 Metal, 2 Dielectric
+        ]),
+    ],
+    outputs: [
+        Storage(name: "result", format: Rgba32f),
+        Storage(name: "depth",  format: R32f),           // metres along the camera's axis, 1e6 = sky
+    ],
+)

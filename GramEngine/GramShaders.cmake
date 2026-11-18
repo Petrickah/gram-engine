@@ -26,6 +26,16 @@ function(gram_copy_next_to target folder)
     )
 endfunction()
 
+# gram_hlsl_headers(<out var> <source>): the .hlsli headers next to <source>, so a shader recompiles when
+# one of them changes (the pass header gram generates next to it, `<name>.generated.hlsli`). Every
+# header of the folder, not only the ones this shader includes: dxc has no dependency file output to say
+# which. CONFIGURE_DEPENDS re-globs at build time, so a header gram writes for the first time is seen.
+function(gram_hlsl_headers out source)
+    get_filename_component(folder ${source} DIRECTORY)
+    file(GLOB headers CONFIGURE_DEPENDS ${folder}/*.hlsli)
+    set(${out} ${headers} PARENT_SCOPE)
+endfunction()
+
 # gram_add_hlsl_raster_shader(<target> <source>): called by the module that owns the shader (the game,
 # for its own content), after add_subdirectory(GramEngine). Compiles <source> (a .hlsl path,
 # relative to the caller's CMakeLists or absolute: the game keeps its shaders in Content/),
@@ -34,6 +44,7 @@ endfunction()
 function(gram_add_hlsl_raster_shader target source)
     get_filename_component(source ${source} ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
     get_filename_component(name ${source} NAME_WE)
+    gram_hlsl_headers(headers ${source})
     set(dir ${CMAKE_BINARY_DIR}/shaders)
     set(vert ${dir}/${name}.vert.spv)
     set(frag ${dir}/${name}.frag.spv)
@@ -42,7 +53,7 @@ function(gram_add_hlsl_raster_shader target source)
         COMMAND ${CMAKE_COMMAND} -E make_directory ${dir}
         COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -T vs_6_0 -E VSMain ${source} -Fo ${vert}
         COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -T ps_6_0 -E PSMain ${source} -Fo ${frag}
-        DEPENDS ${source}
+        DEPENDS ${source} ${headers}
         COMMENT "Compiling shader ${name}.hlsl to SPIR-V"
         VERBATIM
     )
@@ -58,13 +69,14 @@ endfunction()
 function(gram_add_hlsl_compute_shader target source)
     get_filename_component(source ${source} ABSOLUTE BASE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
     get_filename_component(name ${source} NAME_WE)
+    gram_hlsl_headers(headers ${source})
     set(dir ${CMAKE_BINARY_DIR}/shaders)
     set(compute ${dir}/${name}.compute.spv)
     add_custom_command(
         OUTPUT  ${compute}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${dir}
         COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -T cs_6_0 -E CSMain ${source} -Fo ${compute}
-        DEPENDS ${source}
+        DEPENDS ${source} ${headers}
         COMMENT "Compiling shader ${name}.hlsl to SPIR-V"
         VERBATIM
     )

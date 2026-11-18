@@ -1,0 +1,15 @@
+Pass(
+    name: "DepthOfField",
+    stage: Raster,
+    uniform: [
+        Field(name: "texel_size",     ty: Vec2),
+        Field(name: "focus_distance", ty: F32),
+        Field(name: "coc_scale",      ty: F32),
+        Field(name: "max_coc",        ty: F32),
+        Field(name: "enabled",        ty: U32),
+    ],
+    inputs: [
+        Sampled(name: "color"),            // the accumulated color
+        Sampled(name: "depth", ty: F32),   // metres along the camera's axis, 1e6 = sky
+    ],
+)

@@ -55,7 +55,11 @@ public:
         , m_ImageDescriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, InputBindings(m_TargetInputs.size())))
         , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, std::array { m_Descriptors.GetLayout(), m_ImageDescriptors.GetLayout() }, m_TargetOutput->GetFormat(), Gram::VertexBuffer::VertexInputInfo))
     {
-        m_Descriptors.Write(device, 0, m_Uniforms, sizeof(Params));
+        // The shader's pass file says how many images it samples (Params::InputCount, generated): a different
+        // number of inputs here would leave a binding empty or bind one the shader doesn't declare.
+        GramCheckVoid(m_TargetInputs.size() == Params::InputCount, "PostProcessPass<{}>: {} inputs given, the shader samples {}", Params::Shader, m_TargetInputs.size(), Params::InputCount);
+
+        m_Descriptors.Write(device, Params::UniformBinding, m_Uniforms, sizeof(Params));
 
         for (uint32_t inputIndex = 0; inputIndex < m_TargetInputs.size(); inputIndex++)
         {
@@ -148,7 +152,7 @@ private:
     // Set 0: the pass's parameters, filled every frame by m_Fill.
     static std::vector<vk::DescriptorSetLayoutBinding> UniformBindings()
     {
-        return { { .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment } };
+        return { { .binding = Params::UniformBinding, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment } };
     }
 
     // Set 1: one combined image sampler per input, binding i = inputs[i].

@@ -8,6 +8,8 @@
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 
+#include "Passes.generated.hpp"
+
 #ifdef GRAM_VULKAN_RENDERER
 
 struct CameraControls
@@ -23,42 +25,12 @@ struct CameraControls
     uint32_t  MaxBounces    = 10;
 };
 
-struct CameraData
-{
-    glm::vec3 Position;      float    TanHalfFovY;
-    glm::vec3 Right;         float    Aspect;
-    glm::vec3 Up;            uint32_t SphereCount;
-    glm::vec3 Forward;       uint32_t FrameIndex;
-    uint32_t  Samples;       float    SampleScale;
-    uint32_t  MaxBounces;    float    LensRadius;
-    float     FocusDistance; float    Padding0[3];
-};
+// The GPU-side structs (RayTracerParams: the camera uniform; SphereData, MaterialData: the storage
+// buffers' elements) and every binding number are generated from Content/shaders/RayTracer.pass.ron into
+// Passes.generated.hpp, the same layout as RayTracer.generated.hlsli.
 
-struct MaterialData
-{
-    static constexpr std::array TypeNames { "Lambertian", "Metal", "Dielectric" };
-    enum class TypeEnum : uint32_t
-    {
-        Lambertian,
-        Metal,
-        Dielectric,
-        Count
-    };
-
-    glm::vec3 Albedo      ; float Fuzz              ;
-    float     RefractIndex; float AbsorptionDistance; TypeEnum Type; float Padding0;
-};
-
-struct SphereData
-{
-    glm::vec3 Position   ; float    Radius       ;
-    float     InnerRadius; uint32_t MaterialIndex; glm::vec2 Padding0;   // InnerRadius 0 = plină
-};
-
-static_assert(sizeof(CameraData)   == 96);
-static_assert(sizeof(SphereData)   == 32);
-static_assert(sizeof(MaterialData) == 32);
-static_assert(MaterialData::TypeNames.size() == static_cast<size_t>(MaterialData::TypeEnum::Count));
+// What MaterialData::Type holds: the same numbers as RayTracer.hlsl's g_Material* constants.
+enum class MaterialType : uint32_t { Lambertian, Metal, Dielectric };
 
 // The game's scene: one complete scene raytraced from Content/shaders/RayTracer.hlsl, drawn into the
 // renderer's scene target (shown by the editor's viewport panel), at whatever size the target currently has.

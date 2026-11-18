@@ -10,7 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 mod files;
-pub(crate) use files::{find, write_if_changed};
+pub(crate) use files::{find, find_items, write_if_changed};
 use serde::Deserialize;
 
 /// The generated Rust module, next to the module's `Cargo.toml` (included with `#[path]`).
@@ -165,7 +165,7 @@ fn capitalize_first(word: &str) -> String {
     }
 }
 
-fn pascal_case(name: &str) -> String {
+pub(crate) fn pascal_case(name: &str) -> String {
     name.split("_").map(capitalize_first).collect::<String>()
 }
 

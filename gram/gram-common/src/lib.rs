@@ -2,6 +2,7 @@ pub mod commands;
 pub mod config;
 pub mod directory;
 pub mod lang;
+pub mod pass;
 pub mod profile;
 pub mod schema;
 pub mod target;

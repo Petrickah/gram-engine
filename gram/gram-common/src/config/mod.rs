@@ -11,6 +11,7 @@ use crate::directory::Directory;
 use crate::lang::{DependencySpec, backend_for, slash_path};
 use crate::profile::Profile;
 use crate::toolchain::Toolchain;
+use crate::pass;
 use crate::schema;
 use crate::target::validate_targets;
 
@@ -25,6 +26,7 @@ use module::ModuleConfig;
 pub struct Generation {
     pub module: String,
     pub schemas: usize,
+    pub passes: usize,
     pub written: Vec<PathBuf>,
 }
 
@@ -330,20 +332,32 @@ impl BuildConfig {
         for module in modules {
             let dir = module.dir();
             let schemas = schema::find(dir)?;
-            if schemas.is_empty() {
+            let passes  = schema::find_items(dir, "Pass(")?;
+            if schemas.is_empty() && passes.is_empty() {
                 continue;
             }
-            let generated = schema::generate(&schemas)
-                .map_err(|err| io::Error::new(err.kind(), format!("module {}: {err}", module.name)))?;
+            let context = |err: io::Error| io::Error::new(err.kind(), format!("module {}: {err}", module.name));
+
+            let mut files: Vec<(PathBuf, String)> = Vec::new();
+            if !schemas.is_empty() {
+                let generated = schema::generate(&schemas).map_err(context)?;
+                files.push((dir.join(schema::RUST_FILE), generated.rust));
+                files.push((dir.join(schema::CPP_FILE), generated.cpp));
+            }
+            if !passes.is_empty() {
+                let generated = pass::generate(&passes).map_err(context)?;
+                files.push((dir.join(pass::CPP_FILE), generated.cpp));
+                files.push((dir.join(pass::CMAKE_FILE), generated.cmake));
+                files.extend(generated.hlsl.into_iter().map(|(path, content)| (dir.join(path), content)));
+            }
 
             let mut written = Vec::new();
-            for (file, content) in [(schema::RUST_FILE, &generated.rust), (schema::CPP_FILE, &generated.cpp)] {
-                let path = dir.join(file);
-                if schema::write_if_changed(&path, content)? {
+            for (path, content) in files {
+                if schema::write_if_changed(&path, &content)? {
                     written.push(path);
                 }
             }
-            generations.push(Generation { module: module.name.clone(), schemas: schemas.len(), written });
+            generations.push(Generation { module: module.name.clone(), schemas: schemas.len(), passes: passes.len(), written });
         }
         Ok(generations)
     }

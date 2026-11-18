@@ -8,25 +8,20 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
-struct UniformBufferObject
-{
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
-};
-
 #ifdef GRAM_VULKAN_RENDERER
 
 TrianglePass::TrianglePass(const std::filesystem::path& texturePath, Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::VulkanRenderTarget& target)
     : m_Target(target)
     , m_Texture(Gram::VulkanImage::Load(device, texturePath))
     , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
-        { .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer,        .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eVertex   },
-        { .binding = 1, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment }
+        { .binding = DefaultParams::UniformBinding, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eVertex }
+    }))
+    , m_ImageDescriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
+        { .binding = DefaultParams::AlbedoBinding, .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eFragment }
     }))
     // Built for the target's format, not the swapchain's: that's what it renders into.
     // Its vertex input matches m_VertexBuffer's layout (Position, Color, TexCoord).
-    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, std::array { m_Descriptors.GetLayout() }, target.GetFormat(), Gram::VertexBuffer::VertexInputInfo))
+    , m_GraphicsPipeline(Gram::VulkanPipeline::Graphics(device, shader, std::array { m_Descriptors.GetLayout(), m_ImageDescriptors.GetLayout() }, target.GetFormat(), Gram::VertexBuffer::VertexInputInfo))
     , m_VertexBuffer(Gram::VulkanBuffer::Create<Gram::VertexBuffer>(device, {
         { .Position = { -1.0f, -1.0f }, .Color = { 1.0f, 1.0f, 1.0f }, .TexCoord = { 0.0f, 0.0f } },
         { .Position = {  1.0f, -1.0f }, .Color = { 1.0f, 0.0f, 0.0f }, .TexCoord = { 1.0f, 0.0f } },
@@ -34,10 +29,10 @@ TrianglePass::TrianglePass(const std::filesystem::path& texturePath, Gram::Vulka
         { .Position = { -1.0f,  1.0f }, .Color = { 0.0f, 0.0f, 1.0f }, .TexCoord = { 0.0f, 1.0f } }
     }))
     , m_IndexBuffer(Gram::VulkanBuffer::Create<Gram::IndexBuffer>(device, { 0, 1, 2, 2, 3, 0 }))
-    , m_Uniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<UniformBufferObject>>(device))
+    , m_Uniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<DefaultParams>>(device))
 {
-    m_Descriptors.Write(device, 0, m_Uniforms, sizeof(UniformBufferObject));
-    if (m_Texture.IsValid()) m_Descriptors.Write(device, 1, m_Texture);
+    m_Descriptors.Write(device, DefaultParams::UniformBinding, m_Uniforms, sizeof(DefaultParams));
+    if (m_Texture.IsValid()) m_ImageDescriptors.Write(device, DefaultParams::AlbedoBinding, m_Texture);
 }
 
 bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
@@ -51,7 +46,7 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     const vk::Extent2D extent = scene.GetExtent();
     
     m_GraphicsPipeline.Bind(cmd);
-    m_GraphicsPipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex) });
+    m_GraphicsPipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex), m_ImageDescriptors.Get(ctx.ActiveFrame.FrameIndex) });
 
     m_VertexBuffer.Send(cmd, [](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
     {
@@ -71,14 +66,14 @@ bool TrianglePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
                 auto currentTime = std::chrono::high_resolution_clock::now();
                 auto time             = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-        UniformBufferObject bufferData
+        DefaultParams bufferData
         {
-            .model  = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-            .view   = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-            .proj   = glm::perspective(glm::radians(45.0f), static_cast<float>(extent.width) / static_cast<float>(extent.height), 0.1f, 10.0f)
+            .Model  = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+            .View   = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+            .Proj   = glm::perspective(glm::radians(45.0f), static_cast<float>(extent.width) / static_cast<float>(extent.height), 0.1f, 10.0f)
         };
 
-        buffer.Map<UniformBufferObject, Gram::VulkanBuffer::Access::Write>().Write(&bufferData, 0, 1);
+        buffer.Map<DefaultParams, Gram::VulkanBuffer::Access::Write>().Write(&bufferData, 0, 1);
     });
 
     cmd.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));

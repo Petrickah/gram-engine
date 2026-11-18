@@ -23,16 +23,16 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
     : m_World(world)
     , m_Target(target)
     , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
-        { .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = 2, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
+        { .binding = RayTracerParams::UniformBinding,   .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::SpheresBinding,   .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::MaterialsBinding, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
     }))
     , m_ImageDescriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
-        { .binding = 0, .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = 1, .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::ResultBinding,    .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::DepthBinding,     .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
     }))
     , m_ComputePipeline(Gram::VulkanPipeline::Compute(device, shader, std::array { m_Descriptors.GetLayout(), m_ImageDescriptors.GetLayout() }))
-    , m_CameraUniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<CameraData>>(device))
+    , m_CameraUniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<RayTracerParams>>(device))
     , m_SphereCount(512), m_MaterialCount(512)
 {
     m_Output      = target ? std::make_shared<Gram::VulkanRenderTarget>(device, target->GetImage().GetExtent(), vk::Format::eR32G32B32A32Sfloat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled) : nullptr;
@@ -41,14 +41,14 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
 
     Gram::VulkanImage& scene      = m_Output->GetImage();
     Gram::VulkanImage& sceneDepth = m_OutputDepth->GetImage();
-    if (scene.IsValid())      m_ImageDescriptors.Write(device, 0, scene, vk::ImageLayout::eGeneral);
-    if (sceneDepth.IsValid()) m_ImageDescriptors.Write(device, 1, sceneDepth, vk::ImageLayout::eGeneral);
+    if (scene.IsValid())      m_ImageDescriptors.Write(device, RayTracerParams::ResultBinding, scene, vk::ImageLayout::eGeneral);
+    if (sceneDepth.IsValid()) m_ImageDescriptors.Write(device, RayTracerParams::DepthBinding, sceneDepth, vk::ImageLayout::eGeneral);
 
     m_SphereStorages   = Gram::VulkanBuffer::Create<Gram::StorageBuffer<SphereData>>(device, m_SphereCount);
     m_MaterialStorages = Gram::VulkanBuffer::Create<Gram::StorageBuffer<MaterialData>>(device, m_MaterialCount);
-    m_Descriptors.Write(device, 1, m_SphereStorages  , m_SphereCount   * sizeof(SphereData));
-    m_Descriptors.Write(device, 2, m_MaterialStorages, m_MaterialCount * sizeof(MaterialData));
-    m_Descriptors.Write(device, 0, m_CameraUniforms  , sizeof(CameraData));
+    m_Descriptors.Write(device, RayTracerParams::SpheresBinding, m_SphereStorages  , m_SphereCount   * sizeof(SphereData));
+    m_Descriptors.Write(device, RayTracerParams::MaterialsBinding, m_MaterialStorages, m_MaterialCount * sizeof(MaterialData));
+    m_Descriptors.Write(device, RayTracerParams::UniformBinding, m_CameraUniforms  , sizeof(RayTracerParams));
 }
 
 // The book's final scene (ch. 14): a ground, a 22×22 grid of small random spheres, three big ones.
@@ -74,7 +74,7 @@ void RayTracePass::GenerateBookScene()
         });
     };
 
-    using Type = MaterialData::TypeEnum;
+    using Type = MaterialType;
     add({ 0.0f, -1000.0f, 0.0f }, 1000.0f, Gram::Material { .Albedo = glm::vec3(0.5f), .Kind = static_cast<uint32_t>(Type::Lambertian) });
 
     for (int a = -11; a < 11; a++)
@@ -121,7 +121,7 @@ bool RayTracePass::PackScene()
             .Fuzz               = material->Fuzz,
             .RefractIndex       = material->RefractIndex,
             .AbsorptionDistance = material->AbsorptionDistance,
-            .Type               = static_cast<MaterialData::TypeEnum>(material->Kind),
+            .Type               = material->Kind,   // MaterialType's numbers
         });
         spheres.push_back({
             .Position      = sphere.Center,
@@ -169,8 +169,8 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 
     // Safe here: ApplyRequestedExtent waited for the device before recreating the image,
     // so no command buffer uses these sets anymore, not even the other frame in flight's.
-    if (outputRecreated)      m_ImageDescriptors.Write(ctx.Device, 0, m_Output     ->GetImage(), vk::ImageLayout::eGeneral);
-    if (outputDepthRecreated) m_ImageDescriptors.Write(ctx.Device, 1, m_OutputDepth->GetImage(), vk::ImageLayout::eGeneral);
+    if (outputRecreated)      m_ImageDescriptors.Write(ctx.Device, RayTracerParams::ResultBinding, m_Output     ->GetImage(), vk::ImageLayout::eGeneral);
+    if (outputDepthRecreated) m_ImageDescriptors.Write(ctx.Device, RayTracerParams::DepthBinding, m_OutputDepth->GetImage(), vk::ImageLayout::eGeneral);
 
     m_ComputePipeline.Bind(cmd);
     m_ComputePipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex), m_ImageDescriptors.Get(ctx.ActiveFrame.FrameIndex) });
@@ -192,7 +192,7 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
         // With the post-process depth of field, the ray tracer stays a pinhole: everything sharp, blurred afterwards.
         const     float lensRadius   = m_CameraControls.PostProcessDoF ? 0.0f : focalLength / (2.0f * m_CameraControls.FStop) * m_CameraControls.BokehScale;
 
-        CameraData camera {
+        RayTracerParams camera {
             .Position      = m_CameraControls.Position,      .TanHalfFovY  = tanHalfFovY,
             .Right         = right,                          .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
             .Up            = up,                             .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
@@ -202,7 +202,7 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
             .FocusDistance = m_CameraControls.FocusDistance,
         };
 
-        buffer.Map<CameraData, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
+        buffer.Map<RayTracerParams, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
     });
 
     m_SphereStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
@@ -244,7 +244,7 @@ void RayTracePass::DrawRayTracerUI()
             .Fuzz = 0.5f,
             .RefractIndex = 1.5f,
             .AbsorptionDistance = 1.0f,
-            .Kind = static_cast<uint32_t>(MaterialData::TypeEnum::Lambertian)
+            .Kind = static_cast<uint32_t>(MaterialType::Lambertian)
         });
     }
     ImGui::EndDisabled();

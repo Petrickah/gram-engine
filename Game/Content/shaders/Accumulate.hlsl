@@ -1,7 +1,5 @@
-[[vk::binding(0, 1)]] [[vk::combinedImageSampler]] Texture2D    _MainTexture;
-[[vk::binding(0, 1)]] [[vk::combinedImageSampler]] SamplerState sampler_MainTexture;
-[[vk::binding(1, 1)]] [[vk::combinedImageSampler]] Texture2D    _DepthTexture;
-[[vk::binding(1, 1)]] [[vk::combinedImageSampler]] SamplerState sampler_DepthTexture;
+#include "Accumulate.generated.hlsli"
+
 
 struct VSInput
 {
@@ -17,13 +15,6 @@ struct VSOutput
     [[vk::location(2)]] float2 TexCoord : TEXCOORD0;
 };
 
-struct UniformBuffer
-{
-    uint FrameCount; float3 Padding0;
-};
-
-[[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer> ubo;
-
 [shader("vertex")]
 VSOutput VSMain(in VSInput input)
 {
@@ -37,6 +28,6 @@ VSOutput VSMain(in VSInput input)
 [shader("pixel")]
 float4 PSMain(in VSOutput input) : SV_TARGET
 {
-    float3 colorSample = _MainTexture.Sample(sampler_MainTexture, input.TexCoord).rgb;
-    return float4(colorSample, 1.0f / float(ubo.FrameCount + 1));
+    float3 colorSample = Color.Sample(ColorSampler, input.TexCoord).rgb;
+    return float4(colorSample, 1.0f / float(Params.FrameCount + 1));
 }
