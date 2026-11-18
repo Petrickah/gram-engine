@@ -74,6 +74,23 @@ void* World::GetComponent(ObjectID entity, ComponentID component)
     return storage->second.Data.data() + slot->second * storage->second.Descriptor->Size;
 }
 
+uint32_t World::ComponentCount(ComponentID component) const
+{
+    auto storage = m_Components.find(component);
+    return storage == m_Components.end() ? 0 : static_cast<uint32_t>(storage->second.Owners.size());
+}
+
+void* World::ComponentAt(ComponentID component, uint32_t position, ObjectID* entity)
+{
+    auto it = m_Components.find(component);
+    if (it == m_Components.end() || position >= it->second.Owners.size()) return nullptr;
+
+    ComponentStorage& storage = it->second;
+    const uint32_t index = storage.Owners[position];
+    if (entity) *entity = ObjectID { .Index = index, .Generation = m_Slots[index].Generation };
+    return storage.Data.data() + position * storage.Descriptor->Size;
+}
+
 // Swap-remove: the last component moves into the hole, so Data stays packed and only two
 // entries change, however many components there are.
 void World::RemoveComponent(ComponentStorage& storage, uint32_t entityIndex)

@@ -7,14 +7,23 @@ use std::ffi::{c_char, c_void};
 use std::panic::UnwindSafe;
 use std::sync::OnceLock;
 
+/// What the engine offers a loaded game, filled by C++ (`Gram::HostAPI` in `HostAPI.hpp`). Written twice
+/// by hand: field order is the binary contract, checked by the size asserts on both sides.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct HostAPI {
     pub host: *mut c_void,
     pub log: extern "C" fn(level: logging::LogLevel, message: *const c_char),
     pub register_system: extern "C" fn(host: *mut c_void, desc: *const system::Descriptor),
-    pub get_component: extern "C" fn(host: *mut c_void, entity: ObjectID, component: u64) -> *mut c_void
+    pub get_component: extern "C" fn(host: *mut c_void, entity: ObjectID, component: u64) -> *mut c_void,
+    /// How many components of one type the World holds; `get_component_at` walks them by position
+    /// (0 .. count - 1, storage order), returning the address and writing the owner to `entity`, null past
+    /// the end. Like `get_component`, an address is only valid during the call that asked for it.
+    pub get_component_count: extern "C" fn(host: *mut c_void, component: u64) -> u32,
+    pub get_component_at: extern "C" fn(host: *mut c_void, component: u64, position: u32, entity: *mut ObjectID) -> *mut c_void,
 }
+
+const _: () = assert!(std::mem::size_of::<HostAPI>() == 6 * std::mem::size_of::<usize>());
 
 // void* is a generic pointer to an object from C++, Rust just passes it by to the register_system;
 // declaring the object static is not safe while holding onto the generic pointer from C++.

@@ -9,7 +9,7 @@ pub struct GameAPI {
     pub run_system: extern "C" fn(index: u32, ctx: *mut system::Context)
 }
 
-pub const GAME_API_VERSION: u32 = 3;
+pub const GAME_API_VERSION: u32 = 4;
 
 /// Exports a game library: generates the `GameAPI` table, `on_load` / `on_unload` /
 /// `run_system` (each inside `guard`) and `game_get_api`, from the list of systems.

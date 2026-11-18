@@ -39,7 +39,7 @@ public:
         Paused
     };
 
-    static const uint32_t GameAPIVersion = 3;
+    static const uint32_t GameAPIVersion = 4;
     using GetGameAPIFunction = const GameAPI* (*)();
 
 public:

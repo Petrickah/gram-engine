@@ -41,8 +41,26 @@ extern "C" fn get_component(_: *mut c_void, entity: ObjectID, component: u64) ->
     })
 }
 
+// In insertion order, like C++'s storage order: the n-th entry with that component is position n.
+extern "C" fn get_component_count(_: *mut c_void, component: u64) -> u32 {
+    WORLD.with(|world| world.borrow().iter().filter(|(_, c, _)| *c == component).count() as u32)
+}
+extern "C" fn get_component_at(_: *mut c_void, component: u64, position: u32, entity: *mut ObjectID) -> *mut c_void {
+    WORLD.with(|world| {
+        match world.borrow().iter().filter(|(_, c, _)| *c == component).nth(position as usize) {
+            Some(&(owner, _, ptr)) => {
+                if let Some(entity) = unsafe { entity.as_mut() } { *entity = owner; }
+                ptr
+            }
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
 fn setup() {
-    install_test_host(HostAPI { host: std::ptr::null_mut(), log, register_system, get_component });
+    install_test_host(HostAPI {
+        host: std::ptr::null_mut(), log, register_system, get_component, get_component_count, get_component_at,
+    });
 }
 
 fn add<T: Component>(entity: ObjectID, value: T) {
@@ -214,4 +232,24 @@ fn a_system_that_panics_releases_its_borrows() {
     assert!(panics(|| IntoSystem::run(&fails, &ctx(A))));
     let ctx = ctx(INVALID);
     let _next_frame = Query::<Health>::new(&ctx).get_mut(A).expect("released by the unwind");
+}
+
+// --- The host's iteration (what Query::iter will walk) ------------------------------------------
+
+#[test]
+fn the_host_walks_one_component_type_by_position() {
+    setup();
+    add(A, Health { value: 10 });
+    add(B, Speed { value: 2.0 });
+    add(B, Health { value: 20 });
+
+    let host = crate::interop::host::host().unwrap();
+    assert_eq!((host.get_component_count)(host.host, Health::ID), 2);
+    assert_eq!((host.get_component_count)(host.host, component_id("Missing")), 0);
+
+    let mut owner = INVALID;
+    let second = (host.get_component_at)(host.host, Health::ID, 1, &mut owner) as *const Health;
+    assert_eq!(owner, B);
+    assert_eq!(unsafe { &*second }, &Health { value: 20 });
+    assert!((host.get_component_at)(host.host, Health::ID, 2, &mut owner).is_null());
 }

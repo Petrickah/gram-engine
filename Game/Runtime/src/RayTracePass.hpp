@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Gram/Editor/Editor.hpp"
-#include "Gram/Editor/EditorPanel.hpp"
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDescriptors.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"

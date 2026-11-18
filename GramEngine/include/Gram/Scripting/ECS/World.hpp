@@ -30,6 +30,12 @@ public:
     void* AddComponent(ObjectID entity, const ComponentDescriptor* desc, const void* data);
     void* GetComponent(ObjectID entity, ComponentID component);
 
+    // Iteration by position, for callers that only have a ComponentID (HostAPI): how many components of
+    // that type exist, and the one at `position` (0 .. count - 1, storage order) with its entity written
+    // to *entity when it's not null; nullptr past the end.
+    uint32_t ComponentCount(ComponentID component) const;
+    void*    ComponentAt(ComponentID component, uint32_t position, ObjectID* entity);
+
     // Calls f(entity) for every live entity, in slot order.
     template<typename Function>
     void ForEachEntity(Function&& f) const
@@ -52,6 +58,7 @@ public:
         }
     }
 
+    template<typename T> uint32_t Count() const { return ComponentCount(T::ID); }
     template<typename T> T* Get(ObjectID entity)                 { return static_cast<T*>(GetComponent(entity, T::ID)); }
     template<typename T> T* Add(ObjectID entity, const T& value) { return static_cast<T*>(AddComponent(entity, &T::Descriptor(), &value)); }
     template<typename T, typename Function> void Each(Function&& f)

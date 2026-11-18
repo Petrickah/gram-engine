@@ -65,6 +65,16 @@ GameAPILoader::GameAPILoader(World& world, const std::filesystem::path& workspac
         {
             auto* loader = static_cast<Gram::GameAPILoader*>(host);
             return loader ? loader->m_World.GetComponent(entity, component) : nullptr;
+        },
+        .GetComponentCount = [](void* host, ComponentID component) -> uint32_t
+        {
+            auto* loader = static_cast<Gram::GameAPILoader*>(host);
+            return loader ? loader->m_World.ComponentCount(component) : 0;
+        },
+        .GetComponentAt = [](void* host, ComponentID component, uint32_t position, ObjectID* entity) -> void*
+        {
+            auto* loader = static_cast<Gram::GameAPILoader*>(host);
+            return loader ? loader->m_World.ComponentAt(component, position, entity) : nullptr;
         }
     })
 {
