@@ -1,6 +1,6 @@
 # Wave 2 — the ray tracer, the story so far
 
-A chronological account of 2026-11-05 → 2026-11-13: from a triangle with no buffers to *Ray Tracing in One Weekend* running in a compute shader, up to the book's cover scene, with progressive accumulation, supersampling and depth of field done twice (a real lens, then a post-process). It exists to keep the sequence straight for the Episode 2 devlog: what was tried, what broke, what each bug taught. The technical reference for the renderer as built is `docs/wave-2-renderer-guide.md`; this is the narrative.
+A chronological account of 2026-11-05 → 2026-11-18: from a triangle with no buffers to *Ray Tracing in One Weekend* running in a compute shader, up to the book's cover scene, then the spheres becoming entities that Rust moves and every shader's data described once in a `.ron` file, with progressive accumulation, supersampling and depth of field done twice (a real lens, then a post-process). It exists to keep the sequence straight for the Episode 2 devlog: what was tried, what broke, what each bug taught. The technical reference for the renderer as built is `docs/wave-2-renderer-guide.md`; this is the narrative.
 
 Method throughout, as for every wave: the user wrote the Vulkan and shader code (the learning), Claude reviewed, explained, and wrote the plumbing (CMake, the `gram` tool, wiring passes together).
 
@@ -56,6 +56,39 @@ The shader: CoC = `CoCScale * |d - focus| / d` (the lens's physics folded into o
 
 **The book's cover (ch. 14).** The closing image: a ground, a 22×22 grid of small spheres with random materials, three big ones (glass, diffuse, mirror), generated on the CPU with a seeded `std::mt19937` so the scene is the same every run; the shader didn't change at all. It's also the first time cost showed up: 486 spheres, every ray testing every one of them at every bounce, ~8 FPS on the M4 Pro (one sample per frame, 10 bounces, twice the viewport's resolution). That number is the baseline for the bounding volume hierarchy that comes next.
 
+## Part 4 — The scene becomes the engine's (Nov 17–18)
+
+Between Nov 13 and 17 the work left the ray tracer (build configurations, Xcode and Visual Studio projects, Play/Pause/Stop in the editor, running on SteamOS: other stories). It came back with one goal: the spheres had to stop being a `std::vector` inside the ray tracer and become what Wave 1 built the engine for, entities of the `World`, edited by the editor and driven by Rust.
+
+**A detour: panels from a function call.** The ray tracer's panel was a class whose only job was to call one method back. The editor now takes a path and a function: `editor->AddPanel("Debug/Ray Tracer", [this] { DrawRayTracerUI(); })`. The path's segments become submenus under the owner's menu (`Game` → `Debug` → `Ray Tracer`), its last segment the window's title, the whole path its ImGui ID (`Ray Tracer###Debug/Ray Tracer`), so two panels titled the same in different submenus stay two windows. The first version made a layer per panel, and the engine's `LayerOwner` refuses a second layer of the same type (a guard that had caught real bugs before), so the panels aren't layers: one `EditorFunctionPanels` layer holds and draws them all. A detail of ImGui's menus worth knowing: `BeginMenu` returns false for a closed menu, and a closed menu takes no `EndMenu`; the bar closes only the submenus that opened.
+
+**Spheres as entities, step by step (Task 2.3).** Seven small steps, each tested on its own:
+
+1. *A `Vec3` field type* for component schemas: C layout (12 bytes, 4-byte aligned), `gram_core::Vec3` in Rust, `glm::vec3` in C++, a `DragFloat3` in the inspector. A unit test pinned the layout; an edited value came back after Stop, thanks to the `World` snapshot.
+2. *`Sphere` and `Material` components*, two `.ron` schemas. Two components rather than one: a material will outlive spheres when cubes or meshes arrive.
+3. *Typed C++ access*: the generated structs carry their `ID` and `Descriptor()`, so `World` offers `Get<T>`, `Add<T>` and `Each<T>`. The component storage explained along the way: per type, one packed byte array, an `Owners` array (who owns slot i) and a `SlotOf` map (where entity e's component is); removing swaps the last one into the hole, so the array never has gaps but its order isn't the entities' order.
+4. *The ray tracer reads the `World`*: `PackScene` rebuilds the GPU's arrays from the entities every frame and compares them byte for byte with the last frame's, resetting the accumulation only on a real change. That one comparison replaced every "the UI says it changed" flag: inspector edits, Play/Stop and Rust all reset it for free. The trap: destroying entities inside `Each` moves the storage being walked, so the book's scene now deletes in two passes. And one false alarm: a "ghost" sphere while playing turned out to be a `Game` binary built from an intermediate step, before the comparison existed; Play rebuilds only the Rust library, never the C++.
+5. *The host learns to iterate*: `GetComponentCount`/`GetComponentAt` on both sides of the `HostAPI`, version 4, and the size asserts the contract had promised but never had.
+6. *`Query::iter()`/`iter_mut()` in Rust*: lazy iterators, one borrow guard per element, alive as long as the loop's variable. The lifetime error on the way taught one Rust rule: a `&'a T` needs `T: 'a`. Components hold no references, so `trait Component: 'static` says it once for all of them.
+7. *A system moving the spheres*: `bob.rs`, every small sphere bobbing while playing. It adds `A·cos(t + phase)·dt` per frame instead of setting `y = y0 + A·sin(t)`, because the component only knows where the sphere is now, not where it started. Pause lets the accumulation clean the image; Stop puts every sphere back.
+
+**Describing a shader once (Task 2.3a).** Every pass so far repeated itself: a uniform struct in HLSL and the same one in C++ with hand-placed padding, the binding numbers on both sides, a CMake line, the shader's name as a string. The layouts were where bugs kept appearing. Now a `.pass.ron` sits next to each shader:
+
+```ron
+Pass(
+    name: "DepthOfField",
+    stage: Raster,
+    uniform: [ Field(name: "texel_size", ty: Vec2), Field(name: "focus_distance", ty: F32), ... ],
+    inputs:  [ Sampled(name: "color"), Sampled(name: "depth", ty: F32) ],
+)
+```
+
+and `gram build` writes the rest: `Passes.generated.hpp` (`DepthOfFieldParams` with size and offset asserts, the shader's name, a binding constant per resource), `DepthOfField.generated.hlsli` next to the shader (the same struct, offsets as comments, every `[[vk::binding]]`), and `Shaders.generated.cmake` (the line compiling it). The ray tracer's file adds structured buffers (`SphereData`, `MaterialData`) and storage outputs; `Default.hlsl` brought a `Mat4` type.
+
+The heart of it is one function, `layout`, with one rule stricter than any GPU's: a `vec3`/`vec4`/matrix starts on a 16-byte boundary, a `vec2` on 8, a scalar on 4, and the size rounds up to 16, with every gap written as a named `_PadN` field on both sides. Explicit padding means no compiler's layout rules (std140, std430, dxc's relaxed ones) can make the two sides disagree. One detail: padding in HLSL is written as separate `uint`s, never as an array, because a cbuffer array element takes a whole 16-byte register. Bindings follow one convention instead of being configured: set 0 holds the uniform then the buffers, set 1 the sampled inputs then the storage outputs. The first phase (the model, the layout, the uniform's two emitters) was written by hand and was the hard part; inputs, buffers, compute passes and the CMake file were the same loop with more cases.
+
+What it bought: adding a pass is a `.pass.ron` and a shader; the C++ class still has to be written, but it starts from a header that says exactly what the shader needs. Next idea (Task 2.3b): generate that class's boilerplate too.
+
 ## Lessons worth a paragraph each
 
 - **The validation layer is the tutor.** Almost every Vulkan step was a validation error first; reading them carefully was faster than any guess.
@@ -63,7 +96,9 @@ The shader: CoC = `CoCScale * |d - focus| / d` (the lens's physics folded into o
 - **Names carry units.** `FocalLength` holding a distance in metres cost an evening; `FocusDistance`, `LensRadius`, `SampleScale` are names that say what's in them.
 - **Know what the hardware already does.** The sRGB swapchain applies gamma; pipeline blending computes a running average; a sampler clamps at the edges. Doing it again by hand is a bug.
 - **Physically based is about the material and the light, not about rays.** A rasterizer can be PBR; what a ray tracer adds is knowing where light comes from.
+- **Data in one place.** The ray tracer got simpler the day it stopped owning its spheres: the editor, Play/Stop and Rust all came for free once the scene lived in the `World`. The same move, one level down, gave the pass generator: a struct described once can't disagree with itself.
+- **Detect changes, don't announce them.** Comparing this frame's packed data with the last one replaced every "something changed" flag, and stays right when a new source of changes appears.
 
 ## Screenshots worth taking for the post
 
-The quad with the photo (end of part 1). The first noisy diffuse sphere next to the same one after a few hundred accumulated frames. Lambertian/metal/glass side by side. The hollow glass sphere with its rings, at 4 and at 12 bounces. Depth of field through the lens next to the post-process at the same settings, with a sphere in the foreground. The book's cover scene, with the FPS counter in the menu bar.
+The quad with the photo (end of part 1). The first noisy diffuse sphere next to the same one after a few hundred accumulated frames. Lambertian/metal/glass side by side. The hollow glass sphere with its rings, at 4 and at 12 bounces. Depth of field through the lens next to the post-process at the same settings, with a sphere in the foreground. The book's cover scene, with the FPS counter in the menu bar. The book's scene with the spheres bobbing (a short clip), the Outliner listing ~487 entities and one selected in the Inspector. A `.pass.ron` next to the two files generated from it.
