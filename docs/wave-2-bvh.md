@@ -124,3 +124,16 @@ Expected: no error, on the book's scene and on 1, 2 and 3 spheres (the small cas
 - **`tmax` in the box test must shrink** to the closest hit so far; with the original `tmax`, the tree is walked but nothing is skipped (correct image, no speed-up: a classic).
 - **Reordering:** after `BuildBvh`, `m_Spheres` is in tree order. `PackScene`'s change detection compares against the previous frame's packed array; compare the arrays from **before** the build, or a stable scene reports a change every frame (the build's order is deterministic, so comparing after works too, but only if the input order is).
 - **The stack size** is a constant in the shader and a depth limit for the build: if you ever see missing geometry with a lot of objects, check the depth first.
+
+## After it works: better trees and faster walks
+
+Measure each one against the midpoint build, with the same scene and the toggle.
+
+- **Visit the nearer child first.** In `HitSpheresBvh`, test both children's boxes and push the farther one first (so the nearer is popped first). A hit in the near child shrinks `hitClosest`, and the far child's box then often fails its test: whole subtrees skipped for one comparison.
+- **SAH (Surface Area Heuristic) instead of the midpoint.** The chance that a random ray hits a box is proportional to its **surface area** (not its volume), so a split costs about `C_traverse + (A_left / A_parent) · N_left · C_test + (A_right / A_parent) · N_right · C_test`. Try a few split positions per axis (8 to 16 equal "bins" of the node's box, each sphere counted in the bin its center falls in), keep the cheapest; if no split is cheaper than a leaf (`N · C_test`), make a leaf. It matters most on uneven scenes: one huge ground sphere and many small ones is exactly that case.
+- **Refit instead of rebuild** when only positions change (the spheres bobbing): keep the tree, recompute the boxes bottom-up (children before parents: walking the node array backwards works, since children always come after their parent). Cheaper than a build, but the tree's groups stop making sense if objects travel far; rebuild now and then.
+- **Multithreaded or GPU builds** only pay off at hundreds of thousands of primitives (a triangle mesh): subtrees built in parallel, or an LBVH from Morton codes on the GPU. Not for 486 spheres.
+
+## A reference, for after
+
+Sebastian Lague's *Coding Adventure* on BVHs has its source at https://github.com/SebLague/Ray-Tracing (MIT license; branch `Episode02`: `Assets/Scripts/BVH.cs` builds it, `Assets/Scripts/Shaders/RayTracer.shader` walks it). It's a BVH over triangles in Unity, whose shaders are HLSL, so the traversal reads almost like this one. Read it once step 1 works and is measured, then compare strategy by strategy (SAH, child order, node layout), each with its own before/after FPS. A ported piece keeps a comment naming where it comes from (the MIT license asks for the notice).
