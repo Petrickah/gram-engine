@@ -1,4 +1,5 @@
 pub mod greeter;
+pub mod bob;
 
 use crate::prelude::*;
 
@@ -11,5 +12,5 @@ fn tick(time: Time, delta_time: DeltaTime) {
 
 export_game! {
     events: { "greet" => [greeter::greet1, greeter::greet2] },
-    update: [tick],
+    update: [tick, bob::bob],
 }

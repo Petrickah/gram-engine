@@ -17,4 +17,6 @@ pub const fn component_id(name: &str) -> ComponentID {
 
 const _: () = assert!(component_id("Greeting") == 0xe18e41722408a7d6u64);
 
-pub trait Component { const ID: ComponentID; }
+/// A component's Rust type: plain `#[repr(C)]` data living in C++'s `World`, never holding a reference
+/// of its own, hence `'static` (which also lets a `Ref<'a, T>` exist for any context lifetime `'a`).
+pub trait Component: 'static { const ID: ComponentID; }

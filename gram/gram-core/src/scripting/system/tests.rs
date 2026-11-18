@@ -253,3 +253,41 @@ fn the_host_walks_one_component_type_by_position() {
     assert_eq!(unsafe { &*second }, &Health { value: 20 });
     assert!((host.get_component_at)(host.host, Health::ID, 2, &mut owner).is_null());
 }
+
+#[test]
+fn iter_visits_every_component() {
+    setup();
+    add(A, Health { value: 10 });
+    add(B, Health { value: 20 });
+    let ctx = ctx(INVALID);
+    let query = Query::<Health>::new(&ctx);
+
+    let seen: Vec<(ObjectID, i32)> = query.iter().map(|(entity, health)| (entity, health.value)).collect();
+    assert_eq!(seen, vec![(A, 10), (B, 20)]);
+}
+
+#[test]
+fn iter_mut_writes_every_component() {
+    setup();
+    add(A, Health { value: 10 });
+    add(B, Health { value: 20 });
+    let ctx = ctx(INVALID);
+    let query = Query::<Health>::new(&ctx);
+
+    for (_, mut health) in query.iter_mut() { health.value += 1; }
+
+    assert_eq!(query.get(A).unwrap().value, 11);
+    assert_eq!(query.get(B).unwrap().value, 21);
+}
+
+#[test]
+fn iter_conflicts_with_a_held_write() {
+    setup();
+    add(A, Health { value: 10 });
+    add(B, Health { value: 20 });
+    let ctx = ctx(INVALID);
+    let query = Query::<Health>::new(&ctx);
+
+    let _writing = query.get_mut(A).unwrap();   // kept alive across the iteration
+    assert!(panics(|| { let _: Vec<_> = query.iter().collect(); }));
+}

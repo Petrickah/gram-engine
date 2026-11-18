@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, ops::{Deref, DerefMut}};
 
-use crate::{interop::host::host, scripting::{borrow::BorrowGuard, component::Component, system::Context, world::ObjectID}};
+use crate::{interop::host::host, scripting::{borrow::BorrowGuard, component::Component, system::Context, world::{INVALID, ObjectID}}};
 
 #[derive(Debug)]
 pub struct Query<'a, T: Component> {
@@ -37,6 +37,44 @@ impl<'a, T: Component> Query<'a, T> {
     pub fn new(_ctx: &'a Context) -> Self {
         let _marker = PhantomData;
         Self { _ctx, _marker }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (ObjectID, Ref<'a, T>)> {
+        let (api, count) = match host() {
+            Some(api) => (Some(api), (api.get_component_count)(api.host, T::ID)),
+            None                        => (None, 0),
+        };
+
+        (0..count).filter_map(move |position| {
+            let api = api?;
+            let mut owner = INVALID;
+            let ptr = (api.get_component_at)(api.host, T::ID, position, &mut owner) as *const T;
+
+            if ptr.is_null() { return None; }
+
+            let _borrow = BorrowGuard::acquire(owner, T::ID, false);
+            let value = unsafe { &*ptr };
+            Some((owner, Ref { value, _borrow }))
+        })
+    }
+
+    pub fn iter_mut(&self) -> impl Iterator<Item = (ObjectID, RefMut<'a, T>)> {
+        let (api, count) = match host() {
+            Some(api) => (Some(api), (api.get_component_count)(api.host, T::ID)),
+            None                        => (None, 0),
+        };
+
+        (0..count).filter_map(move |position| {
+            let api = api?;
+            let mut owner = INVALID;
+            let ptr = (api.get_component_at)(api.host, T::ID, position, &mut owner) as *mut T;
+
+            if ptr.is_null() { return None; }
+
+            let _borrow = BorrowGuard::acquire(owner, T::ID, true);
+            let value = unsafe { &mut *ptr };
+            Some((owner, RefMut { value, _borrow }))
+        })
     }
 
     #[track_caller] pub fn get(&self, entity: ObjectID) -> Option<Ref<'a, T>> {
