@@ -1,0 +1,10 @@
+Component(
+    name: "Material",
+    fields: [
+        Field(name: "albedo", ty: Vec3),
+        Field(name: "fuzz", ty: F32),
+        Field(name: "refract_index", ty: F32),
+        Field(name: "absorption_distance", ty: F32),
+        Field(name: "kind", ty: U32),
+    ],
+)

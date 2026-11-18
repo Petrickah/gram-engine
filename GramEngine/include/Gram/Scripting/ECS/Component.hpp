@@ -26,7 +26,7 @@ struct FieldDescriptor
 public:
     enum class FieldType
     {
-        Str, F32, I32, U32, Bool
+        Str, F32, I32, U32, Bool, Vec3
     };
 
 public:

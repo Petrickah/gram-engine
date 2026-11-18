@@ -1,5 +1,7 @@
 #include "Gram/Scripting/Common.hpp"
+#include "Gram/Scripting/ECS/Component.hpp"
 #include "Gram/Scripting/ECS/World.hpp"
+#include <imgui.h>
 #include "Gram/Editor/InspectorPanel.hpp"
 
 #ifdef GRAM_EDITOR_ENABLED
@@ -32,6 +34,7 @@ void InspectorPanel::DrawComponent(const ComponentDescriptor& desc, void* data)
             case FieldDescriptor::FieldType::I32:  ImGui::DragScalar(field.Name, ImGuiDataType_S32, value); break;
             case FieldDescriptor::FieldType::U32:  ImGui::DragScalar(field.Name, ImGuiDataType_U32, value); break;
             case FieldDescriptor::FieldType::Bool: ImGui::Checkbox(field.Name, static_cast<bool*>(value)); break;
+            case FieldDescriptor::FieldType::Vec3: ImGui::DragFloat3(field.Name, static_cast<float*>(value), 0.01f); break;
         }
     }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 GRAM_NAMESPACE_BEGIN
 
 class GLFWApplication;
@@ -48,6 +49,24 @@ public:
             auto slot = storage.SlotOf.find(entity.Index);
             if (slot != storage.SlotOf.end())
                 f(*storage.Descriptor, storage.Data.data() + slot->second * storage.Descriptor->Size);
+        }
+    }
+
+    template<typename T> T* Get(ObjectID entity)                 { return static_cast<T*>(GetComponent(entity, T::ID)); }
+    template<typename T> T* Add(ObjectID entity, const T& value) { return static_cast<T*>(AddComponent(entity, &T::Descriptor(), &value)); }
+    template<typename T, typename Function> void Each(Function&& f)
+    {
+        auto it = m_Components.find(T::ID);
+        if (it == m_Components.end()) return;
+        ComponentStorage& storage = it->second;
+
+        for (uint32_t position = 0; position < storage.Owners.size(); position++)
+        {
+            const uint32_t index  = storage.Owners[position];
+            const ObjectID entity = { .Index = index, .Generation = m_Slots[index].Generation };
+            T& component = *reinterpret_cast<T*>(storage.Data.data() + position * sizeof(T));
+
+            f(entity, component);
         }
     }
 

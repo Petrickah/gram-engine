@@ -1,10 +1,11 @@
+#include "Components.generated.hpp"
 #include "Gram/Logging/GramLogger.hpp"
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDescriptors.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
-#include "vulkan/vulkan.hpp"
+#include "Gram/Scripting/ECS/World.hpp"
 
 #include "RayTracePass.hpp"
 
@@ -18,8 +19,9 @@
 
 #ifdef GRAM_VULKAN_RENDERER
 
-RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, const std::shared_ptr<Gram::VulkanRenderTarget>& target)
-    : m_Target(target)
+RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target)
+    : m_World(world)
+    , m_Target(target)
     , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
         { .binding = 0, .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
         { .binding = 1, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
@@ -52,26 +54,28 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
 // The book's final scene (ch. 14): a ground, a 22×22 grid of small random spheres, three big ones.
 void RayTracePass::GenerateBookScene()
 {
-    m_Spheres.clear();
-    m_Materials.clear();
+    // Two passes: destroying inside Each would move the storage being walked.
+    std::vector<Gram::ObjectID> old;
+    m_World.Each<Gram::Sphere>([&](Gram::ObjectID entity, Gram::Sphere&) { old.push_back(entity); });
+    for (const Gram::ObjectID& entity : old) m_World.DestroyEntity(entity);
 
     std::mt19937 rng(1337);   // fixed seed: the same scene every time
     auto random = [&](float lo = 0.0f, float hi = 1.0f) { return std::uniform_real_distribution<float>(lo, hi)(rng); };
     auto randomColor = [&](float lo = 0.0f, float hi = 1.0f) { return glm::vec3(random(lo, hi), random(lo, hi), random(lo, hi)); };
 
-    auto add = [&](glm::vec3 position, float radius, MaterialData material)
+    auto add = [&](glm::vec3 position, float radius, Gram::Material material)
     {
-        m_Materials.push_back(material);
-        m_Spheres.push_back({
-            .Position      = position, 
-            .Radius        = radius, 
-            .InnerRadius   = 0.0f,
-            .MaterialIndex = static_cast<uint32_t>(m_Materials.size() - 1)
+        Gram::ObjectID entity = m_World.CreateEntity();
+        m_World.Add<Gram::Material>(entity, material);
+        m_World.Add<Gram::Sphere>(entity, {
+            .Center      = position, 
+            .Radius      = radius, 
+            .InnerRadius = 0.0f
         });
     };
 
     using Type = MaterialData::TypeEnum;
-    add({ 0.0f, -1000.0f, 0.0f }, 1000.0f, { .Albedo = glm::vec3(0.5f), .Type = Type::Lambertian });
+    add({ 0.0f, -1000.0f, 0.0f }, 1000.0f, Gram::Material { .Albedo = glm::vec3(0.5f), .Kind = static_cast<uint32_t>(Type::Lambertian) });
 
     for (int a = -11; a < 11; a++)
     {
@@ -81,15 +85,15 @@ void RayTracePass::GenerateBookScene()
             const glm::vec3 center(a + 0.9f * random(), 0.2f, b + 0.9f * random());
             if (glm::length(center - glm::vec3(4.0f, 0.2f, 0.0f)) <= 0.9f) continue;   // room for the big metal one
 
-            if      (choose < 0.80f) add(center, 0.2f, { .Albedo = randomColor() * randomColor(), .Type = Type::Lambertian });
-            else if (choose < 0.95f) add(center, 0.2f, { .Albedo = randomColor(0.5f, 1.0f), .Fuzz = random(0.0f, 0.5f), .Type = Type::Metal });
-            else                     add(center, 0.2f, { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Type = Type::Dielectric });
+            if      (choose < 0.80f) add(center, 0.2f, Gram::Material { .Albedo = randomColor() * randomColor(), .Kind = static_cast<uint32_t>(Type::Lambertian) });
+            else if (choose < 0.95f) add(center, 0.2f, Gram::Material { .Albedo = randomColor(0.5f, 1.0f), .Fuzz = random(0.0f, 0.5f), .Kind = static_cast<uint32_t>(Type::Metal) });
+            else                     add(center, 0.2f, Gram::Material { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Kind = static_cast<uint32_t>(Type::Dielectric) });
         }
     }
 
-    add({  0.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Type = Type::Dielectric });
-    add({ -4.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = { 0.4f, 0.2f, 0.1f }, .Type = Type::Lambertian });
-    add({  4.0f, 1.0f, 0.0f }, 1.0f, { .Albedo = { 0.7f, 0.6f, 0.5f }, .Fuzz = 0.0f, .Type = Type::Metal });
+    add({  0.0f, 1.0f, 0.0f }, 1.0f, Gram::Material { .Albedo = glm::vec3(1.0f), .RefractIndex = 1.5f, .AbsorptionDistance = 1.0f, .Kind = static_cast<uint32_t>(Type::Dielectric) });
+    add({ -4.0f, 1.0f, 0.0f }, 1.0f, Gram::Material { .Albedo = { 0.4f, 0.2f, 0.1f }, .Kind = static_cast<uint32_t>(Type::Lambertian) });
+    add({  4.0f, 1.0f, 0.0f }, 1.0f, Gram::Material { .Albedo = { 0.7f, 0.6f, 0.5f }, .Fuzz = 0.0f, .Kind = static_cast<uint32_t>(Type::Metal) });
 
     // The book's camera: from (13, 2, 3) looking at the origin, vfov 20°, focused at 10.
     const glm::vec3 forward = glm::normalize(glm::vec3(0.0f) - glm::vec3(13.0f, 2.0f, 3.0f));
@@ -98,14 +102,52 @@ void RayTracePass::GenerateBookScene()
     m_CameraControls.Yaw           = glm::degrees(std::atan2(forward.x, -forward.z));
     m_CameraControls.FovY          = 20.0f;
     m_CameraControls.FocusDistance = 10.0f;
+}
 
-    m_SceneChanged = true;
+// The GPU's copy of the scene, rebuilt from the World every frame: one material per sphere, in the
+// same order, so sphere i's material is element i. Returns whether it differs from the last frame's.
+bool RayTracePass::PackScene()
+{
+    std::vector<SphereData>   spheres;
+    std::vector<MaterialData> materials;
+
+    m_World.Each<Gram::Sphere>([&](Gram::ObjectID entity, Gram::Sphere& sphere)
+    {
+        const Gram::Material* material = m_World.Get<Gram::Material>(entity);
+        if (!material || spheres.size() >= m_SphereCount) return;   // fără material nu are ce randa; bufferul e plin
+
+        materials.push_back({
+            .Albedo             = material->Albedo,
+            .Fuzz               = material->Fuzz,
+            .RefractIndex       = material->RefractIndex,
+            .AbsorptionDistance = material->AbsorptionDistance,
+            .Type               = static_cast<MaterialData::TypeEnum>(material->Kind),
+        });
+        spheres.push_back({
+            .Position      = sphere.Center,
+            .Radius        = sphere.Radius,
+            .InnerRadius   = sphere.InnerRadius,
+            .MaterialIndex = static_cast<uint32_t>(materials.size() - 1),
+        });
+    });
+
+    auto differs = [](const auto& a, const auto& b)
+    {
+        return a.size() != b.size() || std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) != 0;
+    };
+    const bool changed = differs(spheres, m_Spheres) || differs(materials, m_Materials);
+
+    m_Spheres   = std::move(spheres);
+    m_Materials = std::move(materials);
+    return changed;
 }
 
 bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 {
     GramCheck(m_ComputePipeline.IsValid(), "RayTracePass: the compute pipeline wasn't created");
     GramCheck(m_Output && m_OutputDepth && m_Target, "RayTracePass: at least one of the images were nullptr");
+    
+    if (PackScene()) m_SceneChanged = true;
 
     m_Output     ->RequestExtent(m_Target->GetImage().GetExtent(), 2.0f);
     m_Output     ->ApplyRequestedExtent();
@@ -191,22 +233,19 @@ void RayTracePass::DrawRayTracerUI()
     ImGui::BeginDisabled(m_Spheres.size() >= m_SphereCount);
     if (ImGui::Button("Add Sphere"))
     {
-        m_Materials.push_back({
-            .Albedo             = glm::vec3(0.8f, 0.3f, 0.3f),
-            .Fuzz               = 0.50f,
-            .RefractIndex       = 1.5f,
-            .AbsorptionDistance = 1.0f,   // 0 ar împărți la zero în shader
-            .Type               = MaterialData::TypeEnum::Lambertian,
+        const Gram::ObjectID entity = m_World.CreateEntity();
+        m_World.Add(entity, Gram::Sphere {
+            .Center = { 0.0f, 0.0f, -0.2f },
+            .Radius = 0.45f,
+            .InnerRadius = 0.0f
         });
-
-        m_Spheres.push_back({
-            .Position      = glm::vec3(0.0f, 0.0f, -0.2f),
-            .Radius        = 0.45f,
-            .InnerRadius   = 0.40f,
-            .MaterialIndex = static_cast<uint32_t>(m_Materials.size() - 1),
+        m_World.Add(entity, Gram::Material {
+            .Albedo = { 0.8f, 0.3f, 0.3f },
+            .Fuzz = 0.5f,
+            .RefractIndex = 1.5f,
+            .AbsorptionDistance = 1.0f,
+            .Kind = static_cast<uint32_t>(MaterialData::TypeEnum::Lambertian)
         });
-
-        changed = true;
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
@@ -230,54 +269,6 @@ void RayTracePass::DrawRayTracerUI()
         // Logarithmic: 1-2x and 50-100x are equally easy to reach.
         changed |= ImGui::SliderFloat ("Camera Bokeh Scale"    , &c.BokehScale   , 1.0f, 100.0f, "%.1fx", ImGuiSliderFlags_Logarithmic);
         changed |= ImGui::Checkbox    ("Depth of Field as Post-Process", &c.PostProcessDoF);
-    }
-    
-    if (ImGui::CollapsingHeader("Spheres", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        uint32_t index = 0;
-        std::optional<size_t> toRemove = std::nullopt;
-        for (auto& s: m_Spheres)
-        {
-            ImGui::PushID(std::format("_sphere#{}", index).c_str());
-            if (ImGui::CollapsingHeader("Sphere Data", ImGuiTreeNodeFlags_CollapsingHeader))
-            {
-                changed |= ImGui::DragFloat3("Sphere Position"    , &s.Position.x , 0.005f);
-                changed |= ImGui::DragFloat( "Sphere Outer Radius", &s.Radius     , 0.005f, 0.00f, 100.0f);
-                changed |= ImGui::DragFloat( "Sphere Inner Radius", &s.InnerRadius, 0.005f, 0.00f, s.Radius);
-
-                s.InnerRadius = std::min(s.InnerRadius, s.Radius * 0.99f);
-
-                if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_CollapsingHeader))
-                {
-                    auto& m = m_Materials[s.MaterialIndex];
-                    int type = static_cast<int>(m.Type);
-                    if (ImGui::Combo("Type", &type, MaterialData::TypeNames.data(), static_cast<int>(MaterialData::TypeNames.size())))
-                    {
-                        m.Type = static_cast<MaterialData::TypeEnum>(type);
-                        changed = true;   // nu uita resetarea acumulării
-                    }
-
-                    changed |= ImGui::DragFloat3("Material Albedo"    , &m.Albedo.x          , 0.005f, 0.000f, 1.0f);
-                    changed |= ImGui::DragFloat( "Material Fuzz"      , &m.Fuzz              , 0.005f, 0.000f, 1.0f);
-                    changed |= ImGui::DragFloat( "Material Refract"   , &m.RefractIndex      , 0.005f, 0.000f, 2.0f);
-                    changed |= ImGui::DragFloat( "Material Absorption", &m.AbsorptionDistance, 0.005f, 0.010f, 2.0f);
-                }
-
-                if (ImGui::Button("Remove")) { toRemove = index; changed = true; }
-            }
-
-            ImGui::PopID();
-
-            index++;
-        }
-
-        if (toRemove)
-        {
-            const uint32_t removed = m_Spheres[*toRemove].MaterialIndex;
-            m_Materials.erase(m_Materials.begin() + static_cast<std::ptrdiff_t>(removed));
-            m_Spheres.erase(m_Spheres.begin() + static_cast<std::ptrdiff_t>(*toRemove));
-            for (auto& s : m_Spheres) if (s.MaterialIndex > removed) --s.MaterialIndex;
-        }
     }
 
     if (changed) m_SceneChanged = true;

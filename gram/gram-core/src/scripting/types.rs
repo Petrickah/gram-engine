@@ -1,5 +1,7 @@
 #[repr(transparent)]
 #[derive(Debug)]
+// Str3 struct equivalent for C standard strings;
+// Has transparent layout, with 1 byte per character and alignment to 1 byte
 pub struct Str<const N: usize>([u8; N]);
 
 impl<const N: usize> Str<N> {
@@ -24,5 +26,19 @@ impl<const N: usize> Str<N> {
             Ok(text) => text,
             Err(error) => std::str::from_utf8(&self.0[..error.valid_up_to()]).unwrap_or_default(),
         }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+/// Vec3 struct equivalent for C++ glm::vec3;
+/// Has layout standard C, with 12 bytes (3 floats) and alignment to 4 bytes.
+pub struct Vec3 { pub x: f32, pub y: f32, pub z: f32 }
+
+const _ : () = assert!(std::mem::size_of::<Vec3>() == 12);
+
+impl Vec3 {
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
+        Self { x, y, z }
     }
 }

@@ -42,6 +42,7 @@ public:
         GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, *m_World, spec.m_Workspace, "GameLogic"), "couldn't load the Game API: GameLogic");
     
         const Gram::Greeting greeting = { .Text = "Hello world!" };
+        
         m_GreetingEntity = m_World->CreateEntity();
         GramInfo("Greeting Entity: Index {}, Generation {}", m_GreetingEntity.Index, m_GreetingEntity.Generation);
         m_World->AddComponent(m_GreetingEntity, &Gram::GreetingDescriptor, &greeting);
@@ -62,7 +63,7 @@ private:
         Gram::VulkanDevice& device = m_VulkanRenderer->GetDevice();
 
         const Gram::VulkanShader shader = Gram::VulkanShader::Compute(spec.m_Workspace, "RayTracer", static_cast<vk::Device>(device.GetLogicalDevice()));
-        RayTracePass& rayTracePass = m_VulkanRenderer->AddPass<RayTracePass>(device, shader, m_VulkanRenderer->GetSceneTarget());
+        RayTracePass& rayTracePass = m_VulkanRenderer->AddPass<RayTracePass>(device, shader, *m_World, m_VulkanRenderer->GetSceneTarget());
 
 #ifdef GRAM_IMGUI_ENABLED
         rayTracePass.RegisterPanels(m_Editor);

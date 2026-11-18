@@ -67,7 +67,7 @@ static_assert(MaterialData::TypeNames.size() == static_cast<size_t>(MaterialData
 class RayTracePass : public Gram::VulkanPass
 {
 public:
-    RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, const std::shared_ptr<Gram::VulkanRenderTarget>& target);
+    RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target);
     
     void GenerateBookScene();
 
@@ -80,6 +80,7 @@ public:
 #endif // #ifdef GRAM_IMGUI_ENABLED
 
 public:
+    bool PackScene();
     bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override;
 
     std::shared_ptr<Gram::VulkanRenderTarget>& GetOutput()      { return m_Output;      }
@@ -90,6 +91,7 @@ public:
     bool ConsumeSceneChanged() { return std::exchange(m_SceneChanged, false); }
     
 private:
+    Gram::World&                              m_World;
     std::shared_ptr<Gram::VulkanRenderTarget> m_Target;
     std::optional<uint64_t>                   m_TargetGeneration = std::nullopt;
     std::optional<uint64_t>                   m_DepthGeneration  = std::nullopt;

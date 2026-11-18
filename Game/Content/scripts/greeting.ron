@@ -3,5 +3,6 @@ Component(
     fields: [
         Field(name: "text", ty: Str(64)),
         Field(name: "scale", ty: F32),
+        Field(name: "color", ty: Vec3),
     ],
 )

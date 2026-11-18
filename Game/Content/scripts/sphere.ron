@@ -1,0 +1,8 @@
+Component(
+    name: "Sphere",
+    fields: [
+        Field(name: "center", ty: Vec3),
+        Field(name: "radius", ty: F32),
+        Field(name: "inner_radius", ty: F32),
+    ],
+)
