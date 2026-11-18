@@ -72,22 +72,10 @@ public:
     void GenerateBookScene();
 
 #ifdef GRAM_IMGUI_ENABLED
-    // The game's own window: what only this game has.
-    class RayTracerUI : public Gram::EditorPanel
-    {
-    public:
-        RayTracerUI(RayTracePass& rayPass) : EditorPanel("RayTracer"), m_RayPass(rayPass) { }
-        
-        void DrawContents() override;
-    
-    private:
-        RayTracePass& m_RayPass;
-    };
-    
+    void DrawRayTracerUI();
     void RegisterPanels(std::unique_ptr<Gram::Editor>& editor)
     {
-        // The scene target: the editor's Viewport shows what this RenderPass renders into it.
-        editor->AddPanel<RayTracerUI>(*this);
+        editor->AddPanel("Debug/Ray Tracer", [this] { DrawRayTracerUI(); });
     }
 #endif // #ifdef GRAM_IMGUI_ENABLED
 

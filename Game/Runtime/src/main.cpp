@@ -126,26 +126,19 @@ private:
 
 #ifdef GRAM_IMGUI_ENABLED
     // The game's own window: what only this game has (the Greet button).
-    struct GameUI : Gram::EditorPanel
+    void DrawGameUI()
     {
-        GameUI(RuntimeApplication& app) : EditorPanel("Game"), m_App(app) { }
-
-        void DrawContents() override
-        {
-            ImGui::BeginDisabled(m_App.m_GameAPI->GetGameAPI() == nullptr);
-            if (ImGui::Button("Greet")) m_App.m_GameAPI->Emit("greet", m_App.m_GreetingEntity);
-            ImGui::EndDisabled();
-        }
-
-        RuntimeApplication& m_App;
-    };
+        ImGui::BeginDisabled(m_GameAPI->GetGameAPI() == nullptr);
+        if (ImGui::Button("Greet")) m_GameAPI->Emit("greet", m_GreetingEntity);
+        ImGui::EndDisabled();
+    }
 
     void RegisterPanels()
     {
         // The scene target: the editor's Viewport (Debug only) shows what the passes render into it.
         m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI, m_VulkanRenderer->GetSceneTarget());
         // The game's own panels: in Debug next to the engine's, in Release the only ones, to test the game with.
-        m_Editor->AddPanel<GameUI>(*this);
+        m_Editor->AddPanel("Debug/Greeting", [this] { DrawGameUI(); });
         GramEditorOnly(m_Editor->GetInspector().Select(m_GreetingEntity));
     }
     

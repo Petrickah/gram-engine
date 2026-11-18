@@ -1,4 +1,4 @@
-#include "Gram/Scripting/Common.hpp"
+#include "Gram/Editor/EditorPanel.hpp"
 #include "Gram/Editor/Editor.hpp"
 #include "Gram/Editor/EditorToolbar.hpp"
 #include "Gram/Editor/InspectorPanel.hpp"
@@ -6,6 +6,7 @@
 #include "Gram/Editor/OutlinerPanel.hpp"
 #include "Gram/Editor/SystemsPanel.hpp"
 #include "Gram/Editor/ViewportPanel.hpp"
+#include "Gram/Logging/GramLogger.hpp"
 
 #ifdef GRAM_IMGUI_ENABLED
 GRAM_NAMESPACE_BEGIN
@@ -20,7 +21,27 @@ bool EditorMenuBar::OnDrawFrame()
             if (panels.empty() || !ImGui::BeginMenu(name)) return;
 
             for (EditorPanel* panel : panels)
-                ImGui::MenuItem(panel->GetName(), nullptr, &panel->IsOpen());
+            {
+                // A submenu per segment but the last, the item itself last. A closed submenu returns
+                // false and takes no EndMenu: close only the ones that opened.
+                const std::vector<std::string>& segments = panel->GetSegments();
+                
+                size_t opened       = 0;
+                size_t segmentCount = segments.size() - 1;
+                for (size_t index = 0; index < segmentCount; index++)
+                {
+                    const char* label = segments[index].c_str();
+                    if (ImGui::BeginMenu(label)) opened++;
+                    else break;
+                }
+
+                if (opened == segmentCount)
+                {
+                    ImGui::MenuItem(panel->GetTitle().c_str(), nullptr, &panel->IsOpen());
+                }
+
+                for (size_t index = 0; index < opened; index++) ImGui::EndMenu();
+            }
 
             ImGui::EndMenu();
         };
@@ -35,6 +56,16 @@ bool EditorMenuBar::OnDrawFrame()
         ImGui::TextUnformatted(frameRate);
 
         ImGui::EndMainMenuBar();
+    }
+
+    return true;
+}
+
+bool EditorFunctionPanels::OnDrawFrame()
+{
+    for (std::unique_ptr<FunctionPanel>& panel : m_Panels)
+    {
+        if (panel) panel->OnDrawFrame();
     }
 
     return true;
@@ -60,6 +91,9 @@ Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& wo
     if (sceneTarget) m_Viewport = Register<ViewportPanel>(PanelOwner::Engine, *sceneTarget);
 #endif // #ifdef GRAM_VULKAN_RENDERER
 #endif // #ifdef GRAM_EDITOR_ENABLED
+
+    // After the toolbar: windows drawn before it would be placed in the work area it hasn't shrunk yet.
+    GramCheckVoid(m_UI.RegisterLayer<EditorFunctionPanels>(m_FunctionPanels, *m_MenuBar), "couldn't create the editor's function panels");
 }
 
 GRAM_NAMESPACE_END
