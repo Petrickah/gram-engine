@@ -21,6 +21,7 @@ public:
     TrianglePass(const std::filesystem::path& texturePath, Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::VulkanRenderTarget& target);
 
     bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override;
+    const char* GetName() const override { return DefaultParams::Shader; }
 
 private:
     // The renderer's: its image is recreated on resize, so it's looked up every frame, never kept.

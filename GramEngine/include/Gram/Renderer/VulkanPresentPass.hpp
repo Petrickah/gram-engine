@@ -11,6 +11,7 @@ GRAM_NAMESPACE_BEGIN
 class VulkanPresentPass : public Gram::VulkanPass
 {
 public:
+    const char* GetName() const override { return "Present"; }
     VulkanPresentPass(VulkanDevice& device, const std::shared_ptr<VulkanRenderTarget>& target);
 
     bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override;

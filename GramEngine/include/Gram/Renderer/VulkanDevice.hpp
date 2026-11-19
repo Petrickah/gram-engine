@@ -37,6 +37,9 @@ public:
     QueueFamilyIndices& GetQueueFamilyIndices() { return m_QueueFamilyIndices; }
     const QueueFamilyIndices& GetQueueFamilyIndices() const { return m_QueueFamilyIndices; }
 
+    float    GetTimestampPeriod()    const { return m_TimestampPeriod; }      // nanoseconds per tick: limits.timestampPeriod
+    uint32_t GetTimestampValidBits() const { return m_TimestampValidBits; }   // the graphics queue family's; 0 = no timestamps
+
     VkDevice GetLogicalDevice() const  { return static_cast<VkDevice>(m_VkDevice); }
     VkPhysicalDevice GetPhysicalDevice() const { return static_cast<VkPhysicalDevice>(m_VkPhysicalDevice); }
 
@@ -58,6 +61,9 @@ private:
     vk::PhysicalDevice m_VkPhysicalDevice;
     vk::PhysicalDeviceFeatures m_DeviceFeatures;
     QueueFamilyIndices m_QueueFamilyIndices;
+
+    float    m_TimestampPeriod    = 0.0f;
+    uint32_t m_TimestampValidBits = 0;
 };
 
 GRAM_NAMESPACE_END

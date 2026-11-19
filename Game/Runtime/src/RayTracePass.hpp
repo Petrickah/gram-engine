@@ -54,6 +54,7 @@ public:
 public:
     bool PackScene();
     bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override;
+    const char* GetName() const override { return RayTracerParams::Shader; }
 
     std::shared_ptr<Gram::VulkanRenderTarget>& GetOutput()      { return m_Output;      }
     std::shared_ptr<Gram::VulkanRenderTarget>& GetOutputDepth() { return m_OutputDepth; }

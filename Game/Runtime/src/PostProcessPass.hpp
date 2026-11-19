@@ -69,6 +69,8 @@ public:
         }
     }
 
+    const char* GetName() const override { return Params::Shader; }
+
     bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override
     {
         GramCheck(m_GraphicsPipeline.IsValid(), "PostProcessPass: the graphics pipeline wasn't created");

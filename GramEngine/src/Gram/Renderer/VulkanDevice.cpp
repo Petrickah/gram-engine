@@ -1,6 +1,5 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
-#include "Gram/Renderer/VulkanRenderer.hpp"
 
 #ifdef GRAM_IMGUI_ENABLED
 #include <imgui.h>
@@ -184,6 +183,15 @@ bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendere
         {
             const vk::PhysicalDeviceProperties properties = deviceInstance.getProperties();
             GramVulkanInfo("physical device: {} (id {}, vendor {})", properties.deviceName.data(), properties.deviceID, properties.vendorID);
+            GramVulkanInfo("physical device: {} ({} timestamps for Compute and Graphics)",
+                properties.deviceName.data(),
+                properties.limits.timestampComputeAndGraphics ? "supports" : "doesn't support"
+            );
+            GramVulkanInfo("physical device: {} ({}ns timestamp period)",
+                properties.deviceName.data(),
+                properties.limits.timestampPeriod
+            );
+
 
             QueueFamilyIndices indices;
             FindQueueFamilies(rendererSpec, deviceInstance, indices, true);
@@ -217,6 +225,15 @@ bool VulkanDevice::PickPhysicalDevice(const VulkanRendererSpecification* rendere
     
     FindQueueFamilies(rendererSpec, m_VkPhysicalDevice, m_QueueFamilyIndices);
     FindDeviceExtensions(rendererSpec, m_VkPhysicalDevice, m_DeviceExtensions);
+
+    // The profiler's two values, from the chosen device only (every device is listed above, and each
+    // has its own: here one reports nanoseconds, the other 24 MHz ticks of 41.67 ns).
+    const vk::PhysicalDevice chosen = m_VkPhysicalDevice;
+    m_TimestampPeriod = chosen.getProperties().limits.timestampPeriod;
+    if (m_QueueFamilyIndices.m_GraphicsComputeFamily)
+    {
+        m_TimestampValidBits = chosen.getQueueFamilyProperties()[*m_QueueFamilyIndices.m_GraphicsComputeFamily].timestampValidBits;
+    }
     return m_VkPhysicalDevice != VK_NULL_HANDLE;
 }
 
@@ -293,6 +310,7 @@ bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*render
     for (const vk::QueueFamilyProperties& queueFamily: deviceInstance.getQueueFamilyProperties())
     {
         const bool hasGraphicsCompute = (queueFamily.queueFlags & graphicsCompute) == graphicsCompute;
+        const bool hasTimestampValidBits = queueFamily.timestampValidBits > 0;
 
         vk::Bool32 presentSupport = false;
         vk::Result vkResult = deviceInstance.getSurfaceSupportKHR(index, m_VkSurface, &presentSupport);
@@ -304,8 +322,9 @@ bool VulkanDevice::FindQueueFamilies(const VulkanRendererSpecification* /*render
 
         if (showDebug)
         {
-            GramVulkanListItem(hasGraphicsCompute, "queue family {}: graphics + compute", index);
-            GramVulkanListItem(presentSupport,     "queue family {}: present", index);
+            GramVulkanListItem(hasGraphicsCompute,    "queue family {}: graphics + compute", index);
+            GramVulkanListItem(hasTimestampValidBits, "queue family {}: timestamp valid bits {}", index, queueFamily.timestampValidBits);
+            GramVulkanListItem(presentSupport,        "queue family {}: present", index);
         }
 
         // Best case, and the usual one: a single family for everything, so the swapchain

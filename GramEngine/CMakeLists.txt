@@ -63,6 +63,7 @@ add_library(GramRenderer STATIC
     src/Gram/Renderer/VulkanInstance.cpp
     src/Gram/Renderer/VulkanPipeline.cpp
     src/Gram/Renderer/VulkanPresentPass.cpp
+    src/Gram/Renderer/VulkanProfiler.cpp
     src/Gram/Renderer/VulkanRenderer.cpp
     src/Gram/Renderer/VulkanRenderTarget.cpp
     src/Gram/Renderer/VulkanShader.cpp
@@ -98,6 +99,7 @@ add_library(GramEngine STATIC
     src/Gram/Editor/InspectorPanel.cpp
     src/Gram/Editor/LoggerPanel.cpp
     src/Gram/Editor/OutlinerPanel.cpp
+    src/Gram/Editor/ProfilerPanel.cpp
     src/Gram/Editor/SystemsPanel.cpp
     src/Gram/Editor/ViewportPanel.cpp
     src/Gram/Logging/GramLogger.cpp

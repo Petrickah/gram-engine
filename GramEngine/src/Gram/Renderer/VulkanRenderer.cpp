@@ -65,6 +65,7 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
 {
     // The game adds its own passes (AddPass); the renderer's own come after them, as members: the present
     // pass (no editor: Release, Final), then ImGui (Debug, Release), always drawn last.
+    m_Profiler.Create(m_VulkanDevice);
 }
 
 bool VulkanRenderer::OnDrawFrame()
@@ -79,6 +80,8 @@ bool VulkanRenderer::OnDrawFrame()
 
     std::optional<VulkanFrame::Active> frame = m_VulkanFrame.Begin(static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()), m_VulkanSwapchain);
     if (!frame) return true;
+
+    m_Profiler.BeginFrame(frame->CommandBuffer, frame->FrameIndex);
     
     VulkanPass::Context ctx {
         .Device      = m_VulkanDevice,
@@ -89,26 +92,37 @@ bool VulkanRenderer::OnDrawFrame()
     bool allRecorded = true;
     for (auto& pass : m_Passes)
     {
+        m_Profiler.Begin(frame->CommandBuffer, pass->GetName());
         allRecorded = pass->Record(frame->CommandBuffer, ctx) && allRecorded;
+        m_Profiler.End(frame->CommandBuffer);
     }
+
     
 #ifndef GRAM_EDITOR_ENABLED
+    m_Profiler.Begin(frame->CommandBuffer, m_VulkanPresentPass.GetName());
     allRecorded = m_VulkanPresentPass.Record(frame->CommandBuffer, ctx) && allRecorded;
+    m_Profiler.End(frame->CommandBuffer);
 #endif // #ifndef GRAM_EDITOR_ENABLED
-    GramImGuiOnly(allRecorded = m_VulkanImGui.Record(frame->CommandBuffer, ctx) && allRecorded);
+
+#ifdef GRAM_IMGUI_ENABLED
+    m_Profiler.Begin(frame->CommandBuffer, m_VulkanImGui.GetName());
+    allRecorded = m_VulkanImGui.Record(frame->CommandBuffer, ctx) && allRecorded;
+    m_Profiler.End(frame->CommandBuffer);
+#endif // #ifdef GRAM_IMGUI_ENABLED
 
     // Always End, even after a failed pass: Begin reset the fence and began the command buffer, so
     // leaving now would keep the fence unsignaled and hang the next waitForFences on this frame.
     bool allPresented = m_VulkanFrame.End(*frame, m_VulkanDevice, m_VulkanSwapchain);
-    for (auto& pass : m_Passes)
-    {
-        allPresented = pass->OnPresented() && allPresented;
-    }
+    // After End the command buffer is closed and submitted: no timestamps from here (OnPresented is CPU work).
+    for (auto& pass : m_Passes) allPresented = pass->OnPresented() && allPresented;
 
 #ifndef GRAM_EDITOR_ENABLED
     allPresented = m_VulkanPresentPass.OnPresented() && allPresented;
 #endif // #ifndef GRAM_EDITOR_ENABLED
-    GramImGuiOnly(allPresented = m_VulkanImGui.OnPresented() && allPresented);
+
+#ifdef GRAM_IMGUI_ENABLED
+    allPresented = m_VulkanImGui.OnPresented() && allPresented;
+#endif // #ifdef GRAM_IMGUI_ENABLED
 
     GramCheck(allRecorded, "pass recording failed");
     return allPresented;

@@ -12,6 +12,7 @@ struct VulkanRendererSpecification;
 class VulkanImGui : public VulkanPass, public LayerOwner<ImGuiApplicationLayer>
 {
 public:
+    const char* GetName() const override { return "ImGui"; }
     VulkanImGui(
         const VulkanRendererSpecification* rendererSpec,
         const vk::Instance&                instance,

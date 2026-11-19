@@ -6,6 +6,7 @@
 #include "Gram/Renderer/VulkanImGui.hpp"
 #include "Gram/Renderer/VulkanInstance.hpp"
 #include "Gram/Renderer/VulkanPass.hpp"
+#include "Gram/Renderer/VulkanProfiler.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Renderer/VulkanShader.hpp"
 #include "Gram/Renderer/VulkanSurface.hpp"
@@ -47,6 +48,8 @@ public:
     // The image a game renders its scene into, shown by the editor's viewport panel.
     std::shared_ptr<VulkanRenderTarget>& GetSceneTarget() { return m_SceneTarget; }
     GramImGuiOnly(LayerOwner<ImGuiApplicationLayer>& GetImGuiApplication() { return m_VulkanImGui; })
+    // Each pass's GPU time, shown by the editor's Profiler panel.
+    const VulkanProfiler&  GetProfiler() const  { return m_Profiler; }
 
 private:
     bool RecreateSwapchain();
@@ -58,6 +61,7 @@ private:
     VulkanDevice m_VulkanDevice;
     VulkanSwapchain m_VulkanSwapchain;
     VulkanFrame m_VulkanFrame;
+    VulkanProfiler m_Profiler;
     std::shared_ptr<VulkanRenderTarget> m_SceneTarget;
     GramImGuiOnly(VulkanImGui m_VulkanImGui);
 

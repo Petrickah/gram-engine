@@ -27,6 +27,8 @@ public:
     virtual bool Record(vk::CommandBuffer cmd, VulkanPass::Context ctx) = 0;
     virtual bool OnPresented() { return true; };
     virtual bool Finish() { return true; };
+    // What the profiler calls this pass (its time per frame is shown under this name).
+    virtual const char* GetName() const { return "Pass"; }
 
 protected:
     // See VulkanFrame::BeginSwapchainRendering: the first pass to call it this frame clears, the later
