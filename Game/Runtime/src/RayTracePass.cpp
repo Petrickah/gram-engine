@@ -226,7 +226,9 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
             .NodeCount     = static_cast<uint32_t>(m_Tree.GetNodes().size()),
             .UseBvh        = m_UseBvh ? 1u : 0u,
             .LargeCount    = m_LargeCount,
-            .DebugView     = m_DebugView ? 1u : 0u,
+            .DebugView     = m_DebugView,
+            .BoxThreshold    = m_BoxThreshold,
+            .SphereThreshold = m_SphereThreshold,
         };
 
         buffer.Map<RayTracerParams, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
@@ -278,7 +280,25 @@ void RayTracePass::DrawRayTracerUI()
 
         if (ImGui::Checkbox("Use BVH", &m_UseBvh)) m_SceneChanged = true;
         ImGui::SameLine();
-        if (ImGui::Checkbox("Show cost", &m_DebugView)) m_SceneChanged = true;   // the heat map: tests per primary ray
+        // The heat map: what the ray through each pixel tested on its way through the tree, instead of the image.
+        // The accumulation would blend new colors in slowly, so every change here restarts it.
+        int view = static_cast<int>(m_DebugView);
+        if (ImGui::Combo("Show cost", &view, "Off\0Box tests\0Sphere tests\0Both (boxes red, spheres blue)\0"))
+        {
+            m_DebugView    = static_cast<uint32_t>(view);
+            m_SceneChanged = true;
+        }
+
+        // The threshold is the color scale: that many tests = full color (red, or red/blue for Both); past it, white.
+        const uint32_t minTests = 1, maxBoxTests = 200, maxSphereTests = 600;
+        if (m_DebugView == 1 || m_DebugView == 3)
+        {
+            if (ImGui::SliderScalar("Box threshold", ImGuiDataType_U32, &m_BoxThreshold, &minTests, &maxBoxTests)) m_SceneChanged = true;
+        }
+        if (m_DebugView == 2 || m_DebugView == 3)
+        {
+            if (ImGui::SliderScalar("Sphere threshold", ImGuiDataType_U32, &m_SphereThreshold, &minTests, &maxSphereTests)) m_SceneChanged = true;
+        }
         ImGui::Text("%u large sphere(s) outside the tree", m_LargeCount);
     }
 

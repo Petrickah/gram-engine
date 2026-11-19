@@ -51,11 +51,15 @@ public:
     // V-Sync: the swapchain is recreated with the new present mode at the start of the next frame.
     void SetVSync(bool on) { m_VulkanSwapchain.SetVSync(on); m_VulkanFrame.MarkSwapchainStale(); }
     bool GetVSync() const  { return m_VulkanSwapchain.GetVSync(); }
+    // Saves the scene target (what the viewport shows, without the editor around it) as a PNG at `path`, at
+    // the start of the next frame, before any pass records into it. Logs where it went.
+    void RequestScreenshot(std::filesystem::path path) { m_ScreenshotPath = std::move(path); }
     // Each pass's GPU time, shown by the editor's Profiler panel.
     const VulkanProfiler&  GetProfiler() const  { return m_Profiler; }
 
 private:
     bool RecreateSwapchain();
+    bool SaveScreenshot(const std::filesystem::path& path);
 
 private:
     VulkanRendererSpecification m_RendererSpec;
@@ -65,6 +69,7 @@ private:
     VulkanSwapchain m_VulkanSwapchain;
     VulkanFrame m_VulkanFrame;
     VulkanProfiler m_Profiler;
+    std::optional<std::filesystem::path> m_ScreenshotPath;
     std::shared_ptr<VulkanRenderTarget> m_SceneTarget;
     GramImGuiOnly(VulkanImGui m_VulkanImGui);
 

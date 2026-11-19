@@ -1,6 +1,11 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Renderer/VulkanRenderer.hpp"
+#include "Gram/Renderer/VulkanBuffer.hpp"
+
+// stb_image_write's code, compiled once, here (its reader, stb_image, is compiled in VulkanImage.cpp).
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
@@ -74,6 +79,14 @@ bool VulkanRenderer::OnDrawFrame()
     // is not fatal: it is a minimized window (or a build error already logged), so skip the
     // frame and retry on the next one.
     if (m_VulkanFrame.IsSwapchainStale() && !RecreateSwapchain()) return true;
+
+    // A screenshot asked for while drawing the UI last frame: taken now, from the last frame's finished image,
+    // before this frame's passes start recording into it.
+    if (m_ScreenshotPath)
+    {
+        SaveScreenshot(*m_ScreenshotPath);
+        m_ScreenshotPath.reset();
+    }
 
     // The size the viewport panel asked for last frame, before any pass renders into the scene.
     if (m_SceneTarget) m_SceneTarget->ApplyRequestedExtent();
@@ -156,6 +169,65 @@ bool VulkanRenderer::OnStart()
 bool VulkanRenderer::OnStop()
 {
     return m_VulkanFrame.OnStop(static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice()));
+}
+
+// Copies the scene target into a host-visible buffer, converts its linear float color to 8-bit sRGB (what
+// the swapchain shows: it encodes sRGB itself) and writes it as a PNG.
+bool VulkanRenderer::SaveScreenshot(const std::filesystem::path& path)
+{
+    GramCheck(m_SceneTarget && m_SceneTarget->GetImage().IsValid(), "screenshot: no scene image");
+    GramCheck(m_SceneTarget->GetFormat() == vk::Format::eR32G32B32A32Sfloat, "screenshot: the scene isn't RGBA 32-bit float");
+
+    // The frames in flight may still read or write the image: let them finish first.
+    const vk::Device device = static_cast<vk::Device>(m_VulkanDevice.GetLogicalDevice());
+    GramVulkanCheck(device.waitIdle(), "screenshot: waiting for the device failed");
+
+    VulkanImage&       image  = m_SceneTarget->GetImage();
+    const vk::Extent2D extent = image.GetExtent();
+    const size_t       count  = static_cast<size_t>(extent.width) * extent.height * 4;   // floats: RGBA per pixel
+
+    VulkanBuffer staging = VulkanBuffer::Create(m_VulkanDevice, count * sizeof(float),
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vk::BufferUsageFlagBits::eTransferDst);
+
+    GramVulkanCheck(m_VulkanDevice.Submit([&](vk::CommandBuffer cmd)
+    {
+        image.Transition(cmd, vk::ImageLayout::eTransferSrcOptimal, vk::PipelineStageFlagBits2::eCopy, vk::AccessFlagBits2::eTransferRead);
+        const vk::BufferImageCopy region {
+            .imageSubresource = { .aspectMask = vk::ImageAspectFlagBits::eColor, .layerCount = 1 },
+            .imageExtent      = { extent.width, extent.height, 1 },
+        };
+        cmd.copyImageToBuffer(image.GetHandle(), vk::ImageLayout::eTransferSrcOptimal, staging.Get(), 1, &region);
+        // Back to how the frame left it: sampled by the viewport (or blitted by the present pass).
+        image.Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
+        return vk::Result::eSuccess;
+    }), "screenshot: copying the scene failed");
+
+    std::vector<float> pixels(count);
+    staging.Map<float, VulkanBuffer::Access::Read>().Read(pixels.data(), 0, count);
+
+    // Linear → sRGB, as the swapchain does when it shows the image, so the file looks like the viewport.
+    const auto encode = [](float linear)
+    {
+        const float c = std::clamp(linear, 0.0f, 1.0f);
+        const float srgb = c <= 0.0031308f ? 12.92f * c : 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+        return static_cast<uint8_t>(std::lround(srgb * 255.0f));
+    };
+    std::vector<uint8_t> bytes(count);
+    for (size_t i = 0; i < count; i += 4)
+    {
+        bytes[i + 0] = encode(pixels[i + 0]);
+        bytes[i + 1] = encode(pixels[i + 1]);
+        bytes[i + 2] = encode(pixels[i + 2]);
+        bytes[i + 3] = 255;
+    }
+
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    const bool written = stbi_write_png(path.string().c_str(), static_cast<int>(extent.width), static_cast<int>(extent.height), 4, bytes.data(), static_cast<int>(extent.width) * 4) != 0;
+    GramCheck(written, "screenshot: couldn't write {}", path.string());
+
+    GramInfo("screenshot saved: {} ({}x{})", path.string(), extent.width, extent.height);
+    return true;
 }
 
 GRAM_NAMESPACE_END

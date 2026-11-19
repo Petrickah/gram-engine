@@ -15,7 +15,7 @@
 class RuntimeApplication : public Gram::GLFWApplication
 {
 public:
-    RuntimeApplication(const Gram::GLFWApplicationSpecification& spec) : GLFWApplication(spec)
+    RuntimeApplication(const Gram::GLFWApplicationSpecification& spec) : GLFWApplication(spec), m_Workspace(spec.m_Workspace)
     {
         GramCheckVoid(RegisterLayer<Gram::World>(m_World), "couldn't instantiate the Game World");
         GramCheckVoid(RegisterLayer<Gram::GameAPILoader>(m_GameAPI, *m_World, spec.m_Workspace, "GameLogic"), "couldn't load the Game API: GameLogic");
@@ -121,6 +121,7 @@ private:
     }
 #endif // #ifdef GRAM_VULKAN_RENDERER
 
+    std::filesystem::path m_Workspace;   // the executable's folder: screenshots go in screenshots/ there
     Gram::ObjectID m_GreetingEntity = {};
     AccumulateParams m_Accumulation = {};
     std::shared_ptr<Gram::GameAPILoader> m_GameAPI;
@@ -156,6 +157,14 @@ private:
 
         bool vsync = m_VulkanRenderer->GetVSync();
         if (ImGui::Checkbox("V-Sync", &vsync)) m_VulkanRenderer->SetVSync(vsync);   // the swapchain is recreated next frame
+
+        // The scene as it is, without the editor around it, at its own resolution: a PNG named after the time,
+        // in screenshots/ next to the executable.
+        if (ImGui::Button("Take Picture"))
+        {
+            const std::string name = std::format("{:%Y-%m-%d_%H-%M-%S}.png", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+            m_VulkanRenderer->RequestScreenshot(m_Workspace / "screenshots" / name);
+        }
     }
 
     void RegisterPanels()

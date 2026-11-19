@@ -14,7 +14,8 @@ struct HitRecord
 };
 
 static uint g_Seed  = 0;
-static uint g_Tests = 0;
+static uint g_BoxTests    = 0;   // the heat map's two measures, per ray: box tests (the BVH's nodes)...
+static uint g_SphereTests = 0;   // ...and sphere tests (its leaves, the ground, or every sphere without it)
 
 static const float g_Miss               = 3.402823466e+38f;
 static const uint  g_StackSize          = 16;
@@ -124,7 +125,7 @@ bool HitSurface(float3 center, float radius, float outwardSign, in Ray ray, floa
 
 float HitBox(float3 boxMin, float3 boxMax, float3 origin, float3 invDirection, float tmin, float tmax)
 {
-    g_Tests++;
+    g_BoxTests++;
 
     const float3 t0 = (boxMin - origin) * invDirection;   // where the ray crosses each axis' min plane
     const float3 t1 = (boxMax - origin) * invDirection;   // ... and each axis' max plane
@@ -139,7 +140,7 @@ float HitBox(float3 boxMin, float3 boxMax, float3 origin, float3 invDirection, f
 
 bool HitSphere(in SphereData s, in Ray ray, float tmin, float tmax, out HitRecord rec)
 {
-    g_Tests++;
+    g_SphereTests++;
     bool hit = HitSurface(s.Position, s.Radius, 1.0f, ray, tmin, tmax, rec);
 
     if (s.InnerRadius > 0.0f)
@@ -311,19 +312,25 @@ float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
     return 0.0f;
 }
 
-float PrimaryDepth(in RayTracerParams cam, uint2 pixel, uint2 size)
+// The pinhole ray through the pixel's center (no jitter, no lens) and what it hits first: the depth output's
+// ray, and the heat map's (its tests are what the map counts, its surface what gives the map its shapes).
+bool PrimaryHit(in RayTracerParams cam, uint2 pixel, uint2 size, out Ray ray, out HitRecord hit)
 {
     float2 ndc = (pixel + 0.5f) / float2(size) * 2.0f - 1.0f;
     ndc.y = -ndc.y;
 
-    Ray ray;
     ray.Origin    = cam.Position;
     ray.Direction = normalize(cam.Forward + ndc.x * cam.Aspect * cam.TanHalfFovY * cam.Right
                                           + ndc.y *              cam.TanHalfFovY * cam.Up);
+    return HitSpheres(ray, 0.01f, 3.402823466e+38f, hit);
+}
 
-    HitRecord hit;
-    if (!HitSpheres(ray, 0.01f, 3.402823466e+38f, hit)) return 1e6f;
-    return hit.Distance * dot(ray.Direction, cam.Forward);
+// 0 → black, 0.5 → blue, 1 → red, past 1 → white: one measure of the heat map, read at a glance.
+float3 HeatRamp(float t)
+{
+    if (t > 1.0f) return float3(1.0f, 1.0f, 1.0f);
+    return t < 0.5f ? lerp(float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 1.0f), t * 2.0f)
+                    : lerp(float3(0.0f, 0.0f, 1.0f), float3(1.0f, 0.0f, 0.0f), t * 2.0f - 1.0f);
 }
 
 [shader("compute")]
@@ -338,13 +345,27 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     g_Seed = InitRandom(id.xy, width, Params.FrameIndex);
 
     float3 viewColor = float3(0.0f, 0.0f, 0.0f);
-    float  viewDepth = PrimaryDepth(Params, id.xy, uint2(width, height));
+    Ray       primary;
+    HitRecord primaryHit;
+    const bool  primaryHits = PrimaryHit(Params, id.xy, uint2(width, height), primary, primaryHit);
+    const float viewDepth   = primaryHits ? primaryHit.Distance * dot(primary.Direction, Params.Forward) : 1e6f;   // along the camera's axis; 1e6 = sky
 
     if (Params.DebugView != 0)
     {
-        // The primary ray's cost: PrimaryDepth just ran one HitSpheres for this pixel, counted in g_Tests.
-        const float heat = saturate(float(g_Tests) / 64.0f);    // 64 tests and above = full red
-        Result[id.xy] = float4(heat, 0.0f, 1.0f - heat, 1.0f);  // blue = cheap, red = expensive
+        // The primary ray's cost (PrimaryHit just ran one HitSpheres for this pixel), against the thresholds:
+        // 1 = full color, past 1 = white. One measure (box or sphere tests) as a ramp black → blue → red, or both
+        // at once, boxes in red and spheres in blue.
+        const float boxes   = float(g_BoxTests)    / float(max(Params.BoxThreshold,    1u));
+        const float spheres = float(g_SphereTests) / float(max(Params.SphereThreshold, 1u));
+
+        float3 heat;
+        if (Params.DebugView == 3) heat = (boxes > 1.0f || spheres > 1.0f) ? float3(1.0f, 1.0f, 1.0f) : float3(boxes, 0.0f, spheres);
+        else                       heat = HeatRamp(Params.DebugView == 1 ? boxes : spheres);
+
+        // Shaded by the surface the ray hit (a light from above), so the shapes show even where every pixel costs
+        // the same (no BVH: 486 sphere tests everywhere); the sky stays unshaded.
+        const float shade = primaryHits ? 0.3f + 0.7f * saturate(dot(primaryHit.Normal, normalize(float3(0.4f, 1.0f, 0.3f)))) : 1.0f;
+        Result[id.xy] = float4(heat * shade, 1.0f);
         return;
     }
 
