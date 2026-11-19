@@ -227,6 +227,7 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
             .UseBvh        = m_UseBvh ? 1u : 0u,
             .LargeCount    = m_LargeCount,
             .DebugView     = m_DebugView,
+            .DebugWholePath  = m_DebugWholePath ? 1u : 0u,
             .BoxThreshold    = m_BoxThreshold,
             .SphereThreshold = m_SphereThreshold,
         };
@@ -289,15 +290,22 @@ void RayTracePass::DrawRayTracerUI()
             m_SceneChanged = true;
         }
 
+        if (m_DebugView != 0)
+        {
+            // Off: the camera's ray only, shaded by what it hit. On: every bounce of the path, averaged over frames.
+            if (ImGui::Checkbox("Whole path (every bounce)", &m_DebugWholePath)) m_SceneChanged = true;
+        }
+
         // The threshold is the color scale: that many tests = full color (red, or red/blue for Both); past it, white.
-        const uint32_t minTests = 1, maxBoxTests = 200, maxSphereTests = 600;
+        // Logarithmic: a whole path without the BVH reaches thousands (486 spheres per bounce).
+        const uint32_t minTests = 1, maxBoxTests = 2000, maxSphereTests = 5000;
         if (m_DebugView == 1 || m_DebugView == 3)
         {
-            if (ImGui::SliderScalar("Box threshold", ImGuiDataType_U32, &m_BoxThreshold, &minTests, &maxBoxTests)) m_SceneChanged = true;
+            if (ImGui::SliderScalar("Box threshold", ImGuiDataType_U32, &m_BoxThreshold, &minTests, &maxBoxTests, nullptr, ImGuiSliderFlags_Logarithmic)) m_SceneChanged = true;
         }
         if (m_DebugView == 2 || m_DebugView == 3)
         {
-            if (ImGui::SliderScalar("Sphere threshold", ImGuiDataType_U32, &m_SphereThreshold, &minTests, &maxSphereTests)) m_SceneChanged = true;
+            if (ImGui::SliderScalar("Sphere threshold", ImGuiDataType_U32, &m_SphereThreshold, &minTests, &maxSphereTests, nullptr, ImGuiSliderFlags_Logarithmic)) m_SceneChanged = true;
         }
         ImGui::Text("%u large sphere(s) outside the tree", m_LargeCount);
     }

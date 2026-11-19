@@ -352,7 +352,22 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     if (Params.DebugView != 0)
     {
-        // The primary ray's cost (PrimaryHit just ran one HitSpheres for this pixel), against the thresholds:
+        // Whole path: the counts of every bounce of this frame's paths (the image's own, jittered and random), per
+        // sample. Noisy frame to frame, so the accumulation averages it into each pixel's mean cost, and the
+        // shapes come out of that average: no shading needed. Otherwise, the camera's ray only (PrimaryHit above).
+        if (Params.DebugWholePath != 0)
+        {
+            g_BoxTests    = 0;
+            g_SphereTests = 0;
+            for (uint sampleCount = 0; sampleCount < Params.Samples; sampleCount++)
+            {
+                RayColor(CalculateRay(Params, id.xy, uint2(width, height)), float3(1.0f, 1.0f, 1.0f), float3(0.5f, 0.7f, 1.0f));
+            }
+            g_BoxTests    /= Params.Samples;
+            g_SphereTests /= Params.Samples;
+        }
+
+        // The cost against the thresholds:
         // 1 = full color, past 1 = white. One measure (box or sphere tests) as a ramp black → blue → red, or both
         // at once, boxes in red and spheres in blue.
         const float boxes   = float(g_BoxTests)    / float(max(Params.BoxThreshold,    1u));
@@ -362,9 +377,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         if (Params.DebugView == 3) heat = (boxes > 1.0f || spheres > 1.0f) ? float3(1.0f, 1.0f, 1.0f) : float3(boxes, 0.0f, spheres);
         else                       heat = HeatRamp(Params.DebugView == 1 ? boxes : spheres);
 
-        // Shaded by the surface the ray hit (a light from above), so the shapes show even where every pixel costs
-        // the same (no BVH: 486 sphere tests everywhere); the sky stays unshaded.
-        const float shade = primaryHits ? 0.3f + 0.7f * saturate(dot(primaryHit.Normal, normalize(float3(0.4f, 1.0f, 0.3f)))) : 1.0f;
+        // The camera's ray only: shaded by the surface it hit (a light from above), so the shapes show even where
+        // every pixel costs the same (no BVH: 486 sphere tests everywhere); the sky stays unshaded.
+        const float shade = (primaryHits && Params.DebugWholePath == 0) ? 0.3f + 0.7f * saturate(dot(primaryHit.Normal, normalize(float3(0.4f, 1.0f, 0.3f)))) : 1.0f;
         Result[id.xy] = float4(heat * shade, 1.0f);
         return;
     }

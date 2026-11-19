@@ -103,6 +103,7 @@ private:
         bool     Fsr         = true;   // under 100%: FSR 1 (EASU + RCAS) rather than a bilinear magnification
         float    Sharpening  = 0.2f;   // RCAS, in stops below its strongest (0 = the most); AMD's default
     } m_Quality;
+    bool           m_DebugWholePath = false;   // the heat map counts every bounce, not only the camera's ray
     uint32_t       m_DebugView = 0;      // the heat map: 0 off, 1 box tests, 2 sphere tests, 3 both
     uint32_t       m_BoxThreshold    = 64;    // the heat map: box tests for full red
     uint32_t       m_SphereThreshold = 16;    // ... sphere tests for full blue

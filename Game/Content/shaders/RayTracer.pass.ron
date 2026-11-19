@@ -19,6 +19,7 @@ Pass(
         Field(name: "use_bvh",        ty: U32),
         Field(name: "large_count",    ty: U32),          // Spheres[0, large_count) are outside the tree, tested one by one
         Field(name: "debug_view",       ty: U32),        // the heat map instead of the image: 0 off, 1 box tests, 2 sphere tests, 3 both
+        Field(name: "debug_whole_path", ty: U32),        // the heat map counts: 0 = the camera's ray only, 1 = its whole path (every bounce)
         Field(name: "box_threshold",    ty: U32),        // the heat map: this many box tests = full red
         Field(name: "sphere_threshold", ty: U32),        // ... this many sphere tests = full blue; past either one, white
     ],
