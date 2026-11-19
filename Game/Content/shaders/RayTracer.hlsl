@@ -17,6 +17,7 @@ static uint g_Seed  = 0;
 static uint g_Tests = 0;
 
 static const float g_Miss               = 3.402823466e+38f;
+static const uint  g_StackSize          = 16;
 // Material Types; Keep the numeric values 1:1 with C++
 static const uint  g_MaterialLambertian = 0;
 static const uint  g_MaterialMetal      = 1;
@@ -176,7 +177,7 @@ bool HitSpheresBvh(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
     }
 
     uint top = 0;
-    uint stack[32];
+    uint stack[g_StackSize];
     stack[top++] = 0;   // the root
     while (top > 0)     // while there is something on the stack
     {
@@ -198,7 +199,7 @@ bool HitSpheresBvh(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
                 }
             }
         }
-        else if (top + 2 <= 32)   // an interior node: walk both children (guarded: the stack is fixed)
+        else if (top + 2 <= g_StackSize)   // an interior node: walk both children (guarded: the stack is fixed)
         {
             const BVHNode left    = Nodes[node.First];
             const BVHNode right   = Nodes[node.First + 1];
@@ -212,8 +213,8 @@ bool HitSpheresBvh(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
             const uint  nearNode = leftIsNearer ? node.First : node.First + 1;
             const uint  farNode  = leftIsNearer ? node.First + 1 : node.First;
 
-            if (farDist  != g_Miss && top < 32) stack[top++] = farNode;
-            if (nearDist != g_Miss && top < 32) stack[top++] = nearNode;
+            if (farDist  != g_Miss && top < g_StackSize) stack[top++] = farNode;
+            if (nearDist != g_Miss && top < g_StackSize) stack[top++] = nearNode;
         }
     }
 

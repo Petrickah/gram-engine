@@ -97,6 +97,12 @@ BVHTree::Stats BVHTree::Validate(std::span<const SphereData> spheres) const
         if (seen[sphere] != 1) stats.Error = std::format("sphere {} is in {} leaves", sphere, seen[sphere]);
     }
 
+    constexpr uint32_t ShaderStackSize = 16;   // RayTracer.hlsl's g_StackSize: keep them equal
+    if (stats.Error.empty() && stats.MaxDepth + 1 > ShaderStackSize)
+    {
+        stats.Error = std::format("depth {} needs a stack of {}, the shader has {}", stats.MaxDepth, stats.MaxDepth + 1, ShaderStackSize);
+    }
+
     return stats;
 }
 
