@@ -16,8 +16,14 @@ class VulkanRenderTarget : private UniqueObject
 public:
     VulkanRenderTarget(VulkanDevice& device, vk::Extent2D extent, vk::Format format, vk::ImageUsageFlags usage);
 
-    // Remembered until the next ApplyRequestedExtent; a zero size (a collapsed panel) is ignored.
+    // Remembered until the next ApplyRequestedExtent; a zero size (a collapsed panel) is ignored. With a
+    // fixed extent set, that one is used instead of `extent` (still times `scaleFactor`).
     void RequestExtent(vk::Extent2D extent, float scaleFactor = 1.0f);
+
+    // A size that doesn't follow whoever shows the image (a resolution picked in a settings panel), or
+    // nullopt to follow it again. The viewport and the present pass then fit the image into their area.
+    void SetFixedExtent(std::optional<vk::Extent2D> extent) { m_FixedExtent = extent; }
+    std::optional<vk::Extent2D> GetFixedExtent() const { return m_FixedExtent; }
 
     // Recreates the image when a different size was requested. Waits for the device to be idle
     // first: the frame still in flight may be reading the old image. Returns whether it recreated it.
@@ -34,6 +40,7 @@ private:
     vk::ImageUsageFlags         m_Usage;
     VulkanImage                 m_Image;
     std::optional<vk::Extent2D> m_RequestedExtent;
+    std::optional<vk::Extent2D> m_FixedExtent;
     uint64_t                    m_Generation = 0;
 };
 

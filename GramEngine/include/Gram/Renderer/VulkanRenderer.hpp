@@ -48,6 +48,9 @@ public:
     // The image a game renders its scene into, shown by the editor's viewport panel.
     std::shared_ptr<VulkanRenderTarget>& GetSceneTarget() { return m_SceneTarget; }
     GramImGuiOnly(LayerOwner<ImGuiApplicationLayer>& GetImGuiApplication() { return m_VulkanImGui; })
+    // V-Sync: the swapchain is recreated with the new present mode at the start of the next frame.
+    void SetVSync(bool on) { m_VulkanSwapchain.SetVSync(on); m_VulkanFrame.MarkSwapchainStale(); }
+    bool GetVSync() const  { return m_VulkanSwapchain.GetVSync(); }
     // Each pass's GPU time, shown by the editor's Profiler panel.
     const VulkanProfiler&  GetProfiler() const  { return m_Profiler; }
 

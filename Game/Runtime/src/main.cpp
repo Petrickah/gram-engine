@@ -135,12 +135,36 @@ private:
         ImGui::EndDisabled();
     }
 
+    // The scene's resolution (the viewport's own, or a fixed one shown letterboxed) and V-Sync.
+    void DrawDisplayUI()
+    {
+        const std::shared_ptr<Gram::VulkanRenderTarget>& scene = m_VulkanRenderer->GetSceneTarget();
+        const vk::Extent2D extent = scene->GetImage().GetExtent();
+        ImGui::Text("Scene: %u x %u", extent.width, extent.height);
+
+        static constexpr std::array<vk::Extent2D, 4> fixed { vk::Extent2D { 1280, 720 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } };
+        static constexpr std::array names { "Fit the viewport", "1280 x 720", "1920 x 1080", "2560 x 1440", "3840 x 2160" };
+        int current = 0;   // index into names: 0 = no fixed size
+        if (const std::optional<vk::Extent2D> pinned = scene->GetFixedExtent())
+        {
+            for (size_t i = 0; i < fixed.size(); i++) if (fixed[i] == *pinned) current = static_cast<int>(i) + 1;
+        }
+        if (ImGui::Combo("Resolution", &current, names.data(), static_cast<int>(names.size())))
+        {
+            scene->SetFixedExtent(current == 0 ? std::nullopt : std::optional(fixed[current - 1]));   // applied next frame
+        }
+
+        bool vsync = m_VulkanRenderer->GetVSync();
+        if (ImGui::Checkbox("V-Sync", &vsync)) m_VulkanRenderer->SetVSync(vsync);   // the swapchain is recreated next frame
+    }
+
     void RegisterPanels()
     {
         // The scene target: the editor's Viewport (Debug only) shows what the passes render into it.
         m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI, m_VulkanRenderer->GetSceneTarget(), &m_VulkanRenderer->GetProfiler());
         // The game's own panels: in Debug next to the engine's, in Release the only ones, to test the game with.
         m_Editor->AddPanel("Debug/Greeting", [this] { DrawGameUI(); });
+        m_Editor->AddPanel("Debug/Display",  [this] { DrawDisplayUI(); });
         GramEditorOnly(m_Editor->GetInspector().Select(m_GreetingEntity));
     }
     

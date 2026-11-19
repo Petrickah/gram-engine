@@ -15,7 +15,7 @@ struct SwapChainSupportDetails
     std::vector<vk::PresentModeKHR> m_PresentModes;
 
     bool ChooseSwapchainSurfaceFormat(vk::SurfaceFormatKHR& surfaceFormat, bool showDebug = false);
-    bool ChooseSwapchainPresentMode(vk::PresentModeKHR& presentMode, bool showDebug = false);
+    bool ChooseSwapchainPresentMode(vk::PresentModeKHR& presentMode, bool vsync, bool showDebug = false);
     bool ChooseSwapchainExtent(vk::Extent2D& extent, const VulkanRendererSpecification* rendererSpec = nullptr, bool showDebug = false);
     bool ChooseSwapchainImageCount(uint32_t& imageCount, bool showDebug);
 };
@@ -30,6 +30,11 @@ public:
     // Rebuilds the swapchain for the surface's current size (window resized, or the old one
     // went out of date). Returns false while it can't be built, e.g. a minimized window.
     bool Recreate();
+
+    // On: Fifo, one image per display refresh. Off: Mailbox (no tearing) or Immediate, whichever the
+    // surface offers, else Fifo still. Applied at the next Recreate.
+    void SetVSync(bool on) { m_VSync = on; }
+    bool GetVSync() const  { return m_VSync; }
 
 public:
     // m_ImageCount is only what we asked for; the driver may create more, so compare against the real images.
@@ -60,6 +65,7 @@ private:
     vk::Extent2D m_Extent2D;
     vk::SwapchainKHR m_Swapchain;
     vk::PresentModeKHR m_PresentMode = vk::PresentModeKHR::eFifo;
+    bool               m_VSync       = true;
     vk::SurfaceFormatKHR m_SurfaceFormat;
 
     uint32_t m_ImageCount = 0;

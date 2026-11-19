@@ -71,7 +71,7 @@ bool VulkanSwapchain::Build(bool showDebug)
         return false;
     }
 
-    if (!m_SupportDetails.ChooseSwapchainPresentMode(m_PresentMode, showDebug))
+    if (!m_SupportDetails.ChooseSwapchainPresentMode(m_PresentMode, m_VSync, showDebug))
     {
         GramVulkanError("no swapchain surface present mode to choose");
         return false;
@@ -239,10 +239,14 @@ bool SwapChainSupportDetails::ChooseSwapchainSurfaceFormat(vk::SurfaceFormatKHR 
     return true;
 }
 
-bool SwapChainSupportDetails::ChooseSwapchainPresentMode(vk::PresentModeKHR &presentMode, bool showDebug)
+bool SwapChainSupportDetails::ChooseSwapchainPresentMode(vk::PresentModeKHR &presentMode, bool vsync, bool showDebug)
 {
-    // Fifo is the only mode the spec guarantees, so it is also the fallback.
+    // Fifo is the only mode the spec guarantees, so it is also the fallback. Without V-Sync: Mailbox (the
+    // newest image replaces a waiting one, no tearing) if offered, else Immediate (may tear).
+    const auto offered = [&](vk::PresentModeKHR mode) { return std::ranges::find(m_PresentModes, mode) != m_PresentModes.end(); };
     presentMode = vk::PresentModeKHR::eFifo;
+    if (!vsync && offered(vk::PresentModeKHR::eMailbox))        presentMode = vk::PresentModeKHR::eMailbox;
+    else if (!vsync && offered(vk::PresentModeKHR::eImmediate)) presentMode = vk::PresentModeKHR::eImmediate;
 
     bool hasFifo = false;
     for (const vk::PresentModeKHR& availableMode : m_PresentModes)

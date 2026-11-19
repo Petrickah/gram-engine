@@ -28,12 +28,15 @@ enum class PanelOwner { Engine, Game };
 class EditorMenuBar : public ImGuiApplicationLayer
 {
 public:
+    // The scene target, if any: its resolution is shown next to the frame rate.
+    EditorMenuBar(std::shared_ptr<VulkanRenderTarget> sceneTarget = nullptr) : m_SceneTarget(std::move(sceneTarget)) { }
     void Add(EditorPanel& panel, PanelOwner owner) { (owner == PanelOwner::Engine ? m_EnginePanels : m_GamePanels).push_back(&panel); }
 
 private:
     bool OnDrawFrame() override;
 
 private:
+    std::shared_ptr<VulkanRenderTarget> m_SceneTarget;
     // Owned by the same LayerOwner as the menu bar.
     std::vector<EditorPanel*> m_EnginePanels;
     std::vector<EditorPanel*> m_GamePanels;

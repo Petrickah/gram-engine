@@ -13,6 +13,7 @@ VulkanRenderTarget::VulkanRenderTarget(VulkanDevice& device, vk::Extent2D extent
 
 void VulkanRenderTarget::RequestExtent(vk::Extent2D extent, float scaleFactor)
 {
+    if (m_FixedExtent) extent = *m_FixedExtent;
     if (extent.width == 0 || extent.height == 0) return;
 
     glm::vec2 scale = scaleFactor * glm::vec2(extent.width, extent.height);

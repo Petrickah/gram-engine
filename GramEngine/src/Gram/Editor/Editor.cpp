@@ -1,5 +1,6 @@
 #include "Gram/Editor/EditorPanel.hpp"
 #include "Gram/Editor/Editor.hpp"
+#include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Editor/EditorToolbar.hpp"
 #include "Gram/Editor/InspectorPanel.hpp"
 #include "Gram/Editor/LoggerPanel.hpp"
@@ -51,8 +52,16 @@ bool EditorMenuBar::OnDrawFrame()
 
         // The frame rate, right-aligned: ImGui's own running average over the last frames.
         const ImGuiIO& io = ImGui::GetIO();
-        char frameRate[64];
-        std::snprintf(frameRate, sizeof(frameRate), "%.1f FPS (%.2f ms)", io.Framerate, 1000.0f / io.Framerate);
+        char frameRate[96];
+        int  written = 0;
+#ifdef GRAM_VULKAN_RENDERER
+        if (m_SceneTarget)   // the resolution the scene renders at: the viewport's, or a fixed one
+        {
+            const vk::Extent2D extent = m_SceneTarget->GetImage().GetExtent();
+            written = std::snprintf(frameRate, sizeof(frameRate), "%ux%u   ", extent.width, extent.height);
+        }
+#endif // #ifdef GRAM_VULKAN_RENDERER
+        std::snprintf(frameRate + written, sizeof(frameRate) - written, "%.1f FPS (%.2f ms)", io.Framerate, 1000.0f / io.Framerate);
         ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::CalcTextSize(frameRate).x - 2.0f * ImGui::GetStyle().ItemSpacing.x);
         ImGui::TextUnformatted(frameRate);
 
@@ -75,7 +84,7 @@ bool EditorFunctionPanels::OnDrawFrame()
 Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& world, [[maybe_unused]] GameAPILoader& loader, [[maybe_unused]] std::shared_ptr<VulkanRenderTarget> sceneTarget, [[maybe_unused]] const VulkanProfiler* profiler)
     : m_UI(ui)
 {
-    GramCheckVoid(m_UI.RegisterLayer<EditorMenuBar>(m_MenuBar), "couldn't create the editor's menu bar");
+    GramCheckVoid(m_UI.RegisterLayer<EditorMenuBar>(m_MenuBar, sceneTarget), "couldn't create the editor's menu bar");
 
 #ifdef GRAM_EDITOR_ENABLED
     // Right after the menu bar: layers draw in registration order, and the toolbar goes under the menu.

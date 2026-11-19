@@ -15,7 +15,18 @@ void ViewportPanel::DrawContents()
     m_Target.RequestExtent(vk::Extent2D { static_cast<uint32_t>(available.x), static_cast<uint32_t>(available.y) });
 
     RefreshTexture();
-    if (m_Texture) ImGui::Image(reinterpret_cast<ImTextureID>(m_Texture), available);
+    if (!m_Texture) return;
+
+    // A fixed resolution (picked in a settings panel) may not match the panel: shown as large as fits,
+    // centered, its aspect kept (letterboxed); otherwise the image is the panel's own size.
+    ImVec2 size = available;
+    if (const std::optional<vk::Extent2D> fixed = m_Target.GetFixedExtent())
+    {
+        const float scale = std::min(available.x / static_cast<float>(fixed->width), available.y / static_cast<float>(fixed->height));
+        size = ImVec2(static_cast<float>(fixed->width) * scale, static_cast<float>(fixed->height) * scale);
+        ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + 0.5f * (available.x - size.x), ImGui::GetCursorPosY() + 0.5f * (available.y - size.y)));
+    }
+    ImGui::Image(reinterpret_cast<ImTextureID>(m_Texture), size);
 }
 
 void ViewportPanel::RefreshTexture()

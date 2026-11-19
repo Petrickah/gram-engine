@@ -321,6 +321,8 @@ void RayTracePass::DrawRayTracerUI()
         {
             m_Quality.RenderScale = scales[scale];   // the images are recreated next frame, which resets the accumulation
         }
+        const vk::Extent2D rendered = m_Output->GetImage().GetExtent();
+        ImGui::TextDisabled("ray tracing %u x %u", rendered.width, rendered.height);
 
         // Under 100%, how the smaller image is magnified to the screen. No accumulation reset: the ray tracer's
         // output doesn't change, only what's done to it after.
