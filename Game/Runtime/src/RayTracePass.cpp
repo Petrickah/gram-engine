@@ -8,13 +8,8 @@
 #include "Gram/Scripting/ECS/World.hpp"
 
 #include "RayTracePass.hpp"
-
-#include <cstddef>
-#include <cstdint>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/fwd.hpp>
-#include <glm/matrix.hpp>
-#include <imgui.h>
+#include "BVHTree.hpp"
+#include <chrono>
 #include <random>
 
 #ifdef GRAM_VULKAN_RENDERER
@@ -25,7 +20,8 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
     , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
         { .binding = RayTracerParams::UniformBinding,   .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
         { .binding = RayTracerParams::SpheresBinding,   .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = RayTracerParams::MaterialsBinding, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
+        { .binding = RayTracerParams::MaterialsBinding, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::NodesBinding,     .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
     }))
     , m_ImageDescriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
         { .binding = RayTracerParams::ResultBinding,    .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
@@ -48,6 +44,10 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
     m_MaterialStorages = Gram::VulkanBuffer::Create<Gram::StorageBuffer<MaterialData>>(device, m_MaterialCount);
     m_Descriptors.Write(device, RayTracerParams::SpheresBinding, m_SphereStorages  , m_SphereCount   * sizeof(SphereData));
     m_Descriptors.Write(device, RayTracerParams::MaterialsBinding, m_MaterialStorages, m_MaterialCount * sizeof(MaterialData));
+
+    // A binary tree over N spheres has at most 2N - 1 nodes.
+    m_NodeStorages = Gram::VulkanBuffer::Create<Gram::StorageBuffer<BVHNode>>(device, 2 * m_SphereCount);
+    m_Descriptors.Write(device, RayTracerParams::NodesBinding, m_NodeStorages, 2 * m_SphereCount * sizeof(BVHNode));
     m_Descriptors.Write(device, RayTracerParams::UniformBinding, m_CameraUniforms  , sizeof(RayTracerParams));
 }
 
@@ -135,10 +135,33 @@ bool RayTracePass::PackScene()
     {
         return a.size() != b.size() || std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) != 0;
     };
-    const bool changed = differs(spheres, m_Spheres) || differs(materials, m_Materials);
+    // Compared with the last frame's array as it came from the World, not with m_Spheres: building the tree
+    // reorders the spheres, so a scene that didn't move would look changed every frame.
+    const bool changed = differs(spheres, m_PackedSpheres) || differs(materials, m_Materials);
+    m_PackedSpheres = spheres;
 
-    m_Spheres   = std::move(spheres);
-    m_Materials = std::move(materials);
+    if (changed)
+    {
+        // Huge spheres (the ground) go first and stay out of the tree: one of them would make every box on its
+        // way down as big as itself, and nearly every ray would enter them all. They're tested one by one.
+        constexpr float largeRadius = 10.0f;
+        auto large   = std::partition(spheres.begin(), spheres.end(), [&](const SphereData& s) { return s.Radius > largeRadius; });
+        m_LargeCount = static_cast<uint32_t>(large - spheres.begin());
+        const std::span<SphereData> treeSpheres = std::span(spheres).subspan(m_LargeCount);   // the tree's indices start after them
+
+        const auto start = std::chrono::steady_clock::now();
+        m_Tree = BVHTree::Create(treeSpheres);
+        const auto end   = std::chrono::steady_clock::now();
+
+        m_TreeStats         = m_Tree.Validate(treeSpheres);
+        m_TreeStats.BuildMs = std::chrono::duration<float, std::milli>(end - start).count();
+
+        // Only together with the tree: the nodes point at the spheres in the order Create left them in, and
+        // this frame's `spheres` is in that order only when the tree was just built from it.
+        m_Spheres   = std::move(spheres);
+        m_Materials = std::move(materials);
+    }
+
     return changed;
 }
 
@@ -200,6 +223,10 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
             .Samples       = 1,                              .SampleScale  = 1.0f,
             .MaxBounces    = m_CameraControls.MaxBounces,    .LensRadius   = lensRadius,
             .FocusDistance = m_CameraControls.FocusDistance,
+            .NodeCount     = static_cast<uint32_t>(m_Tree.GetNodes().size()),
+            .UseBvh        = m_UseBvh ? 1u : 0u,
+            .LargeCount    = m_LargeCount,
+            .DebugView     = m_DebugView ? 1u : 0u,
         };
 
         buffer.Map<RayTracerParams, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
@@ -208,6 +235,12 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     m_SphereStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
     {
         buffer.Map<SphereData, Gram::VulkanBuffer::Access::Write>().Write(m_Spheres.data(), 0, m_Spheres.size());
+    });
+
+    m_NodeStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
+    {
+        const std::vector<BVHNode>& nodes = m_Tree.GetNodes();
+        if (!nodes.empty()) buffer.Map<BVHNode, Gram::VulkanBuffer::Access::Write>().Write(nodes.data(), 0, nodes.size());
     });
 
     m_MaterialStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
@@ -227,7 +260,21 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 #ifdef GRAM_IMGUI_ENABLED
 void RayTracePass::DrawRayTracerUI()
 {
-    ImGui::Text("%u Spheres", static_cast<uint32_t>(m_Spheres.size()));   // the frame rate is in the editor's menu bar
+    if (ImGui::CollapsingHeader("BVH", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        const BVHTree::Stats& s = m_TreeStats;
+        ImGui::Text("%u nodes, %u leaves, depth %u, fullest leaf %u", s.Nodes, s.Leaves, s.MaxDepth, s.MaxLeafSize);
+        ImGui::Text("built in %.3f ms", s.BuildMs);
+        if (s.Error.empty()) ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "valid");
+        else                 ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "invalid: %s", s.Error.c_str());
+
+        // Off: every ray tests every sphere (the old loop); on: through the tree. The same image either way.
+        if (ImGui::Checkbox("Use BVH", &m_UseBvh)) m_SceneChanged = true;
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Show cost", &m_DebugView)) m_SceneChanged = true;   // the heat map: tests per primary ray
+        ImGui::Text("%u large sphere(s) outside the tree", m_LargeCount);
+    }
+
 
     bool changed = false;
     ImGui::BeginDisabled(m_Spheres.size() >= m_SphereCount);

@@ -13,7 +13,8 @@ struct HitRecord
     uint   MaterialIndex;
 };
 
-static uint g_Seed       = 0;
+static uint g_Seed  = 0;
+static uint g_Tests = 0;
 
 // Material Types; Keep the numeric values 1:1 with C++
 static const uint g_MaterialLambertian = 0;
@@ -119,8 +120,24 @@ bool HitSurface(float3 center, float radius, float outwardSign, in Ray ray, floa
     return true;
 }
 
+bool HitBox(float3 boxMin, float3 boxMax, float3 origin, float3 invDirection, float tmin, float tmax)
+{
+    g_Tests++;
+
+    const float3 t0 = (boxMin - origin) * invDirection;   // where the ray crosses each axis' min plane
+    const float3 t1 = (boxMax - origin) * invDirection;   // ... and each axis' max plane
+
+    const float3 enter = min(t0, t1);   // per axis: the earlier crossing is the entry
+    const float3 exit  = max(t0, t1);   // ... the later one the exit
+
+    const float near = max(max(enter.x, enter.y), max(enter.z, tmin));   // the last entry
+    const float far  = min(min(exit.x,  exit.y),  min(exit.z,  tmax));   // the first exit
+    return near <= far;
+}
+
 bool HitSphere(in SphereData s, in Ray ray, float tmin, float tmax, out HitRecord rec)
 {
+    g_Tests++;
     bool hit = HitSurface(s.Position, s.Radius, 1.0f, ray, tmin, tmax, rec);
 
     if (s.InnerRadius > 0.0f)
@@ -137,11 +154,66 @@ bool HitSphere(in SphereData s, in Ray ray, float tmin, float tmax, out HitRecor
     return hit;
 }
 
+bool HitSpheresBvh(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
+{
+    hitRecord = (HitRecord)0;
+    if (Params.NodeCount == 0) return false;   // an empty scene has no root
+
+    const float3 invDirection = 1.0f / ray.Direction;
+    bool  hitAnything = false;
+    float hitClosest  = tmax;
+
+    for (uint index = 0; index < Params.LargeCount; index++)
+    {
+        HitRecord temp;
+        if (HitSphere(Spheres[index], ray, tmin, hitClosest, temp))
+        {
+            hitAnything = true;
+            hitClosest  = temp.Distance;
+            hitRecord   = temp;
+        }
+    }
+
+    uint top = 0;
+    uint stack[32];
+    stack[top++] = 0;   // the root
+    while (top > 0)     // while there is something on the stack
+    {
+        const BVHNode node = Nodes[stack[--top]];
+
+        // hitClosest, not tmax: a box entirely behind the closest hit so far can't hold a closer one.
+        if (!HitBox(node.Min, node.Max, ray.Origin, invDirection, tmin, hitClosest)) continue;
+
+        if (node.Count > 0)   // a leaf: test its spheres, like HitSpheres does
+        {
+            for (uint index = node.First; index < node.First + node.Count; index++)
+            {
+                HitRecord temp;
+                if (HitSphere(Spheres[Params.LargeCount + index], ray, tmin, hitClosest, temp))
+                {
+                    hitAnything = true;
+                    hitClosest  = temp.Distance;
+                    hitRecord   = temp;
+                }
+            }
+        }
+        else if (top + 2 <= 32)   // an interior node: walk both children (guarded: the stack is fixed)
+        {
+            stack[top++] = node.First + 1;
+            stack[top++] = node.First;   // pushed last, popped first
+        }
+    }
+
+    return hitAnything;
+}
+
 bool HitSpheres(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
 {
     HitRecord temp;
     bool hitAnything = false;
     float hitClosest = tmax;
+
+    if (Params.UseBvh != 0) return HitSpheresBvh(ray, tmin, tmax, hitRecord);
 
     for (uint index = 0; index < Params.SphereCount; index++)
     {
@@ -253,6 +325,14 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     float3 viewColor = float3(0.0f, 0.0f, 0.0f);
     float  viewDepth = PrimaryDepth(Params, id.xy, uint2(width, height));
+
+    if (Params.DebugView != 0)
+    {
+        // The primary ray's cost: PrimaryDepth just ran one HitSpheres for this pixel, counted in g_Tests.
+        const float heat = saturate(float(g_Tests) / 64.0f);    // 64 tests and above = full red
+        Result[id.xy] = float4(heat, 0.0f, 1.0f - heat, 1.0f);  // blue = cheap, red = expensive
+        return;
+    }
 
     Depth[id.xy] = viewDepth;
 

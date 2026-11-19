@@ -15,6 +15,10 @@ Pass(
         Field(name: "max_bounces",    ty: U32),
         Field(name: "lens_radius",    ty: F32),          // 0 = pinhole, everything sharp
         Field(name: "focus_distance", ty: F32),          // distance to the sharp plane, along forward
+        Field(name: "node_count",     ty: U32),
+        Field(name: "use_bvh",        ty: U32),
+        Field(name: "large_count",    ty: U32),          // Spheres[0, large_count) are outside the tree, tested one by one
+        Field(name: "debug_view",     ty: U32),          // 1 = the primary ray's cost as a heat map instead of the image
     ],
     buffers: [
         Buffer(name: "spheres", element: "SphereData", fields: [
@@ -29,6 +33,12 @@ Pass(
             Field(name: "refract_index",       ty: F32),
             Field(name: "absorption_distance", ty: F32),
             Field(name: "type",                ty: U32), // MaterialType: 0 Lambertian, 1 Metal, 2 Dielectric
+        ]),
+        Buffer(name: "nodes", element: "BVHNode", fields: [
+            Field(name: "min",   ty: Vec3),
+            Field(name: "first", ty: U32),
+            Field(name: "max",   ty: Vec3),
+            Field(name: "count", ty: U32)
         ]),
     ],
     outputs: [

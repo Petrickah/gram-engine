@@ -14,7 +14,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine ${CMAKE_CURRENT_BI
 # gram:dep:GramEngine end
 # --- end gram dependencies ---
 
-add_executable(Runtime src/main.cpp src/TrianglePass.cpp src/RayTracePass.cpp)
+add_executable(Runtime src/main.cpp src/TrianglePass.cpp src/RayTracePass.cpp src/BVHTree.cpp)
 # Content/ holds the game's generated component header (Components.generated.hpp).
 target_include_directories(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Content)
 target_precompile_headers(Runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../GramEngine/include/Gram/Application/Common.hpp)

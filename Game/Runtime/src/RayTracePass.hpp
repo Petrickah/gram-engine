@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BVHTree.hpp"
 #include "Gram/Editor/Editor.hpp"
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDescriptors.hpp"
@@ -75,12 +76,20 @@ private:
     std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_CameraUniforms;
     std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_SphereStorages;
     std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_MaterialStorages;
+    std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_NodeStorages;
 
     bool           m_SceneChanged  = false;
     uint32_t       m_FrameCounter  = 0;
     uint32_t       m_SphereCount   = 0;
     uint32_t       m_MaterialCount = 0;
     CameraControls m_CameraControls;
+
+    BVHTree        m_Tree;
+    bool           m_UseBvh = false;
+    bool           m_DebugView = false;
+    uint32_t       m_LargeCount = 0;   // Spheres[0, m_LargeCount): outside the tree (the ground)
+    std::vector<SphereData> m_PackedSpheres;   // last frame's spheres in the World's order, before the tree reordered them
+    BVHTree::Stats m_TreeStats;
 
     std::vector<MaterialData> m_Materials;
     std::vector<SphereData>   m_Spheres;
