@@ -140,7 +140,7 @@ bool RayTracePass::PackScene()
     const bool changed = differs(spheres, m_PackedSpheres) || differs(materials, m_Materials);
     m_PackedSpheres = spheres;
 
-    if (changed)
+    if (changed || std::exchange(m_RebuildTree, false))
     {
         // Huge spheres (the ground) go first and stay out of the tree: one of them would make every box on its
         // way down as big as itself, and nearly every ray would enter them all. They're tested one by one.
@@ -150,7 +150,7 @@ bool RayTracePass::PackScene()
         const std::span<SphereData> treeSpheres = std::span(spheres).subspan(m_LargeCount);   // the tree's indices start after them
 
         const auto start = std::chrono::steady_clock::now();
-        m_Tree = BVHTree::Create(treeSpheres);
+        m_Tree = BVHTree::Create(treeSpheres, m_TreeStrategy);
         const auto end   = std::chrono::steady_clock::now();
 
         m_TreeStats         = m_Tree.Validate(treeSpheres);
@@ -172,9 +172,9 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     
     if (PackScene()) m_SceneChanged = true;
 
-    m_Output     ->RequestExtent(m_Target->GetImage().GetExtent(), 2.0f);
+    m_Output     ->RequestExtent(m_Target->GetImage().GetExtent(), static_cast<float>(m_Quality.Ssaa));
     m_Output     ->ApplyRequestedExtent();
-    m_OutputDepth->RequestExtent(m_Target->GetImage().GetExtent(), 2.0f);
+    m_OutputDepth->RequestExtent(m_Target->GetImage().GetExtent(), static_cast<float>(m_Quality.Ssaa));
     m_OutputDepth->ApplyRequestedExtent();
 
     // The image's own size, not the swapchain's: the ray tracer fills the target, whatever the window.
@@ -220,7 +220,7 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
             .Right         = right,                          .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
             .Up            = up,                             .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
             .Forward       = forward,                        .FrameIndex   = m_FrameCounter++,
-            .Samples       = 1,                              .SampleScale  = 1.0f,
+            .Samples       = m_Quality.Samples,              .SampleScale  = 1.0f / static_cast<float>(m_Quality.Samples),
             .MaxBounces    = m_CameraControls.MaxBounces,    .LensRadius   = lensRadius,
             .FocusDistance = m_CameraControls.FocusDistance,
             .NodeCount     = static_cast<uint32_t>(m_Tree.GetNodes().size()),
@@ -269,6 +269,13 @@ void RayTracePass::DrawRayTracerUI()
         else                 ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "invalid: %s", s.Error.c_str());
 
         // Off: every ray tests every sphere (the old loop); on: through the tree. The same image either way.
+        int strategy = static_cast<int>(m_TreeStrategy);
+        if (ImGui::Combo("Build", &strategy, "Midpoint\0SAH\0"))   // rebuilt next frame; the image stays the same
+        {
+            m_TreeStrategy = static_cast<BVHTree::Strategy>(strategy);
+            m_RebuildTree  = true;
+        }
+
         if (ImGui::Checkbox("Use BVH", &m_UseBvh)) m_SceneChanged = true;
         ImGui::SameLine();
         if (ImGui::Checkbox("Show cost", &m_DebugView)) m_SceneChanged = true;   // the heat map: tests per primary ray
@@ -302,14 +309,29 @@ void RayTracePass::DrawRayTracerUI()
         GenerateBookScene(); changed = true;
     }
 
+    // What makes a frame expensive: pixels (SSAA renders Ssaa x Ssaa rays per screen pixel), rays per pixel
+    // per frame (samples), and the length of each ray's path (bounces).
+    if (ImGui::CollapsingHeader("Quality", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        constexpr std::array ssaaFactors { 1u, 2u, 4u };
+        constexpr std::array ssaaNames   { "1x (off)", "2x", "4x" };
+        int ssaa = static_cast<int>(std::ranges::find(ssaaFactors, m_Quality.Ssaa) - ssaaFactors.begin());
+        if (ImGui::Combo("SSAA", &ssaa, ssaaNames.data(), static_cast<int>(ssaaNames.size())))
+        {
+            m_Quality.Ssaa = ssaaFactors[ssaa];   // the images are recreated next frame, which resets the accumulation
+        }
+
+        const uint32_t minSamples = 1, maxSamples = 16, minBounces = 1, maxBounces = 100;
+        changed |= ImGui::SliderScalar("Samples per frame", ImGuiDataType_U32, &m_Quality.Samples, &minSamples, &maxSamples);
+        changed |= ImGui::SliderScalar("Max bounces", ImGuiDataType_U32, &m_CameraControls.MaxBounces, &minBounces, &maxBounces);
+    }
+
     if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen))
     {
         CameraControls& c = m_CameraControls;
-        uint32_t minBounces = 3; uint32_t maxBounces = 100;
         changed |= ImGui::DragFloat3  ("Camera Position"       , &c.Position.x   , 0.05f);
         changed |= ImGui::DragFloat   ("Camera Yaw"            , &c.Yaw          , 0.05f);
         changed |= ImGui::DragFloat   ("Camera Pitch"          , &c.Pitch        , 0.05f, -89.0f, 89.0f);   // la ±90, „înainte” devine paralel cu „sus” și produsul vectorial dă zero
-        changed |= ImGui::SliderScalar("Camera Bounces"        , ImGuiDataType_U32, &c.MaxBounces, &minBounces, &maxBounces);
         changed |= ImGui::SliderFloat ("Camera FOV"            , &c.FovY         , +10.00f, 120.00f);
         changed |= ImGui::SliderFloat ("Camera F-Stop"         , &c.FStop        , 1.4f, 22.0f, "f/%.1f");
         changed |= ImGui::DragFloat   ("Camera Focus Distance" , &c.FocusDistance, 0.01f, 0.1f, 100.0f, "%.2f m");

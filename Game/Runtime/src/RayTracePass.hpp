@@ -23,7 +23,7 @@ struct CameraControls
     float     FocusDistance = 02.2f; // metres to the sharp plane (camera at z = 2, first sphere at z = -0.2)
     float     BokehScale    = 01.0f; // artistic: multiplies the physical lens radius (1 = a real camera)
     bool      PostProcessDoF = false; // false: the lens blurs in the ray tracer; true: a pinhole here, DepthOfField.hlsl blurs from the depth output
-    uint32_t  MaxBounces    = 10;
+    uint32_t  MaxBounces    = 6;
 };
 
 // The GPU-side structs (RayTracerParams: the camera uniform; SphereData, MaterialData: the storage
@@ -85,7 +85,13 @@ private:
     CameraControls m_CameraControls;
 
     BVHTree        m_Tree;
-    bool           m_UseBvh = false;
+    bool              m_UseBvh       = true;
+    bool              m_RebuildTree  = false;                    // set by the Build combo: rebuild even if the scene didn't change
+    BVHTree::Strategy m_TreeStrategy = BVHTree::Strategy::Sah;
+
+    // The cost knobs of the Quality panel: SSAA renders Ssaa x Ssaa rays per screen pixel (1 = off), and
+    // Samples rays per pixel per frame (the accumulation averages them over frames anyway).
+    struct QualityControls { uint32_t Ssaa = 1; uint32_t Samples = 1; } m_Quality;   // 1x: the accumulation's jitter already supersamples a still image
     bool           m_DebugView = false;
     uint32_t       m_LargeCount = 0;   // Spheres[0, m_LargeCount): outside the tree (the ground)
     std::vector<SphereData> m_PackedSpheres;   // last frame's spheres in the World's order, before the tree reordered them

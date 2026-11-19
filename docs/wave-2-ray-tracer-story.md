@@ -1,6 +1,6 @@
 # Wave 2 — the ray tracer, the story so far
 
-A chronological account of 2026-11-05 → 2026-11-18: from a triangle with no buffers to *Ray Tracing in One Weekend* running in a compute shader, up to the book's cover scene, then the spheres becoming entities that Rust moves and every shader's data described once in a `.ron` file, with progressive accumulation, supersampling and depth of field done twice (a real lens, then a post-process). It exists to keep the sequence straight for the Episode 2 devlog: what was tried, what broke, what each bug taught. The technical reference for the renderer as built is `docs/wave-2-renderer-guide.md`; this is the narrative.
+A chronological account of 2026-11-05 → 2026-11-19: from a triangle with no buffers to *Ray Tracing in One Weekend* running in a compute shader, up to the book's cover scene, then the spheres becoming entities that Rust moves and every shader's data described once in a `.ron` file, and a BVH that turned out to fix less than expected, with progressive accumulation, supersampling and depth of field done twice (a real lens, then a post-process). It exists to keep the sequence straight for the Episode 2 devlog: what was tried, what broke, what each bug taught. The technical reference for the renderer as built is `docs/wave-2-renderer-guide.md`; this is the narrative.
 
 Method throughout, as for every wave: the user wrote the Vulkan and shader code (the learning), Claude reviewed, explained, and wrote the plumbing (CMake, the `gram` tool, wiring passes together).
 
@@ -89,6 +89,36 @@ The heart of it is one function, `layout`, with one rule stricter than any GPU's
 
 What it bought: adding a pass is a `.pass.ron` and a shader; the C++ class still has to be written, but it starts from a header that says exactly what the shader needs. Next idea (Task 2.3b): generate that class's boilerplate too.
 
+## Part 5 — A BVH, and where the time really goes (Nov 19)
+
+The book's scene ran at about 8 FPS, and the obvious suspect was the search: every ray, at every bounce, tested all 486 spheres. A bounding volume hierarchy (BVH) is the textbook answer. Spec first (`docs/wave-2-bvh.md`), then four pieces, each checked before the next.
+
+**The build (C++).** A tree of boxes over the spheres: put a box around all of them, cut the group in two, box each half, repeat until a group holds one or two spheres. The insight that unblocked it: you don't cut *boxes*, you cut the *list of spheres* (with `std::partition`, quicksort's partitioning step) and box each half afterwards. Nodes are worked on by index, two children always appended next to each other, so one index (`First`) finds both. A bug on the way: the "longest axis" was a chained ternary that compared Z with Y instead of with the longest so far, so some nodes were cut along their short side. The tree was still valid, only worse.
+
+**The validator, before any shader.** A second walk over the tree that checks it and counts it, shown in the Ray Tracer panel: every sphere in exactly one leaf, every box inside its parent's, every child index real, plus nodes, leaves, depth, fullest leaf and build time. One invariant does most of the work: a binary tree where every interior node has two children has `nodes = 2 · leaves − 1` (579 = 2 · 290 − 1 on the book's scene). The validator had its own bug (a leaf's loop ran to `Count` instead of `First + Count`, so it checked nothing) and a test of its own: break the build on purpose and see it say "invalid". Building takes about 0.45 ms, so it simply rebuilds whenever the scene changes.
+
+**The traversal (HLSL).** No recursion on the GPU: a fixed stack of 32 node indices, the root pushed first; pop a node, skip it if the ray misses its box, test its spheres if it's a leaf, push its children otherwise. The ray–box test is the slab test: per axis, when the ray crosses the two planes; the ray is inside the box from the last entry to the first exit. Two typos there (a `min` for a `max`, a `max` for a `min`) made almost every box look hit: the image stayed right and the frame got slower, which is exactly how that bug looks. The search range shrinks to the closest hit found so far, so boxes behind it are skipped.
+
+**Spheres vanishing: an order bug.** Building the tree reorders the spheres (each leaf's spheres contiguous), and the comparison that decides whether the scene changed must use the order they came from the `World` in, or a still scene looks changed every frame. The first fix kept that order for the comparison but went on replacing the uploaded spheres every frame, so on every frame after a rebuild the nodes pointed at spheres in a different order than they were built for. Only the BVH path showed it, since the plain loop tests everything anyway.
+
+**The ground.** The ground is a sphere of radius 1000; whichever node holds it gets a box 2000 units wide, and so does every node on the way down to it. Huge spheres (radius over 10) now go first in the array and stay out of the tree; the shader tests them one by one before walking it, which also shrinks the search range early, since most bounces end on the ground.
+
+**Seeing the algorithm: a heat map.** A counter of box and sphere tests for the camera's ray, drawn as color (blue cheap, red expensive) behind a Show cost checkbox. Without the BVH the whole screen is red, the sky included: a ray that hits nothing still tests 486 spheres to find that out. With it, the sky is blue (one box test: the root's) and only the clusters of spheres turn pink. It's the picture that makes the algorithm visible.
+
+**Where the time really went.** At twice the resolution with 10 bounces, the BVH took a frame from 190 ms to 77 ms (5.3 → 12.9 FPS), then stopped helping: removing the ground from the tree changed nothing measurable, and the heat map was already blue. The search was no longer the cost; pixels and bounces were. A Quality panel made those settings adjustable (SSAA 1x / 2x / 4x, samples per frame, max bounces): at 1x SSAA and 4 bounces the same scene runs at 86 FPS. And SSAA turned out to be nearly redundant here: every ray is already jittered inside its pixel, so the accumulation's average over frames *is* supersampling, spread over time; SSAA only helps while the scene moves and the accumulation keeps restarting. The defaults became 1x SSAA, 6 bounces, 1 sample.
+
+**Better trees: SAH, and the nearer child first.** Two improvements from the literature. The Surface Area Heuristic picks a cut by price rather than at the middle: the chance that a ray enters a box is proportional to its surface area (not its volume), so a child costs its area times its sphere count, and the cheapest of 7 candidate cuts per axis wins, or no cut at all when testing everything is cheaper. And the traversal tests both children before pushing them and visits the nearer first, so a hit there often makes the farther one skippable. A bug worth telling: when SAH found no cut worth making, an empty `if` let it partition anyway along axis −1. Measured at 1x SSAA, 6 bounces, 1 sample:
+
+| | FPS | Nodes | Depth | Fullest leaf |
+|---|---|---|---|---|
+| no BVH | 24 | – | – | – |
+| midpoint | 46 | 577 | 9 | 2 |
+| SAH | 49 | 563 | 9 | 2 |
+
+The BVH doubles the frame rate at these settings; SAH adds a little on a scene this regular (a grid of similar spheres, where the middle is already a good cut). It should matter more on uneven geometry: a triangle mesh is the real test.
+
+**Next.** One triangle in the ray tracer (the textured quad's two), then an `.obj` loader with the same BVH over triangles. A rotating model won't need its tree rebuilt: built once in the object's own space, it stays valid while the ray is moved into that space with the object's inverse transform. That's the two-level split hardware ray tracing uses (a bottom-level tree per model, a small top-level one over the instances).
+
 ## Lessons worth a paragraph each
 
 - **The validation layer is the tutor.** Almost every Vulkan step was a validation error first; reading them carefully was faster than any guess.
@@ -98,7 +128,9 @@ What it bought: adding a pass is a `.pass.ron` and a shader; the C++ class still
 - **Physically based is about the material and the light, not about rays.** A rasterizer can be PBR; what a ray tracer adds is knowing where light comes from.
 - **Data in one place.** The ray tracer got simpler the day it stopped owning its spheres: the editor, Play/Stop and Rust all came for free once the scene lived in the `World`. The same move, one level down, gave the pass generator: a struct described once can't disagree with itself.
 - **Detect changes, don't announce them.** Comparing this frame's packed data with the last one replaced every "something changed" flag, and stays right when a new source of changes appears.
+- **Measure before optimising the next thing.** The BVH was the right fix for the search, and the heat map proved the search was solved; the frame was still slow because the cost had moved to pixels and bounces. Without a number per change, the ground's removal would have looked like a win.
+- **Validate data before drawing it.** The tree's validator found its own bugs and stayed silent on the real ones, which were on the GPU side; knowing the tree was right narrowed the search to the shader and the upload.
 
 ## Screenshots worth taking for the post
 
-The quad with the photo (end of part 1). The first noisy diffuse sphere next to the same one after a few hundred accumulated frames. Lambertian/metal/glass side by side. The hollow glass sphere with its rings, at 4 and at 12 bounces. Depth of field through the lens next to the post-process at the same settings, with a sphere in the foreground. The book's cover scene, with the FPS counter in the menu bar. The book's scene with the spheres bobbing (a short clip), the Outliner listing ~487 entities and one selected in the Inspector. A `.pass.ron` next to the two files generated from it.
+The quad with the photo (end of part 1). The first noisy diffuse sphere next to the same one after a few hundred accumulated frames. Lambertian/metal/glass side by side. The hollow glass sphere with its rings, at 4 and at 12 bounces. Depth of field through the lens next to the post-process at the same settings, with a sphere in the foreground. The book's cover scene, with the FPS counter in the menu bar. The book's scene with the spheres bobbing (a short clip), the Outliner listing ~487 entities and one selected in the Inspector. A `.pass.ron` next to the two files generated from it. The heat map without and with the BVH (red screen, then blue sky and pink clusters). The Ray Tracer panel with the tree's stats and the Midpoint/SAH combo.

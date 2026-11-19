@@ -13,7 +13,9 @@ public:
         glm::vec3 Min = glm::vec3(0.0f, 0.0f, 0.0f);
         glm::vec3 Max = glm::vec3(0.0f, 0.0f, 0.0f);
 
-        AABBBox Grow(const AABBBox& other) { return AABBBox { .Min = glm::min(Min, other.Min), .Max = glm::max(Max, other.Max) }; }
+        AABBBox Grow(const AABBBox& other)           { return AABBBox { .Min = glm::min(Min, other.Min), .Max = glm::max(Max, other.Max) }; }
+        static BVHTree::AABBBox EmptyBox()           { return { .Min = glm::vec3( std::numeric_limits<float>::max()), .Max = glm::vec3(-std::numeric_limits<float>::max()) }; }
+        static float Area(const BVHTree::AABBBox& b) { const glm::vec3 e = b.Max - b.Min; return 2.0f * (e.x * e.y + e.y * e.z + e.z * e.x); }
     };
 
     struct Stats
@@ -28,9 +30,13 @@ public:
     // Walks the whole tree once: checks it against `spheres` (the array Create reordered) and counts it.
     Stats Validate(std::span<const SphereData> spheres) const;
 
+    // How a node's spheres are cut in two: at the middle of the longest axis, or at the cheapest of 7 cuts
+    // per axis by the Surface Area Heuristic (which may also decide a node is cheaper left as a leaf).
+    enum class Strategy { Midpoint, Sah };
+
 public:
     BVHTree() = default;
-    static BVHTree Create(std::span<SphereData> spheres);
+    static BVHTree Create(std::span<SphereData> spheres, Strategy strategy = Strategy::Sah);
 
     const std::vector<BVHNode>&  GetNodes() const;
     const BVHNode& operator[](size_t index) const;
@@ -41,10 +47,16 @@ private:
     AABBBox Cover(std::span<const SphereData> spheres, size_t first, size_t count);
 
     void Split(std::span<SphereData> spheres, size_t nodeIndex, size_t first, size_t count);
+
+    // Where to cut spheres [first, first + count): an axis (0, 1, 2) and a position on it. False = don't
+    // cut, keep the node a leaf.
+    static bool MidpointCut(const AABBBox& box, int& axis, float& cut);
+    static bool SahCut(std::span<const SphereData> spheres, size_t first, size_t count, const AABBBox& nodeBox, int& outAxis, float& outCut);
     void Visit(std::span<const SphereData> spheres, std::vector<uint32_t>& seen, Stats& stats, uint32_t index, uint32_t depth) const;
 
 private:
     std::vector<BVHNode> m_Nodes;
+    Strategy             m_Strategy = Strategy::Sah;
 };
 
 #endif // #ifdef GRAM_VULKAN_RENDERER

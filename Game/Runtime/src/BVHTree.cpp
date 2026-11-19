@@ -20,9 +20,10 @@ static bool Inside(glm::vec3 innerMin, glm::vec3 innerMax, const BVHNode& outer)
     return glm::all(glm::lessThanEqual(outer.Min, innerMin)) && glm::all(glm::lessThanEqual(innerMax, outer.Max));
 }
 
-BVHTree BVHTree::Create(std::span<SphereData> spheres)
+BVHTree BVHTree::Create(std::span<SphereData> spheres, Strategy strategy)
 {
     BVHTree tree(2 * spheres.size());
+    tree.m_Strategy = strategy;
     if (spheres.empty()) return tree;
 
     tree.m_Nodes.emplace_back();
@@ -102,9 +103,9 @@ BVHTree::Stats BVHTree::Validate(std::span<const SphereData> spheres) const
 // Fills node `nodeIndex`, which covers spheres [first, first + count): a leaf, or two children appended.
 void BVHTree::Split(std::span<SphereData> spheres, size_t nodeIndex, size_t first, size_t count)
 {
-    const AABBBox box = Cover(spheres, first, count);
-    m_Nodes[nodeIndex].Min = box.Min;
-    m_Nodes[nodeIndex].Max = box.Max;
+    const AABBBox bbox = Cover(spheres, first, count);
+    m_Nodes[nodeIndex].Min = bbox.Min;
+    m_Nodes[nodeIndex].Max = bbox.Max;
 
     if (count <= 2)    // a leaf: its spheres are [first, first + count)
     {
@@ -113,19 +114,20 @@ void BVHTree::Split(std::span<SphereData> spheres, size_t nodeIndex, size_t firs
         return;
     }
 
-    // 1. the longest axis: 0, 1 or 2
-    const glm::vec3 extent = box.Max - box.Min;
-
-    int axis = 0;
-    if (extent.y > extent[axis]) axis = 1;
-    if (extent.z > extent[axis]) axis = 2;
-    
-    // 2. where to cut: the middle of the box on that axis
-    const float split = 0.5f * (box.Min[axis] + box.Max[axis]);
+    int   axis = 0;
+    float cut  = 0.0f;
+    const bool split = (m_Strategy == Strategy::Sah) ? SahCut(spheres, first, count, bbox, axis, cut)
+                                                     : MidpointCut(bbox, axis, cut);
+    if (!split)   // cheaper as a leaf (SAH only): all its spheres, tested one by one
+    {
+        m_Nodes[nodeIndex].First = static_cast<uint32_t>(first);
+        m_Nodes[nodeIndex].Count = static_cast<uint32_t>(count);
+        return;
+    }
 
     // 3. centers below the cut first, the rest after (std::partition: quicksort's partition step)
     auto begin  = spheres.begin() + first;
-    auto middle = std::partition(begin, begin + count, [&](const SphereData& s) -> bool { return s.Position[axis] < split; });
+    auto middle = std::partition(begin, begin + count, [&](const SphereData& s) -> bool { return s.Position[axis] < cut; });
     uint32_t leftCount = static_cast<uint32_t>(middle - begin);
     if (leftCount == 0 || leftCount == count) leftCount = count / 2;   // all centers on one side: cut by index
 
@@ -138,6 +140,61 @@ void BVHTree::Split(std::span<SphereData> spheres, size_t nodeIndex, size_t firs
 
     Split(spheres, left + 0, first + 0,         leftCount + 0);
     Split(spheres, left + 1, first + leftCount, count - leftCount);
+}
+
+// The middle of the box's longest axis: always cuts (a node whose centers all land on one side is cut by
+// index in Split).
+bool BVHTree::MidpointCut(const AABBBox& box, int& axis, float& cut)
+{
+    const glm::vec3 extent = box.Max - box.Min;
+    axis = 0;
+    if (extent.y > extent[axis]) axis = 1;
+    if (extent.z > extent[axis]) axis = 2;
+    cut = 0.5f * (box.Min[axis] + box.Max[axis]);
+    return true;
+}
+
+bool BVHTree::SahCut(std::span<const SphereData> spheres, size_t first, size_t count, const AABBBox& nodeBox, int& outAxis, float& outCut)
+{
+    // Every sphere goes into one of 8 equal slices ("bins") of the centers' range, per axis; each of the 7
+    // planes between slices is a candidate cut, priced by SAH: a child's cost = its surface area (how likely
+    // a ray enters it) x its sphere count (what it then tests), relative to this node's area.
+    constexpr int bins = 8;
+    float bestCost = static_cast<float>(count);   // making this node a leaf: test all its spheres
+    int   bestAxis = -1;
+    float bestCut  = 0.0f;
+
+    for (int axis = 0; axis < 3; axis++)
+    {
+        float lo = std::numeric_limits<float>::max(), hi = -lo;   // the range of the centers on this axis
+        for (size_t i = first; i < first + count; i++) { lo = std::min(lo, spheres[i].Position[axis]); hi = std::max(hi, spheres[i].Position[axis]); }
+        if (hi - lo < 1e-6f) continue;                            // every center in one place: no cut on this axis
+
+        std::array<AABBBox, bins> box;   box.fill(AABBBox::EmptyBox());
+        std::array<uint32_t, bins> n {};
+        for (size_t i = first; i < first + count; i++)
+        {
+            const int b = std::min(bins - 1, static_cast<int>((spheres[i].Position[axis] - lo) / (hi - lo) * bins));
+            box[b] = box[b].Grow(SphereToAABB(spheres[i]));
+            n[b]++;
+        }
+
+        for (int cut = 1; cut < bins; cut++)   // the plane between slice cut - 1 and slice cut
+        {
+            AABBBox left = AABBBox::EmptyBox(), right = AABBBox::EmptyBox();
+            uint32_t nl = 0, nr = 0;
+            for (int b = 0;   b < cut;  b++) { if (n[b]) { left  = left.Grow(box[b]);  nl += n[b]; } }
+            for (int b = cut; b < bins; b++) { if (n[b]) { right = right.Grow(box[b]); nr += n[b]; } }
+            if (nl == 0 || nr == 0) continue;
+
+            const float cost = 1.0f + (AABBBox::Area(left) * nl + AABBBox::Area(right) * nr) / AABBBox::Area(nodeBox);   // 1 = the cost of visiting the node
+            if (cost < bestCost) { bestCost = cost; bestAxis = axis; bestCut = lo + (hi - lo) * cut / bins; }
+        }
+    }
+
+    outAxis = bestAxis;
+    outCut  = bestCut;
+    return bestAxis >= 0;   // no cut cheaper than testing everything: keep it a leaf
 }
 
 BVHTree::AABBBox BVHTree::Cover(std::span<const SphereData> spheres, size_t first, size_t count)

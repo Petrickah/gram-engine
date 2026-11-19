@@ -16,10 +16,11 @@ struct HitRecord
 static uint g_Seed  = 0;
 static uint g_Tests = 0;
 
+static const float g_Miss               = 3.402823466e+38f;
 // Material Types; Keep the numeric values 1:1 with C++
-static const uint g_MaterialLambertian = 0;
-static const uint g_MaterialMetal      = 1;
-static const uint g_MaterialDielectric = 2;
+static const uint  g_MaterialLambertian = 0;
+static const uint  g_MaterialMetal      = 1;
+static const uint  g_MaterialDielectric = 2;
 
 float reflectance(float cosine, float refractionIndex)
 {
@@ -120,7 +121,7 @@ bool HitSurface(float3 center, float radius, float outwardSign, in Ray ray, floa
     return true;
 }
 
-bool HitBox(float3 boxMin, float3 boxMax, float3 origin, float3 invDirection, float tmin, float tmax)
+float HitBox(float3 boxMin, float3 boxMax, float3 origin, float3 invDirection, float tmin, float tmax)
 {
     g_Tests++;
 
@@ -132,7 +133,7 @@ bool HitBox(float3 boxMin, float3 boxMax, float3 origin, float3 invDirection, fl
 
     const float near = max(max(enter.x, enter.y), max(enter.z, tmin));   // the last entry
     const float far  = min(min(exit.x,  exit.y),  min(exit.z,  tmax));   // the first exit
-    return near <= far;
+    return near <= far ? near : g_Miss;
 }
 
 bool HitSphere(in SphereData s, in Ray ray, float tmin, float tmax, out HitRecord rec)
@@ -182,7 +183,7 @@ bool HitSpheresBvh(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
         const BVHNode node = Nodes[stack[--top]];
 
         // hitClosest, not tmax: a box entirely behind the closest hit so far can't hold a closer one.
-        if (!HitBox(node.Min, node.Max, ray.Origin, invDirection, tmin, hitClosest)) continue;
+        if (HitBox(node.Min, node.Max, ray.Origin, invDirection, tmin, hitClosest) == g_Miss) continue;
 
         if (node.Count > 0)   // a leaf: test its spheres, like HitSpheres does
         {
@@ -199,8 +200,20 @@ bool HitSpheresBvh(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
         }
         else if (top + 2 <= 32)   // an interior node: walk both children (guarded: the stack is fixed)
         {
-            stack[top++] = node.First + 1;
-            stack[top++] = node.First;   // pushed last, popped first
+            const BVHNode left    = Nodes[node.First];
+            const BVHNode right   = Nodes[node.First + 1];
+            const float   toLeft  = HitBox(left.Min,  left.Max,  ray.Origin, invDirection, tmin, hitClosest);
+            const float   toRight = HitBox(right.Min, right.Max, ray.Origin, invDirection, tmin, hitClosest);
+
+            // The farther one pushed first: the nearer is popped next, and a hit in it may make the farther one skippable.
+            const bool  leftIsNearer = toLeft <= toRight;
+            const float nearDist = leftIsNearer ? toLeft  : toRight;
+            const float farDist  = leftIsNearer ? toRight : toLeft;
+            const uint  nearNode = leftIsNearer ? node.First : node.First + 1;
+            const uint  farNode  = leftIsNearer ? node.First + 1 : node.First;
+
+            if (farDist  != g_Miss && top < 32) stack[top++] = farNode;
+            if (nearDist != g_Miss && top < 32) stack[top++] = nearNode;
         }
     }
 
