@@ -1,6 +1,6 @@
 # Wave 2 — the ray tracer, the story so far
 
-A chronological account of 2026-11-05 → 2026-11-19: from a triangle with no buffers to *Ray Tracing in One Weekend* running in a compute shader, up to the book's cover scene, then the spheres becoming entities that Rust moves and every shader's data described once in a `.ron` file, and a BVH that turned out to fix less than expected, with progressive accumulation, supersampling and depth of field done twice (a real lens, then a post-process). It exists to keep the sequence straight for the Episode 2 devlog: what was tried, what broke, what each bug taught. The technical reference for the renderer as built is `docs/wave-2-renderer-guide.md`; this is the narrative.
+A chronological account of 2026-11-05 → 2026-11-19: from a triangle with no buffers to *Ray Tracing in One Weekend* running in a compute shader, up to the book's cover scene, then the spheres becoming entities that Rust moves and every shader's data described once in a `.ron` file, a BVH that turned out to fix less than expected, a GPU profiler, and upscaling with FSR 1, with progressive accumulation, supersampling and depth of field done twice (a real lens, then a post-process). It exists to keep the sequence straight for the Episode 2 devlog: what was tried, what broke, what each bug taught. The technical reference for the renderer as built is `docs/wave-2-renderer-guide.md`; this is the narrative.
 
 Method throughout, as for every wave: the user wrote the Vulkan and shader code (the learning), Claude reviewed, explained, and wrote the plumbing (CMake, the `gram` tool, wiring passes together).
 
@@ -117,6 +117,29 @@ The book's scene ran at about 8 FPS, and the obvious suspect was the search: eve
 
 The BVH doubles the frame rate at these settings; SAH adds a little on a scene this regular (a grid of similar spheres, where the middle is already a good cut). It should matter more on uneven geometry: a triangle mesh is the real test.
 
+## Part 6 — Measuring, then fewer pixels (Nov 19, continued)
+
+**Sixteen is enough.** The traversal's stack had 32 slots, a guess. A walk never holds more than the tree's depth plus one node (each level pops one and pushes at most two), and the tree is 9 deep. At 16 slots the editor's frame rate nearly doubled: a dynamically indexed array in a shader doesn't fit in registers, it spills to slower memory, and a smaller one spills less and lets more threads run at once. The size became one constant used by every guard, and the validator now rejects a tree too deep for it, rather than letting the shader write past the array: on a GPU that doesn't crash, it silently corrupts something else.
+
+**A profiler, instead of guessing.** Until then the frame's cost was inferred from experiments (two bounce counts, a smaller window). Vulkan can ask the GPU itself: a query pool is an array of slots the GPU writes its clock into, `vkCmdWriteTimestamp2` before and after each pass's commands, read back once that frame's fence says the GPU is done with it, so one pool per frame in flight. Every pass got a name, and an `Engine/Profiler` panel shows each one's milliseconds as a bar next to the frame's. Two bugs, both instructive. Timestamps were also written around `OnPresented`, which runs after the command buffer was closed and submitted: GPU timing only exists between a frame's begin and end. And the first numbers said the GPU worked 365 ms in an 8.8 ms frame: the ratio, 41.4, was the clue. The Mac exposes the same M4 Pro through two drivers; one counts in nanoseconds, the other in ticks of a 24 MHz clock (41.67 ns), and the period was read while listing every device, so the rejected one's won. Read from the chosen device, the truth: the ray tracer takes ~8.5 ms, every other pass under 0.1 ms, and the GPU is busy the whole frame.
+
+**Fewer pixels.** If the cost is per pixel, the lever is the pixel count. The SSAA setting became a render scale, 50% to 400%, and the ray tracer's time followed it almost exactly:
+
+| Render scale | Pixels vs 100% | Ray tracer |
+|---|---|---|
+| 50% | ¼ | 3.5 ms |
+| 67% | ~½ | 4.7 ms |
+| 75% | ~0.56 | 4.8 ms |
+| 100% | 1 | 10 ms |
+| 200% | 4 | 38.7 ms |
+| 400% | 16 | 152.8 ms |
+
+(At 50% and 67% the frame rate sat at the monitor's 175 Hz: V-Sync. Below that cap, only the profiler's milliseconds tell the settings apart.) At 50%, magnified bilinearly, the image was plainly blurry: each output pixel blends the four nearest input pixels by distance, so every edge spreads over two screen pixels.
+
+**FSR 1.** AMD's FidelityFX Super Resolution 1 is a spatial upscaler, open source (MIT), written as HLSL headers, in two passes. **EASU** (edge-adaptive spatial upsampling) reads 12 input pixels around each output pixel, works out the direction and strength of the edge there, and filters along the edge but not across it, so an edge stays a sharp step instead of a ramp; the result is clamped to the nearest four pixels' range, so it can't ring. **RCAS** (robust contrast-adaptive sharpening) then looks at each pixel and its four neighbours and sharpens as much as it can without leaving their min–max range (no halos), less where the pixel looks like noise. In the engine: the last pass, SSAA, became **Resample** (averaging above 100%, magnifying below, bilinear or EASU) writing an image of the screen's size, then a new **Sharpen** pass (RCAS, or a plain copy). AMD's two headers are included unchanged; the shader only tells them how to read the image (four gathers, one per channel, for EASU; a plain load for RCAS). One catch: they use the ternary operator on vectors, which `dxc`'s default dialect, HLSL 2021, rejects, so the shaders compile as HLSL 2018. The result at 50%: ray tracer 3.5 ms, Resample 0.12 ms, Sharpen 0.8 ms, about 4.4 ms against 11 at full resolution, and an image clearly sharper than the bilinear one.
+
+What's left to look at: Sharpen costs ~0.7 ms even at 100%, where it only copies; and AMD recommends feeding EASU perceptual (gamma) values, while these are linear. FSR 1 also has a limit worth knowing: it works on one frame, so a still image accumulated at low resolution never gains detail finer than its pixels. Temporal upscalers (FSR 2/3, DLSS) gather jittered samples across frames, which is close to what the accumulation already does, but they need motion vectors and are a much larger step.
+
 **Next.** One triangle in the ray tracer (the textured quad's two), then an `.obj` loader with the same BVH over triangles. A rotating model won't need its tree rebuilt: built once in the object's own space, it stays valid while the ray is moved into that space with the object's inverse transform. That's the two-level split hardware ray tracing uses (a bottom-level tree per model, a small top-level one over the instances).
 
 ## Lessons worth a paragraph each
@@ -130,7 +153,9 @@ The BVH doubles the frame rate at these settings; SAH adds a little on a scene t
 - **Detect changes, don't announce them.** Comparing this frame's packed data with the last one replaced every "something changed" flag, and stays right when a new source of changes appears.
 - **Measure before optimising the next thing.** The BVH was the right fix for the search, and the heat map proved the search was solved; the frame was still slow because the cost had moved to pixels and bounces. Without a number per change, the ground's removal would have looked like a win.
 - **Validate data before drawing it.** The tree's validator found its own bugs and stayed silent on the real ones, which were on the GPU side; knowing the tree was right narrowed the search to the shader and the upload.
+- **A ratio is a clue.** 365 ms of GPU work in an 8.8 ms frame is impossible, and 365 / 8.8 ≈ 41.67, the other driver's tick: an absurd number usually carries the size of its mistake.
+- **Cost per pixel means the pixel count is the lever.** Once the profiler showed the ray tracer was the whole frame and scaled with pixels, rendering fewer and upscaling them well bought more than any change to the algorithm had.
 
 ## Screenshots worth taking for the post
 
-The quad with the photo (end of part 1). The first noisy diffuse sphere next to the same one after a few hundred accumulated frames. Lambertian/metal/glass side by side. The hollow glass sphere with its rings, at 4 and at 12 bounces. Depth of field through the lens next to the post-process at the same settings, with a sphere in the foreground. The book's cover scene, with the FPS counter in the menu bar. The book's scene with the spheres bobbing (a short clip), the Outliner listing ~487 entities and one selected in the Inspector. A `.pass.ron` next to the two files generated from it. The heat map without and with the BVH (red screen, then blue sky and pink clusters). The Ray Tracer panel with the tree's stats and the Midpoint/SAH combo.
+The quad with the photo (end of part 1). The first noisy diffuse sphere next to the same one after a few hundred accumulated frames. Lambertian/metal/glass side by side. The hollow glass sphere with its rings, at 4 and at 12 bounces. Depth of field through the lens next to the post-process at the same settings, with a sphere in the foreground. The book's cover scene, with the FPS counter in the menu bar. The book's scene with the spheres bobbing (a short clip), the Outliner listing ~487 entities and one selected in the Inspector. A `.pass.ron` next to the two files generated from it. The heat map without and with the BVH (red screen, then blue sky and pink clusters). The Ray Tracer panel with the tree's stats and the Midpoint/SAH combo. The Profiler panel. The same frame at 50% magnified bilinearly and with FSR 1, side by side (crop on a sphere's edge).
