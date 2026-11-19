@@ -11,7 +11,8 @@
 
 #ifdef GRAM_VULKAN_RENDERER
 
-// The game's post processing: applies the SSAA Post Processing algorithm from Content/shaders/SSAA.hlsl
+// One post-process pass: a fullscreen quad drawn with a shader (its .pass.ron says what it samples), its uniform
+// filled each frame by `Fill`. Accumulate, DepthOfField, Resample and Sharpen are all one of these.
 template <typename Params>
 class PostProcessPass : public Gram::VulkanPass
 {
@@ -31,9 +32,15 @@ public:
 
     // An intermediate pass: owns its output, which follows the size of the first input.
     PostProcessPass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, std::vector<std::shared_ptr<Gram::VulkanRenderTarget>> inputs, vk::Format format, Fill fill)
-        : PostProcessPass(device, shader, inputs, std::make_shared<Gram::VulkanRenderTarget>(device, inputs.at(0)->GetImage().GetExtent(), format, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled), std::move(fill))
+        : PostProcessPass(device, shader, inputs, format, inputs.at(0), std::move(fill))
+    { }
+
+    // An intermediate pass whose output follows another target's size (the scene's, for an upscaler whose
+    // input is smaller than the screen).
+    PostProcessPass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, std::vector<std::shared_ptr<Gram::VulkanRenderTarget>> inputs, vk::Format format, std::shared_ptr<Gram::VulkanRenderTarget> sizeOf, Fill fill)
+        : PostProcessPass(device, shader, inputs, std::make_shared<Gram::VulkanRenderTarget>(device, sizeOf->GetImage().GetExtent(), format, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled), std::move(fill))
     {
-        m_FollowsInput = true;
+        m_SizeOf = std::move(sizeOf);
     }
 
     // The last pass: writes into someone else's target (the scene), which it doesn't resize.
@@ -81,9 +88,9 @@ public:
         // Looked up every frame: the inputs are resized with the viewport.
         const vk::Extent2D inputExtent = m_TargetInputs[0]->GetImage().GetExtent();
 
-        if (m_FollowsInput)
+        if (m_SizeOf)   // an output of our own: it follows the size of the target it was told to
         {
-            m_TargetOutput->RequestExtent(inputExtent);
+            m_TargetOutput->RequestExtent(m_SizeOf->GetImage().GetExtent());
             m_TargetOutput->ApplyRequestedExtent();
         }
 
@@ -182,7 +189,7 @@ private:
     Gram::VulkanDescriptors   m_Descriptors;
     Gram::VulkanDescriptors   m_ImageDescriptors;
     Gram::VulkanPipeline      m_GraphicsPipeline;
-    bool m_FollowsInput = false;
+    std::shared_ptr<Gram::VulkanRenderTarget> m_SizeOf;   // set when the output is our own: whose size it follows
 };
 
 #endif // #ifdef GRAM_VULKAN_RENDERER

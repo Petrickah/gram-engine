@@ -57,7 +57,7 @@ private:
             return AccumulateParams { .FrameCount = state.FrameCount++ };
         });
 
-        // After the accumulation (it blurs the clean image), before SSAA (at the depth output's resolution).
+        // After the accumulation (it blurs the clean image), before Resample (at the depth output's resolution).
         // Set 1: binding 0 = the accumulated color, binding 1 = the ray tracer's depth (metres along the camera's axis).
         const Gram::VulkanShader dof = Gram::VulkanShader::Graphics(spec.m_Workspace, DepthOfFieldParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
         auto& dofPass = m_VulkanRenderer->AddPass<PostProcessPass<DepthOfFieldParams>>(device, dof, std::vector { accumulatePass.GetOutput(), rayTracePass.GetOutputDepth() }, vk::Format::eR32G32B32A32Sfloat, [&rayTracePass](const PostProcessPass<DepthOfFieldParams>::Context& ctx)
@@ -84,12 +84,34 @@ private:
             };
         });
 
-        const Gram::VulkanShader ssaa = Gram::VulkanShader::Graphics(spec.m_Workspace, SSAAParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
-        m_VulkanRenderer->AddPass<PostProcessPass<SSAAParams>>(device, ssaa, std::vector { dofPass.GetOutput() }, m_VulkanRenderer->GetSceneTarget(), [](const PostProcessPass<SSAAParams>::Context& ctx)
+        // Resample: from the ray tracer's resolution to the screen's, into an image of the scene's size. Over
+        // 100% it averages (SSAA); under, it magnifies, bilinearly or with FSR 1's EASU.
+        const Gram::VulkanShader resample = Gram::VulkanShader::Graphics(spec.m_Workspace, ResampleParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
+        auto& resamplePass = m_VulkanRenderer->AddPass<PostProcessPass<ResampleParams>>(device, resample, std::vector { dofPass.GetOutput() }, vk::Format::eR32G32B32A32Sfloat, m_VulkanRenderer->GetSceneTarget(), [&rayTracePass](const PostProcessPass<ResampleParams>::Context& ctx)
         {
-            return SSAAParams {
-                .TexelSize   = 1.0f / glm::vec2(ctx.InputExtent.width, ctx.InputExtent.height),
-                .ScaleFactor = static_cast<float>(ctx.InputExtent.width) / static_cast<float>(ctx.OutputExtent.width),
+            const glm::vec2 in  = glm::vec2(ctx.InputExtent.width,  ctx.InputExtent.height);
+            const glm::vec2 out = glm::vec2(ctx.OutputExtent.width, ctx.OutputExtent.height);
+
+            // FsrEasuCon (ffx_fsr1.h), the input being the whole image: con0 maps a screen pixel to the input's
+            // pixel grid; con1..con3 are the offsets, in UV, of the 4 gathers around it (its 12-texel kernel).
+            return ResampleParams {
+                .TexelSize   = 1.0f / in,
+                .ScaleFactor = in.x / out.x,
+                .Mode        = rayTracePass.UsesFsr() ? 1u : 0u,
+                .EasuCon0    = glm::vec4(in.x / out.x, in.y / out.y, 0.5f * in.x / out.x - 0.5f, 0.5f * in.y / out.y - 0.5f),
+                .EasuCon1    = glm::vec4( 1.0f / in.x,  1.0f / in.y, 1.0f / in.x, -1.0f / in.y),
+                .EasuCon2    = glm::vec4(-1.0f / in.x,  2.0f / in.y, 1.0f / in.x,  2.0f / in.y),
+                .EasuCon3    = glm::vec4( 0.0f,         4.0f / in.y, 0.0f,         0.0f),
+            };
+        });
+
+        // Sharpen: FSR 1's RCAS on the magnified image, into the scene; a plain copy without FSR.
+        const Gram::VulkanShader sharpen = Gram::VulkanShader::Graphics(spec.m_Workspace, SharpenParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
+        m_VulkanRenderer->AddPass<PostProcessPass<SharpenParams>>(device, sharpen, std::vector { resamplePass.GetOutput() }, m_VulkanRenderer->GetSceneTarget(), [&rayTracePass](const PostProcessPass<SharpenParams>::Context&)
+        {
+            return SharpenParams {
+                .Sharpness = std::exp2(-rayTracePass.GetSharpening()),   // stops below the strongest → RCAS's linear strength
+                .Enabled   = rayTracePass.UsesFsr() ? 1u : 0u,
             };
         });
 

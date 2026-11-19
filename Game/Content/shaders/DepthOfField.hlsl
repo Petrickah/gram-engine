@@ -1,6 +1,6 @@
 // Depth of field as a post-process: the ray tracer renders a pinhole image (everything sharp) plus its depth,
 // and this pass blurs each pixel by its circle of confusion (CoC). Wired by main.cpp, after Accumulate and
-// before SSAA; the uniform is filled from the RayTracer panel's lens (DepthOfFieldParams).
+// before Resample; the uniform is filled from the RayTracer panel's lens (DepthOfFieldParams).
 // The depth of field algorithm:
 //  1. This pixel's CoC: CoCScale * abs(depth - FocusDistance) / depth, capped at MaxCoC.
 //  2. Gather: average the colors of the neighbours inside a disc of that diameter (TexelSize turns

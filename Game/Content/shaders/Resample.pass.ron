@@ -1,0 +1,14 @@
+Pass(
+    name: "Resample",
+    stage: Raster,
+    uniform: [
+        Field(name: "texel_size",   ty: Vec2),      // one input pixel, in UV
+        Field(name: "scale_factor", ty: F32),       // input / output width: > 1 averages (SSAA), <= 1 magnifies
+        Field(name: "mode",         ty: U32),       // when magnifying: 0 = bilinear, 1 = FSR 1's EASU
+        Field(name: "easu_con0",    ty: Vec4),      // EASU's four constants (FsrEasuCon), floats the shader reads back as bits
+        Field(name: "easu_con1",    ty: Vec4),
+        Field(name: "easu_con2",    ty: Vec4),
+        Field(name: "easu_con3",    ty: Vec4),
+    ],
+    inputs: [ Sampled(name: "color") ],
+)

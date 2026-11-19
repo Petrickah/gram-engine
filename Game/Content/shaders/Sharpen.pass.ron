@@ -1,0 +1,9 @@
+Pass(
+    name: "Sharpen",
+    stage: Raster,
+    uniform: [
+        Field(name: "sharpness", ty: F32),          // RCAS's strength: exp2(-stops), 1 = the most
+        Field(name: "enabled",   ty: U32),          // 0 = copy the input through (no FSR this frame)
+    ],
+    inputs: [ Sampled(name: "color") ],
+)

@@ -172,9 +172,9 @@ bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
     
     if (PackScene()) m_SceneChanged = true;
 
-    m_Output     ->RequestExtent(m_Target->GetImage().GetExtent(), static_cast<float>(m_Quality.Ssaa));
+    m_Output     ->RequestExtent(m_Target->GetImage().GetExtent(), m_Quality.RenderScale);
     m_Output     ->ApplyRequestedExtent();
-    m_OutputDepth->RequestExtent(m_Target->GetImage().GetExtent(), static_cast<float>(m_Quality.Ssaa));
+    m_OutputDepth->RequestExtent(m_Target->GetImage().GetExtent(), m_Quality.RenderScale);
     m_OutputDepth->ApplyRequestedExtent();
 
     // The image's own size, not the swapchain's: the ray tracer fills the target, whatever the window.
@@ -309,17 +309,27 @@ void RayTracePass::DrawRayTracerUI()
         GenerateBookScene(); changed = true;
     }
 
-    // What makes a frame expensive: pixels (SSAA renders Ssaa x Ssaa rays per screen pixel), rays per pixel
+    // What makes a frame expensive: pixels (the render scale squared: 50% is a quarter of the screen's pixels,
+    // 200% is SSAA 2x, four times as many), rays per pixel
     // per frame (samples), and the length of each ray's path (bounces).
     if (ImGui::CollapsingHeader("Quality", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        constexpr std::array ssaaFactors { 1u, 2u, 4u };
-        constexpr std::array ssaaNames   { "1x (off)", "2x", "4x" };
-        int ssaa = static_cast<int>(std::ranges::find(ssaaFactors, m_Quality.Ssaa) - ssaaFactors.begin());
-        if (ImGui::Combo("SSAA", &ssaa, ssaaNames.data(), static_cast<int>(ssaaNames.size())))
+        constexpr std::array scales { 0.5f, 0.67f, 0.75f, 1.0f, 2.0f, 4.0f };
+        constexpr std::array names  { "50% (upscaled)", "67% (upscaled)", "75% (upscaled)", "100%", "200% (SSAA 2x)", "400% (SSAA 4x)" };
+        int scale = static_cast<int>(std::ranges::find(scales, m_Quality.RenderScale) - scales.begin());
+        if (ImGui::Combo("Render scale", &scale, names.data(), static_cast<int>(names.size())))
         {
-            m_Quality.Ssaa = ssaaFactors[ssaa];   // the images are recreated next frame, which resets the accumulation
+            m_Quality.RenderScale = scales[scale];   // the images are recreated next frame, which resets the accumulation
         }
+
+        // Under 100%, how the smaller image is magnified to the screen. No accumulation reset: the ray tracer's
+        // output doesn't change, only what's done to it after.
+        ImGui::BeginDisabled(m_Quality.RenderScale >= 1.0f);
+        ImGui::Checkbox("FSR 1 upscaling", &m_Quality.Fsr);
+        ImGui::BeginDisabled(!m_Quality.Fsr);
+        ImGui::SliderFloat("Sharpening (stops)", &m_Quality.Sharpening, 0.0f, 2.0f, "%.2f");   // 0 = sharpest
+        ImGui::EndDisabled();
+        ImGui::EndDisabled();
 
         const uint32_t minSamples = 1, maxSamples = 16, minBounces = 1, maxBounces = 100;
         changed |= ImGui::SliderScalar("Samples per frame", ImGuiDataType_U32, &m_Quality.Samples, &minSamples, &maxSamples);

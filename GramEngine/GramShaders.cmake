@@ -7,6 +7,8 @@
 # Plain find_program instead of FindVulkan's dxc component: that one also requires the dxcompiler
 # library for the *target* platform, which a mingw cross-build doesn't have (and doesn't need).
 # NO_CMAKE_FIND_ROOT_PATH keeps the search on the host when cross-compiling.
+# Every shader compiles as HLSL 2018 (-HV 2018), not dxc's default 2021: AMD's FidelityFX headers
+# (Content/shaders/ffx/) use the ternary operator on vectors, which 2021 rejects (it wants select()).
 find_program(GRAM_DXC_EXECUTABLE dxc
     HINTS $ENV{VULKAN_SDK}/bin $ENV{VULKAN_SDK}/Bin
     NO_CMAKE_FIND_ROOT_PATH
@@ -51,8 +53,8 @@ function(gram_add_hlsl_raster_shader target source)
     add_custom_command(
         OUTPUT ${vert} ${frag}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${dir}
-        COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -T vs_6_0 -E VSMain ${source} -Fo ${vert}
-        COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -T ps_6_0 -E PSMain ${source} -Fo ${frag}
+        COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -HV 2018 -T vs_6_0 -E VSMain ${source} -Fo ${vert}
+        COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -HV 2018 -T ps_6_0 -E PSMain ${source} -Fo ${frag}
         DEPENDS ${source} ${headers}
         COMMENT "Compiling shader ${name}.hlsl to SPIR-V"
         VERBATIM
@@ -75,7 +77,7 @@ function(gram_add_hlsl_compute_shader target source)
     add_custom_command(
         OUTPUT  ${compute}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${dir}
-        COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -T cs_6_0 -E CSMain ${source} -Fo ${compute}
+        COMMAND ${GRAM_DXC_EXECUTABLE} -fspv-target-env=vulkan1.3 -spirv -HV 2018 -T cs_6_0 -E CSMain ${source} -Fo ${compute}
         DEPENDS ${source} ${headers}
         COMMENT "Compiling shader ${name}.hlsl to SPIR-V"
         VERBATIM

@@ -1,9 +1,0 @@
-Pass(
-    name: "SSAA",
-    stage: Raster,
-    uniform: [
-        Field(name: "texel_size", ty: Vec2),
-        Field(name: "scale_factor", ty: F32),
-    ],
-    inputs: [ Sampled(name: "color") ],
-)
