@@ -39,7 +39,7 @@ enum class MaterialType : uint32_t { Lambertian, Metal, Dielectric };
 class RayTracePass : public Gram::VulkanPass
 {
 public:
-    RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target);
+    RayTracePass(std::filesystem::path skybox, Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target);
     
     void GenerateBookScene();
 
@@ -73,6 +73,7 @@ private:
     std::optional<uint64_t>                   m_DepthGeneration  = std::nullopt;
     std::shared_ptr<Gram::VulkanRenderTarget> m_Output;
     std::shared_ptr<Gram::VulkanRenderTarget> m_OutputDepth;
+    Gram::VulkanImage                         m_Skybox;
     Gram::VulkanDescriptors                   m_Descriptors;
     Gram::VulkanDescriptors                   m_ImageDescriptors;
     Gram::VulkanPipeline                      m_ComputePipeline;
@@ -88,7 +89,7 @@ private:
     uint32_t       m_MaterialCount = 0;
     CameraControls m_CameraControls;
 
-    BVHTree        m_Tree;
+    BVHTree           m_Tree;
     bool              m_UseBvh       = true;
     bool              m_RebuildTree  = false;                    // set by the Build combo: rebuild even if the scene didn't change
     BVHTree::Strategy m_TreeStrategy = BVHTree::Strategy::Sah;
@@ -103,6 +104,7 @@ private:
         bool     Fsr         = true;   // under 100%: FSR 1 (EASU + RCAS) rather than a bilinear magnification
         float    Sharpening  = 0.2f;   // RCAS, in stops below its strongest (0 = the most); AMD's default
     } m_Quality;
+
     bool           m_DebugWholePath = false;   // the heat map counts every bounce, not only the camera's ray
     uint32_t       m_DebugView = 0;      // the heat map: 0 off, 1 box tests, 2 sphere tests, 3 both
     uint32_t       m_BoxThreshold    = 64;    // the heat map: box tests for full red

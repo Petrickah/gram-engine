@@ -3,20 +3,26 @@
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDescriptors.hpp"
+#include "Gram/Renderer/VulkanImage.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Scripting/ECS/World.hpp"
 
 #include "RayTracePass.hpp"
 #include "BVHTree.hpp"
+#include "Passes.generated.hpp"
+#include "vulkan/vulkan.hpp"
+
 #include <chrono>
+#include <filesystem>
 #include <random>
 
 #ifdef GRAM_VULKAN_RENDERER
 
-RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target)
+RayTracePass::RayTracePass(std::filesystem::path skybox, Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target)
     : m_World(world)
     , m_Target(target)
+    , m_Skybox(Gram::VulkanImage::Load(device, skybox))
     , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
         { .binding = RayTracerParams::UniformBinding,   .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
         { .binding = RayTracerParams::SpheresBinding,   .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
@@ -24,8 +30,9 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
         { .binding = RayTracerParams::NodesBinding,     .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
     }))
     , m_ImageDescriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
-        { .binding = RayTracerParams::ResultBinding,    .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = RayTracerParams::DepthBinding,     .descriptorType = vk::DescriptorType::eStorageImage , .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::SkyboxBinding,    .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::ResultBinding,    .descriptorType = vk::DescriptorType::eStorageImage, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
+        { .binding = RayTracerParams::DepthBinding,     .descriptorType = vk::DescriptorType::eStorageImage, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
     }))
     , m_ComputePipeline(Gram::VulkanPipeline::Compute(device, shader, std::array { m_Descriptors.GetLayout(), m_ImageDescriptors.GetLayout() }))
     , m_CameraUniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<RayTracerParams>>(device))
@@ -39,6 +46,7 @@ RayTracePass::RayTracePass(Gram::VulkanDevice& device, const Gram::VulkanShader&
     Gram::VulkanImage& sceneDepth = m_OutputDepth->GetImage();
     if (scene.IsValid())      m_ImageDescriptors.Write(device, RayTracerParams::ResultBinding, scene, vk::ImageLayout::eGeneral);
     if (sceneDepth.IsValid()) m_ImageDescriptors.Write(device, RayTracerParams::DepthBinding, sceneDepth, vk::ImageLayout::eGeneral);
+    if (m_Skybox.IsValid())   m_ImageDescriptors.Write(device, RayTracerParams::SkyboxBinding, m_Skybox);
 
     m_SphereStorages   = Gram::VulkanBuffer::Create<Gram::StorageBuffer<SphereData>>(device, m_SphereCount);
     m_MaterialStorages = Gram::VulkanBuffer::Create<Gram::StorageBuffer<MaterialData>>(device, m_MaterialCount);

@@ -17,6 +17,7 @@ static uint g_Seed  = 0;
 static uint g_BoxTests    = 0;   // the heat map's two measures, per ray: box tests (the BVH's nodes)...
 static uint g_SphereTests = 0;   // ...and sphere tests (its leaves, the ground, or every sphere without it)
 
+static const float g_PI                 = 3.14159265359;
 static const float g_Miss               = 3.402823466e+38f;
 static const uint  g_StackSize          = 16;
 // Material Types; Keep the numeric values 1:1 with C++
@@ -283,7 +284,17 @@ bool Scatter(in MaterialData mat, inout Ray ray, in HitRecord hit, out float3 at
     return false;
 }
 
-float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
+float2 DirToSphericalUV(float3 dir)
+{
+    float3 d = normalize(dir);
+    // Azimuthal angle around Y: [-PI, PI] -> [0, 1]
+    float u = atan2(d.x, d.z) / (2.0 * g_PI) + 0.5;
+    // Polar angle from +Y pole: [0, PI] -> [0, 1]
+    float v = acos(clamp(d.y, -1.0, 1.0)) / g_PI;
+    return float2(u, v);
+}
+
+float3 RayColor(in Ray ray)
 {
     float3 attenuation = 1.0f;
 
@@ -292,7 +303,7 @@ float3 RayColor(in Ray ray, float3 startColor, float3 endColor)
         HitRecord hitRecord;
         if (!HitSpheres(ray, 0.01f, 3.402823466e+38f, hitRecord))
         {
-            return attenuation * lerp(startColor, endColor, 0.5 * (ray.Direction.y + 1.0f));
+            return attenuation * Skybox.SampleLevel(SkyboxSampler, DirToSphericalUV(ray.Direction), 0);
         }
 
         const MaterialData mat = Materials[hitRecord.MaterialIndex];
@@ -361,7 +372,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             g_SphereTests = 0;
             for (uint sampleCount = 0; sampleCount < Params.Samples; sampleCount++)
             {
-                RayColor(CalculateRay(Params, id.xy, uint2(width, height)), float3(1.0f, 1.0f, 1.0f), float3(0.5f, 0.7f, 1.0f));
+                RayColor(CalculateRay(Params, id.xy, uint2(width, height)));
             }
             g_BoxTests    /= Params.Samples;
             g_SphereTests /= Params.Samples;
@@ -388,7 +399,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     for (uint sampleCount = 0; sampleCount < Params.Samples; sampleCount++)
     {
-        viewColor += RayColor(CalculateRay(Params, id.xy, uint2(width, height)), float3(1.0f, 1.0f, 1.0f), float3(0.5f, 0.7f, 1.0f)) * Params.SampleScale;
+        viewColor += RayColor(CalculateRay(Params, id.xy, uint2(width, height))) * Params.SampleScale;
     }
 
     Result[id.xy] = float4(viewColor, 1.0f);

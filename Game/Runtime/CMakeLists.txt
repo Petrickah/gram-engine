@@ -25,6 +25,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../Content/Shaders.generated.cmake)
 gram_add_content_shaders(Runtime)
 
 gram_add_texture(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/textures/texture.jpg)
+gram_add_texture(Runtime ${CMAKE_CURRENT_SOURCE_DIR}/../Content/textures/autumn_field_puresky_4k.hdr)
 
 # gram:link:GramEngine begin
 target_link_libraries(Runtime PRIVATE GramEngine)

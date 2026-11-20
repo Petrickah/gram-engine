@@ -1,7 +1,7 @@
 Pass(
     name: "RayTracer",
     stage: Compute,
-    uniform: [                                         // the camera, and what the shader needs per frame
+    uniform: [                                           // the camera, and what the shader needs per frame
         Field(name: "position",       ty: Vec3),
         Field(name: "tan_half_fov_y", ty: F32),
         Field(name: "right",          ty: Vec3),
@@ -41,8 +41,11 @@ Pass(
             Field(name: "min",   ty: Vec3),
             Field(name: "first", ty: U32),
             Field(name: "max",   ty: Vec3),
-            Field(name: "count", ty: U32)
+            Field(name: "count", ty: U32),
         ]),
+    ],
+    inputs: [
+        Sampled(name: "skybox"),
     ],
     outputs: [
         Storage(name: "result", format: Rgba32f),
