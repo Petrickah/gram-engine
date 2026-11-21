@@ -1,8 +1,10 @@
+#include "Gram/Logging/GramLogger.hpp"
 #include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanImGui.hpp"
 
 #include "Gram/Application/GLFWApplication.hpp"
+#include <cmath>
 
 #ifdef GRAM_IMGUI_ENABLED
 #include <imgui_impl_glfw.h>
@@ -54,10 +56,11 @@ VulkanImGui::VulkanImGui(
 
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = m_IniPath.c_str();
-    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable
-                               |  ImGuiConfigFlags_ViewportsEnable
-                               ;
-    
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+#ifdef GRAM_IMGUI_VIEWPORTS
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+#endif // #ifdef GRAM_IMGUI_VIEWPORTS
+
     if (!queueFamilyIndices.IsComplete())
     {
         return;
@@ -92,19 +95,22 @@ VulkanImGui::VulkanImGui(
         .UseDynamicRendering = true,
     };
 
-    GLFWApplication* app = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application);
-    if (!app)
+    m_Application = dynamic_cast<GLFWApplication*>(rendererSpec->m_Application);
+    if (!m_Application)
     {
         GramError("ImGui: no GLFWApplication to attach to");
         return;
     }
 
     constexpr bool installCallbacks = true;
-    if (!ImGui_ImplGlfw_InitForVulkan(app->GetWindow(), installCallbacks))
+    if (!ImGui_ImplGlfw_InitForVulkan(m_Application->GetWindow(), installCallbacks))
     {
         GramError("ImGui: GLFW backend initialization failed");
         return;
     }
+
+    m_BaseStyle    = ImGui::GetStyle();
+    m_AppliedScale = 0.0f;
 
     if (!ImGui_ImplVulkan_Init(&initInfo))
     {
@@ -113,12 +119,36 @@ VulkanImGui::VulkanImGui(
     }
 }
 
+float VulkanImGui::CalculateImGuiScale() const
+{
+    float contentScale     = ImGui_ImplGlfw_GetContentScaleForWindow(m_Application->GetWindow());
+
+    if (m_Application->GetWindowMode() != Gram::GLFWApplicationWindowMode::Fullscreen) return contentScale;
+
+    float desktopHeight    = static_cast<float>(m_Application->GetDesktopMode().Height);
+    float fullscreenHeight = static_cast<float>(m_Application->GetFullscreenMode().Height);
+    return std::max(1.0f, contentScale * (fullscreenHeight / desktopHeight));
+}
+
 bool VulkanImGui::Record(vk::CommandBuffer cmd, VulkanPass::Context ctx)
 {
     // Loads what the passes before this one rendered (or clears, if none did): ImGui draws on top.
     BeginSwapchainRendering(ctx);
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
+
+    float scale = CalculateImGuiScale();
+    if (m_AppliedScale != scale)
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        style = m_BaseStyle;
+        style.ScaleAllSizes(scale);
+        style.FontScaleDpi = scale;
+
+        GramInfo("ImGui: Scale Changed; Old: {} -> New: {}", m_AppliedScale, scale);
+
+        m_AppliedScale = scale;
+    }
 
     ImGui::NewFrame();
     ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);

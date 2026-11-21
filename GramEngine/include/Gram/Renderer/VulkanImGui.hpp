@@ -8,6 +8,8 @@ struct ImGuiApplicationLayer;
 struct QueueFamilyIndices;
 struct VulkanRendererSpecification;
 
+class GLFWApplication;
+
 #if defined(GRAM_VULKAN_RENDERER) && defined(GRAM_IMGUI_ENABLED)
 class VulkanImGui : public VulkanPass, public LayerOwner<ImGuiApplicationLayer>
 {
@@ -30,9 +32,14 @@ public:
 private:
     using super = LayerOwner<ImGuiApplicationLayer>;
 
+    float CalculateImGuiScale() const;
+
 private:
     vk::UniqueDescriptorPool  m_ImGuiPool;
     std::string               m_IniPath;
+    ImGuiStyle                m_BaseStyle;
+    GLFWApplication*          m_Application  = nullptr;
+    float                     m_AppliedScale = 0.0f;
 };
 #endif // #if defined(GRAM_VULKAN_RENDERER) && defined(GRAM_IMGUI_ENABLED)
 

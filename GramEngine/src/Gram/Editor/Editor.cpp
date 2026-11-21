@@ -11,6 +11,10 @@
 #include "Gram/Logging/GramLogger.hpp"
 
 #ifdef GRAM_IMGUI_ENABLED
+
+#include <GLFW/glfw3.h>
+#include <imgui.h>
+
 GRAM_NAMESPACE_BEGIN
 
 bool EditorMenuBar::OnDrawFrame()
@@ -62,8 +66,20 @@ bool EditorMenuBar::OnDrawFrame()
         }
 #endif // #ifdef GRAM_VULKAN_RENDERER
         std::snprintf(frameRate + written, sizeof(frameRate) - written, "%.1f FPS (%.2f ms)", io.Framerate, 1000.0f / io.Framerate);
-        ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::CalcTextSize(frameRate).x - 2.0f * ImGui::GetStyle().ItemSpacing.x);
+
+        float windowWidth         = ImGui::GetWindowWidth();
+        float itemMargin          = 2.0f * ImGui::GetStyle().ItemSpacing.x;
+        float frameRateWidth      = ImGui::CalcTextSize(frameRate).x;
+        float closeButtonWidth    = ImGui::CalcTextSize("X").x + 2.0f * ImGui::GetStyle().FramePadding.x;
+        float closeButtonPosition = windowWidth - itemMargin - closeButtonWidth;
+        float frameRatePosition   = closeButtonPosition - itemMargin - frameRateWidth;
+
+        ImGui::SameLine(frameRatePosition);
         ImGui::TextUnformatted(frameRate);
+
+        GLFWwindow* window = static_cast<GLFWwindow*>(ImGui::GetMainViewport()->PlatformHandle);
+        ImGui::SameLine(closeButtonPosition);
+        if (ImGui::SmallButton("X")) glfwSetWindowShouldClose(window, GLFW_TRUE);
 
         ImGui::EndMainMenuBar();
     }

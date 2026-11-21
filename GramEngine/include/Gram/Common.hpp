@@ -40,6 +40,12 @@
 #endif // #ifndef GRAM_PLATFORM_APPLE
 #endif // #ifdef __APPLE__
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#ifndef GRAM_PLATFORM_LINUX
+#define GRAM_PLATFORM_LINUX
+#endif // #ifndef GRAM_PLATFORM_LINUX
+#endif // #if defined(__linux__) && !defined(__ANDROID__)
+
 // Variadic so the argument may carry its own trailing comma, which an initializer list
 // needs to disappear with it: { "a", GramAppleOnly("b",) }
 #ifdef GRAM_PLATFORM_APPLE
@@ -84,6 +90,13 @@
 #else
 #define GramImGuiOnly(...)
 #endif // #ifdef GRAM_IMGUI_ENABLED
+
+// GRAM_IMGUI_VIEWPORTS: ImGui windows (popups, floating panels) may leave the main window as windows of their
+// own. Not on Linux: an X11 window manager places a new window itself (KWin through XWayland on SteamOS opened a
+// combo's list mid-screen, 2026-11-21), and Wayland doesn't let a program place its windows at all.
+#if defined(GRAM_IMGUI_ENABLED) && !defined(GRAM_PLATFORM_LINUX)
+#define GRAM_IMGUI_VIEWPORTS
+#endif // #if defined(GRAM_IMGUI_ENABLED) && !defined(GRAM_PLATFORM_LINUX)
 
 // GRAM_EDITOR_ENABLED: the engine's own panels (Outliner, Inspector, Systems, Log, Viewport), only in
 // Debug, where the game is written. Release keeps ImGui for the game's own panels only, to test it with,

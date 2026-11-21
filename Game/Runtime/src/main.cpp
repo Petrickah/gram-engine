@@ -11,6 +11,9 @@
 #include "Passes.generated.hpp"
 #include "PostProcessPass.hpp"
 #include "RayTracePass.hpp"
+#include <cstddef>
+#include <imgui.h>
+#include <vector>
 
 class RuntimeApplication : public Gram::GLFWApplication
 {
@@ -139,31 +142,74 @@ private:
     // The scene's resolution (the viewport's own, or a fixed one shown letterboxed) and V-Sync.
     void DrawDisplayUI()
     {
-        const std::shared_ptr<Gram::VulkanRenderTarget>& scene = m_VulkanRenderer->GetSceneTarget();
-        const vk::Extent2D extent = scene->GetImage().GetExtent();
-        ImGui::Text("Scene: %u x %u", extent.width, extent.height);
-
-        static constexpr std::array<vk::Extent2D, 4> fixed { vk::Extent2D { 1280, 720 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } };
-        static constexpr std::array names { "Fit the viewport", "1280 x 720", "1920 x 1080", "2560 x 1440", "3840 x 2160" };
-        int current = 0;   // index into names: 0 = no fixed size
-        if (const std::optional<vk::Extent2D> pinned = scene->GetFixedExtent())
+        if (ImGui::CollapsingHeader("Viewport Settings", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            for (size_t i = 0; i < fixed.size(); i++) if (fixed[i] == *pinned) current = static_cast<int>(i) + 1;
+            const std::shared_ptr<Gram::VulkanRenderTarget>& scene = m_VulkanRenderer->GetSceneTarget();
+            const vk::Extent2D extent = scene->GetImage().GetExtent();
+
+            ImGui::Text("Scene: %u x %u", extent.width, extent.height);
+            
+            static constexpr std::array<vk::Extent2D, 4> fixed { vk::Extent2D { 1280, 720 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } };
+            static constexpr std::array names { "Fit the viewport", "1280 x 720", "1920 x 1080", "2560 x 1440", "3840 x 2160" };
+            int current = 0;   // index into names: 0 = no fixed size
+            if (const std::optional<vk::Extent2D> pinned = scene->GetFixedExtent())
+            {
+                for (size_t i = 0; i < fixed.size(); i++) if (fixed[i] == *pinned) current = static_cast<int>(i) + 1;
+            }
+            if (ImGui::Combo("Resolution###Viewport", &current, names.data(), static_cast<int>(names.size())))
+            {
+                scene->SetFixedExtent(current == 0 ? std::nullopt : std::optional(fixed[current - 1]));   // applied next frame
+            }
+
+            bool vsync = m_VulkanRenderer->GetVSync();
+            if (ImGui::Checkbox("V-Sync", &vsync)) m_VulkanRenderer->SetVSync(vsync);   // the swapchain is recreated next frame
+            
+            // The scene as it is, without the editor around it, at its own resolution: a PNG named after the time,
+            // in screenshots/ next to the executable.
+            ImGui::SameLine();
+            if (ImGui::Button("Take Picture"))
+            {
+                const std::string name = std::format("{:%Y-%m-%d_%H-%M-%S}.png", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+                m_VulkanRenderer->RequestScreenshot(m_Workspace / "screenshots" / name);
+            }
         }
-        if (ImGui::Combo("Resolution", &current, names.data(), static_cast<int>(names.size())))
-        {
-            scene->SetFixedExtent(current == 0 ? std::nullopt : std::optional(fixed[current - 1]));   // applied next frame
-        }
 
-        bool vsync = m_VulkanRenderer->GetVSync();
-        if (ImGui::Checkbox("V-Sync", &vsync)) m_VulkanRenderer->SetVSync(vsync);   // the swapchain is recreated next frame
-
-        // The scene as it is, without the editor around it, at its own resolution: a PNG named after the time,
-        // in screenshots/ next to the executable.
-        if (ImGui::Button("Take Picture"))
+        if (ImGui::CollapsingHeader("Window Settings", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            const std::string name = std::format("{:%Y-%m-%d_%H-%M-%S}.png", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
-            m_VulkanRenderer->RequestScreenshot(m_Workspace / "screenshots" / name);
+            static constexpr std::array names { "Windowed", "Borderless", "Fullscreen" };
+            
+            Gram::GLFWApplicationWindowMode windowMode = GetWindowMode();
+            int currentWindowMode = static_cast<int>(windowMode);   // index into names: 0 = Windowed
+
+            Gram::GLFWApplicationVideoMode videoMode = GetFullscreenMode();
+            if (videoMode.Width == 0) videoMode = GetDesktopMode();   // never fullscreen yet: the monitor's own
+            if (ImGui::Combo("Window", &currentWindowMode, names.data(), static_cast<int>(names.size())))
+            {
+                windowMode = static_cast<Gram::GLFWApplicationWindowMode>(currentWindowMode);
+                SetWindowMode(windowMode, videoMode);
+            }
+            
+            ImGui::BeginDisabled(windowMode != Gram::GLFWApplicationWindowMode::Fullscreen);
+            auto label = [](const Gram::GLFWApplicationVideoMode& mode)
+            {
+                return std::format("{} x {} @ {} Hz", mode.Width, mode.Height, mode.RefreshRate);
+            };
+            
+            if (ImGui::BeginCombo("Resolution###WindowSettings", label(videoMode).c_str()))
+            {
+                for (const Gram::GLFWApplicationVideoMode& mode : GetVideoModes())
+                {
+                    const bool selected = (mode == videoMode);
+                    if (ImGui::Selectable(label(mode).c_str(), selected))
+                    {
+                        SetWindowMode(windowMode, mode);
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();   // the open list scrolls to it
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::EndDisabled();
         }
     }
 
@@ -176,8 +222,8 @@ private:
         m_Editor->AddPanel("Debug/Display",  [this] { DrawDisplayUI(); });
         GramEditorOnly(m_Editor->GetInspector().Select(m_GreetingEntity));
     }
-    
-    std::unique_ptr<Gram::Editor> m_Editor = nullptr;
+
+    std::unique_ptr<Gram::Editor>  m_Editor    = nullptr;
 #endif // #ifdef GRAM_IMGUI_ENABLED
 };
 
@@ -192,9 +238,14 @@ std::shared_ptr<Gram::Application> Gram::CreateApplication(int argc, char** argv
     return std::make_shared<RuntimeApplication>(
         Gram::GLFWApplicationSpecification {
             .m_EnableLogging = enableLogging,
-            .m_WindowSize    = glm::vec2(1920, 1080),
             .m_WindowTitle   = "Gram Application with Vulkan",
-            .m_Workspace     = Gram::GetExecutableDirectory(executableFile)
+            .m_Workspace     = Gram::GetExecutableDirectory(executableFile),
+#ifdef GRAM_CONFIG_FINAL
+            .m_WindowMode    = Gram::GLFWApplicationWindowMode::Borderless,   // the game: the whole screen, at its own mode
+#else
+            .m_WindowMode    = Gram::GLFWApplicationWindowMode::Windowed,     // the editor, or the game's panels under test
+#endif
+            .m_WindowSize    = glm::ivec2(1920, 1080),
         }
     );
 }
