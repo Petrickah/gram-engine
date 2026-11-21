@@ -97,6 +97,21 @@ fn builds_a_referenced_library_as_part_of_the_executable() {
 
     assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), exe("demo"))));
     assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("engine"))));
+    // Compiled once, inside main's build (add_subdirectory), not a second time on its own.
+    assert!(project.exists(&format!("main/build-{}-debug/engine", host())));
+    assert!(!project.exists(&format!("engine/build-{}-debug", host())), "engine was compiled twice");
+}
+
+#[test]
+fn builds_a_referenced_library_on_its_own_when_asked_by_name() {
+    let project = Sandbox::project("demo", &["--lang", "cmake"]);
+    project.gram(&["add", "--module", "engine", "--lang", "cmake", "--kind", "library"]).succeeds();
+    project.gram(&["add", "engine", "--module", "main", "--module-ref"]).succeeds();
+
+    project.gram(&["build", "--module", "engine"]).succeeds();
+
+    assert!(project.exists(&format!("engine/build-{}-debug", host())));
+    assert!(project.exists(&format!("build/demo/{}/debug/{}", host(), shared_lib("engine"))));
 }
 
 #[test]

@@ -318,7 +318,21 @@ impl BuildConfig {
                 println!("gram generate (module={}): wrote {}", generation.module, path.display());
             }
         }
+        // A library another module of this build references is compiled by that module, as part of it (a cargo
+        // path dependency, a cmake add_subdirectory into its build dir). Building it on its own as well only
+        // compiled it twice: GramEngine once in GramEngine/build-*, again in Game/Runtime/build-*/GramEngine.
+        let referenced: HashSet<&str> = modules.iter()
+            .flat_map(|m| m.deps.iter())
+            .filter_map(|dep| match dep {
+                DependencySpec::Module { name } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
         for curr_module in modules {
+            if curr_module.kind == "library" && referenced.contains(curr_module.name.as_str()) {
+                println!("gram module (name={}): compiled as part of the modules referencing it", curr_module.name);
+                continue;
+            }
             curr_module.build(&self, &ci, target, profile, toolchain)?;
         }
         Ok(())

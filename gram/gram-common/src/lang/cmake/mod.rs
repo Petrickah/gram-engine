@@ -153,6 +153,24 @@ impl ModuleBackend for CMake {
         };
         replace_file(&from, &dest)?;
 
+        // The libraries this module references were compiled inside its own build, add_subdirectory putting each
+        // in <build dir>/<name>/; gram doesn't build them on their own as well (BuildConfig::build). A shared one
+        // has to sit next to the executable, so each travels like the module's own artifact, real name kept.
+        let out_dir = Path::new(out).parent().unwrap_or_else(|| Path::new("."));
+        for library in refs.iter().filter(|reference| reference.kind == "library") {
+            let library_dir = Path::new(build_dir).join(&library.name);
+            let found = [library_dir.clone(), library_dir.join(config)].iter()
+                .flat_map(|dir| library_candidates(&library.name, target).into_iter().map(move |file| dir.join(file)))
+                .find(|path| path.exists());
+            match found {
+                Some(path) => replace_file(&path, &out_dir.join(path.file_name().expect("library candidates are file names")))?,
+                None => eprintln!(
+                    "warning: module {}: the library {} it references wasn't found in {}",
+                    module.name, library.name, library_dir.display()
+                ),
+            }
+        }
+
         // With a multi-config generator (Visual Studio) vcpkg's toolchain copies the DLLs an
         // executable needs (glfw3.dll, vulkan-1.dll, ...) next to it, in <build dir>/<Config>/.
         // Without them Windows won't start the program at all (exit code 0xC0000135, no window,
@@ -172,7 +190,6 @@ impl ModuleBackend for CMake {
         // and textures, each in its own folder of the build dir (see GramShaders.cmake /
         // GramTextures.cmake). Stopgap until assets get their own module kind with N artifacts.
         const ASSET_DIRS: [&str; 2] = ["shaders", "textures"];
-        let out_dir = Path::new(out).parent().unwrap_or_else(|| Path::new("."));
         for asset_dir in ASSET_DIRS {
             let source = Path::new(build_dir).join(asset_dir);
             if !source.is_dir() {
@@ -354,6 +371,24 @@ fn artifact_candidates(module: &ModuleConfig, target: &str) -> Vec<String> {
     let name = &module.name;
     let mut candidates = vec![format!("{prefix}{name}{ext}")];
     if module.kind == "library" {
+        candidates.extend(static_library_names(name, target));
+    }
+    candidates
+}
+
+/// A library module's file names, shared or static: the CMakeLists decides which, not gram.
+fn library_candidates(name: &str, target: &str) -> Vec<String> {
+    let shared = match target {
+        "windows" => format!("{name}.dll"),
+        "macos"   => format!("lib{name}.dylib"),
+        _         => format!("lib{name}.so"),
+    };
+    std::iter::once(shared).chain(static_library_names(name, target)).collect()
+}
+
+fn static_library_names(name: &str, target: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    {
         candidates.push(format!("lib{name}.a"));
         if target == "windows" {
             candidates.push(format!("{name}.lib"));
