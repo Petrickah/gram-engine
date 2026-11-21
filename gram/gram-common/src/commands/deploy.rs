@@ -19,6 +19,9 @@ pub struct DeployCommand {
     /// Copy and build only; don't start the game.
     #[arg(long)]
     pub(crate) no_run: bool,
+    /// Start the game over ssh, not through the device's Steam shortcut (when Devices.ron gives it one).
+    #[arg(long)]
+    pub(crate) direct: bool,
     /// Print the commands instead of running them.
     #[arg(long)]
     pub(crate) dry_run: bool,
@@ -44,6 +47,7 @@ pub fn project(command: DeployCommand) -> io::Result<i32> {
         run: !command.no_run,
         // gram-engine carries gram's own sources: the device builds that gram, the one that knows this tree's Gram.ron.
         gram_manifest: Path::new("gram/Cargo.toml").exists().then(|| "gram/Cargo.toml".to_owned()),
+        direct: command.direct,
     };
 
     deploy::execute(&deploy::plan(device, &options), command.dry_run)

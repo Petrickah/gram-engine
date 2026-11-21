@@ -11,6 +11,7 @@
 //!             dir: "Projects/gram-engine",
 //!             container: Some("gram"),
 //!             env: Some("~/.gram-env"),
+//!             steam: Some(2661953691),
 //!         ),
 //!     ],
 //! )
@@ -39,6 +40,11 @@ pub struct Device {
     /// A shell file sourced before building and running: `VCPKG_ROOT`, the Vulkan SDK, cargo's `env`.
     #[serde(default)]
     pub env: Option<String>,
+    /// The Non-Steam Game shortcut pointing at `~/gram-launch.sh` (which every deploy installs): its app id, the
+    /// `SteamAppId` the launcher logs in `~/gram-launch.log` once started from the library. With it, the game is
+    /// started through Steam, which Game Mode needs (`--direct` still starts it over ssh). `None`: over ssh.
+    #[serde(default)]
+    pub steam: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,7 +111,7 @@ mod tests {
     fn parses_optional_fields_as_none() {
         let devices = Devices::parse(TWO).unwrap();
         assert_eq!(devices.devices[1], Device {
-            name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), container: None, env: None,
+            name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), container: None, env: None, steam: None,
         });
     }
 

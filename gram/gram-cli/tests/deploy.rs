@@ -47,9 +47,10 @@ fn dry_run_prints_the_plan_for_the_default_device() {
     let run = project.gram(&["deploy", "--dry-run"]).succeeds();
 
     // demo has no gram/Cargo.toml: the device's own gram builds it, so no "build gram" step.
-    assert_contains(&run.stdout, "gram deploy [1/3]: copy the sources to legion");
+    assert_contains(&run.stdout, "gram deploy [1/4]: copy the sources to legion");
     assert_contains(&run.stdout, "  rsync -az --delete --exclude .git/ --exclude target/ --exclude build/ --exclude 'build-*/' --exclude .vscode/settings.json --exclude Devices.ron ./ legion:Projects/demo/");
-    assert_contains(&run.stdout, "gram deploy [2/3]: build debug on legion");
+    assert_contains(&run.stdout, "gram deploy [2/4]: build debug on legion");
     assert_contains(&run.stdout, r#"  ssh legion 'distrobox enter gram -- bash -lc '\''source ~/.gram-env && cd ~/Projects/demo && gram build --config debug'\'''"#);
-    assert_contains(&run.stdout, "gram deploy [3/3]: run build/demo/linux/debug/demo on legion");
+    assert_contains(&run.stdout, "gram deploy [3/4]: install the Steam launcher on legion");
+    assert_contains(&run.stdout, "gram deploy [4/4]: run build/demo/linux/debug/demo on legion");
 }

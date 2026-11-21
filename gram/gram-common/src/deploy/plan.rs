@@ -7,6 +7,9 @@ use crate::profile::Profile;
 
 use super::device::{Device, DEVICES_FILE};
 
+/// The launcher a Steam shortcut starts, installed on the device as `~/gram-launch.sh` by every deploy.
+pub const LAUNCHER: &str = include_str!("gram-launch.sh");
+
 /// One command of the plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Step {
@@ -43,6 +46,8 @@ pub struct DeployOptions {
     /// The project's own `gram` (gram-engine builds itself: `gram/Cargo.toml`), built first on the device and then
     /// used for `gram build` (`gram/target/debug/gram`). `None`: the device's `gram`, from its `PATH`.
     pub gram_manifest: Option<String>,
+    /// `--direct`: start the game over ssh even when the device has a Steam shortcut.
+    pub direct: bool,
 }
 
 /// The commands deploying to `device`, in order. Written by the user.
@@ -77,18 +82,67 @@ pub fn plan(device: &Device, options: &DeployOptions) -> Vec<Step> {
     }
     steps.push(ssh(device, false, format!("build {} on {}", options.config, device.name), &build));
 
-    // 4. The game, on the device's screen. The values are a SteamOS Desktop Mode session's (the first user, uid
-    //    1000); its X authority file gets a new name at every login, so the device looks it up. pkill first: one
-    //    game at a time (it fails when none runs, hence || true). exec: the game replaces the shell, so closing ssh
-    //    (Ctrl+C here, through ssh -t's terminal) closes the game.
-    if options.run {
-        let executable = Path::new(&options.executable);
-        let name = executable.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-        let dir = executable.parent().map(|dir| dir.to_string_lossy().into_owned()).unwrap_or_default();
-        let session = r#"DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 XAUTHORITY="$(ls /run/user/1000/xauth_* | head -n 1)""#;
-        let run = format!("(pkill -x {} || true) && cd {} && exec env {session} {}",
-            quote(&name), quote(&dir), quote(&format!("./{name}")));
-        steps.push(ssh(device, true, format!("run {} on {}", options.executable, device.name), &run));
+    let executable = Path::new(&options.executable);
+    let name = executable.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let dir = executable.parent().map(|dir| dir.to_string_lossy().into_owned()).unwrap_or_default();
+
+    // 4. Steam's launcher and what it runs, at every deploy: a Non-Steam Game shortcut to ~/gram-launch.sh then
+    //    always starts the last build, in the configuration deployed. Both files go through printf %s, their
+    //    text quoted once for the device's shell. ~/.gram-launch is sourced by the launcher: $HOME and the
+    //    environment file's ~ expand there.
+    let launch = format!(
+        "GRAM_DIR=$HOME/{}\nGRAM_EXECUTABLE={}\nGRAM_CONTAINER={}\nGRAM_ENV={}\n",
+        quote(&format!("{}/{dir}", device.dir)),
+        quote(&name),
+        quote(device.container.as_deref().unwrap_or("")),
+        device.env.as_deref().unwrap_or(""),
+    );
+    steps.push(Step {
+        what: format!("install the Steam launcher on {}", device.name),
+        program: "ssh".to_owned(),
+        args: vec![device.host.clone(), format!(
+            "printf %s {} > ~/gram-launch.sh && chmod +x ~/gram-launch.sh && printf %s {} > ~/.gram-launch",
+            quote(LAUNCHER), quote(&launch),
+        )],
+    });
+
+    if !options.run {
+        return steps;
+    }
+
+    // 5. The game, through the device's Steam shortcut when it has one (Game Mode only shows what Steam starts),
+    //    else straight over ssh. Both end the same way: the game's output here until it closes, and Ctrl+C (through
+    //    ssh -t's terminal) closing it.
+    match (device.steam, options.direct) {
+        (Some(app_id), false) => {
+            // A shortcut's game id, what steam://rungameid takes (and Steam hands the game as SteamGameId).
+            let game_id = (u64::from(app_id) << 32) | 0x0200_0000;
+            // No ' in it: each one would be quoted again at every layer (bash -c, ssh, a printed command line).
+            let script = format!(
+r#"(pkill -x {name} && sleep 1) || true
+: > ~/gram-launch.log
+steam steam://rungameid/{game_id} > /dev/null 2>&1 &
+for _ in $(seq 60); do pid=$(pgrep -n -x {name}) && break; sleep 0.5; done
+if [ -z "$pid" ]; then echo "gram deploy: Steam did not start {name}: is steam: Some({app_id}) the id of the shortcut?"; cat ~/gram-launch.log; exit 1; fi
+trap "kill $pid 2> /dev/null" INT HUP TERM
+tail -n +1 -f --pid="$pid" ~/gram-launch.log"#,
+                name = quote(&name),
+            );
+            steps.push(Step {
+                what: format!("run {} on {} through Steam", options.executable, device.name),
+                program: "ssh".to_owned(),
+                args: vec!["-t".to_owned(), device.host.clone(), format!("bash -c {}", quote(&script))],
+            });
+        }
+        _ => {
+            // The values are a SteamOS Desktop Mode session's (the first user, uid 1000); its X authority file gets
+            // a new name at every login, so the device looks it up. pkill first: one game at a time (it fails when
+            // none runs, hence || true). exec: the game replaces the shell, so closing ssh closes the game.
+            let session = r#"DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 XAUTHORITY="$(ls /run/user/1000/xauth_* | head -n 1)""#;
+            let run = format!("(pkill -x {} || true) && cd {} && exec env {session} {}",
+                quote(&name), quote(&dir), quote(&format!("./{name}")));
+            steps.push(ssh(device, true, format!("run {} on {}", options.executable, device.name), &run));
+        }
     }
 
     steps
@@ -157,6 +211,7 @@ mod tests {
             dir: "Projects/gram-engine".into(),
             container: Some("gram".into()),
             env: Some("~/.gram-env".into()),
+            steam: None,
         }
     }
 
@@ -167,6 +222,7 @@ mod tests {
             executable: "build/gram-engine/linux/debug/Game".into(),
             run: true,
             gram_manifest: Some("gram/Cargo.toml".into()),
+            direct: false,
         }
     }
 
@@ -177,7 +233,7 @@ mod tests {
     #[test]
     fn gram_engine_on_the_legion_go() {
         let steps = plan(&legion(), &gram_engine());
-        assert_eq!(steps.len(), 4);
+        assert_eq!(steps.len(), 5);
 
         assert_eq!(steps[0].what, "copy the sources to legion");
         assert_eq!(steps[0].program, "rsync");
@@ -201,8 +257,18 @@ mod tests {
             "distrobox enter gram -- bash -lc 'source ~/.gram-env && cd ~/Projects/gram-engine && gram/target/debug/gram build --config debug'",
         ]);
 
-        assert_eq!(steps[3].what, "run build/gram-engine/linux/debug/Game on legion");
+        assert_eq!(steps[3].what, "install the Steam launcher on legion");
         assert_eq!(args(&steps[3]), [
+            "legion".to_owned(),
+            format!(
+                "printf %s {} > ~/gram-launch.sh && chmod +x ~/gram-launch.sh && printf %s {} > ~/.gram-launch",
+                quote(LAUNCHER),
+                "'GRAM_DIR=$HOME/Projects/gram-engine/build/gram-engine/linux/debug\nGRAM_EXECUTABLE=Game\nGRAM_CONTAINER=gram\nGRAM_ENV=~/.gram-env\n'",
+            ),
+        ]);
+
+        assert_eq!(steps[4].what, "run build/gram-engine/linux/debug/Game on legion");
+        assert_eq!(args(&steps[4]), [
             "-t",
             "legion",
             r#"distrobox enter gram -- bash -lc 'source ~/.gram-env && cd ~/Projects/gram-engine && (pkill -x Game || true) && cd build/gram-engine/linux/debug && exec env DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 XAUTHORITY="$(ls /run/user/1000/xauth_* | head -n 1)" ./Game'"#,
@@ -211,15 +277,20 @@ mod tests {
 
     #[test]
     fn a_plain_linux_box_without_container_env_or_run() {
-        let device = Device { name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), container: None, env: None };
+        let device = Device { name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), container: None, env: None, steam: None };
+        // The executable comes from the command (main_executable_path), the debug one here whatever the config.
         let options = DeployOptions { config: Profile::Release, module: Some("Game".into()), run: false, gram_manifest: None, ..gram_engine() };
 
         let steps = plan(&device, &options);
 
-        assert_eq!(steps.len(), 2); // no gram of its own to build, nothing to run
+        assert_eq!(steps.len(), 3); // no gram of its own to build, nothing to run
         assert_eq!(args(&steps[0]).last(), Some(&"me@10.0.0.2:gram-engine/"));
         assert_eq!(steps[1].what, "build release on box");
         assert_eq!(args(&steps[1]), ["me@10.0.0.2", "bash -lc 'cd ~/gram-engine && gram build --config release --module Game'"]);
+        // The launcher is installed anyway, empty container and environment: it then runs the game straight.
+        assert!(args(&steps[2])[1].ends_with(
+            "printf %s 'GRAM_DIR=$HOME/gram-engine/build/gram-engine/linux/debug\nGRAM_EXECUTABLE=Game\nGRAM_CONTAINER='\\'''\\''\nGRAM_ENV=\n' > ~/.gram-launch"
+        ), "{}", args(&steps[2])[1]);
     }
 
     /// A space in the device's folder: quoted once for the script, and that quoting quoted again for bash -lc.
@@ -241,5 +312,34 @@ mod tests {
             steps[2].command_line(),
             r"ssh legion 'distrobox enter gram -- bash -lc '\''source ~/.gram-env && cd ~/Projects/gram-engine && gram/target/debug/gram build --config debug'\'''"
         );
+    }
+
+    #[test]
+    fn a_device_with_a_steam_shortcut_runs_through_steam() {
+        let device = Device { steam: Some(2661953691), ..legion() };
+
+        let steps = plan(&device, &gram_engine());
+
+        let run = steps.last().unwrap();
+        assert_eq!(run.what, "run build/gram-engine/linux/debug/Game on legion through Steam");
+        assert_eq!(args(run)[..2], ["-t", "legion"]);
+        let script = r#"(pkill -x Game && sleep 1) || true
+: > ~/gram-launch.log
+steam steam://rungameid/11433004046345043968 > /dev/null 2>&1 &
+for _ in $(seq 60); do pid=$(pgrep -n -x Game) && break; sleep 0.5; done
+if [ -z "$pid" ]; then echo "gram deploy: Steam did not start Game: is steam: Some(2661953691) the id of the shortcut?"; cat ~/gram-launch.log; exit 1; fi
+trap "kill $pid 2> /dev/null" INT HUP TERM
+tail -n +1 -f --pid="$pid" ~/gram-launch.log"#;
+        assert_eq!(args(run)[2], format!("bash -c {}", quote(script)));
+    }
+
+    #[test]
+    fn direct_skips_the_steam_shortcut() {
+        let device = Device { steam: Some(2661953691), ..legion() };
+        let options = DeployOptions { direct: true, ..gram_engine() };
+
+        let steps = plan(&device, &options);
+
+        assert_eq!(steps.last().unwrap().what, "run build/gram-engine/linux/debug/Game on legion");
     }
 }
