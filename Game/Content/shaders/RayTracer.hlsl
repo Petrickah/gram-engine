@@ -303,7 +303,7 @@ float3 RayColor(in Ray ray)
         HitRecord hitRecord;
         if (!HitSpheres(ray, 0.01f, 3.402823466e+38f, hitRecord))
         {
-            return attenuation * Skybox.SampleLevel(SkyboxSampler, DirToSphericalUV(ray.Direction), 0);
+            return attenuation * Skybox.SampleLevel(SkyboxSampler, DirToSphericalUV(ray.Direction), 0).rgb;
         }
 
         const MaterialData mat = Materials[hitRecord.MaterialIndex];
