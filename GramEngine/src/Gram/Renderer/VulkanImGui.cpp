@@ -4,7 +4,6 @@
 #include "Gram/Renderer/VulkanImGui.hpp"
 
 #include "Gram/Application/GLFWApplication.hpp"
-#include <cmath>
 
 #ifdef GRAM_IMGUI_ENABLED
 #include <imgui_impl_glfw.h>
