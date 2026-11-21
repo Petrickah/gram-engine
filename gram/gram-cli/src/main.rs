@@ -5,6 +5,7 @@ use gram_common::commands::Cli;
 use gram_common::commands::Commands;
 use gram_common::commands::add;
 use gram_common::commands::build;
+use gram_common::commands::deploy;
 use gram_common::commands::generate;
 use gram_common::commands::ide;
 use gram_common::commands::init;
@@ -82,6 +83,14 @@ fn main() {
                         }
                     }
                 }
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(1)
+                }
+            }
+        Commands::Deploy(command) =>
+            match deploy::project(command) {
+                Ok(code) => std::process::exit(code),
                 Err(err) => {
                     eprintln!("Error: {err}");
                     std::process::exit(1)

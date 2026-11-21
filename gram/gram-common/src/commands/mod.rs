@@ -2,6 +2,7 @@ use clap::Parser;
 use clap::Subcommand;
 use crate::commands::add::AddCommand;
 use crate::commands::build::BuildCommand;
+use crate::commands::deploy::DeployCommand;
 use crate::commands::generate::GenerateCommand;
 use crate::commands::ide::IdeCommand;
 use crate::commands::init::InitCommand;
@@ -10,6 +11,7 @@ use crate::commands::run::RunCommand;
 
 pub mod add;
 pub mod build;
+pub mod deploy;
 pub mod generate;
 pub mod ide;
 pub mod init;
@@ -44,4 +46,7 @@ pub enum Commands {
     /// Generate one IDE project (Xcode or Visual Studio) for the whole tree: the cmake modules,
     /// plus a target per Rust dynamic module that runs `gram build --module` on it.
     Ide(IdeCommand),
+    /// Copy the project to a device listed in Devices.ron (a Linux machine reachable over SSH), build it there
+    /// and start the game on its screen, its output streamed back here.
+    Deploy(DeployCommand),
 }

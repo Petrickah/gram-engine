@@ -148,6 +148,24 @@ impl ModuleConfig {
     }
 
     pub fn run(&self, project: &BuildConfig, target: &str, profile: Profile, args: &[String]) -> io::Result<i32> {
+        let path = self.executable_path(project, target, profile)?;
+
+        if !Path::new(&path).exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("build artifact not found at {path} — run `gram build --config {profile}` first"),
+            ));
+        }
+
+        println!("gram run (name={}, target={target})", self.name);
+        let status = Command::new(&path).args(args).status()?;
+        Ok(status.code().unwrap_or(1))
+    }
+
+    /// Where a plain `gram build` puts this runtime module's executable, relative to the project root
+    /// (`build/<project>/<target>/<config>/<artifact>`). Shared by `gram run` and `gram deploy`, which
+    /// starts it on another machine, so the file need not exist here.
+    pub(crate) fn executable_path(&self, project: &BuildConfig, target: &str, profile: Profile) -> io::Result<String> {
         if self.lang == "gram" {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -162,18 +180,7 @@ impl ModuleConfig {
         }
 
         let (prefix, ext) = self.backend()?.artifact_naming(self, target);
-        let path = format!("{}/{prefix}{}{ext}", output_dir(project, false, target, profile), project.artifact_name(self));
-
-        if !Path::new(&path).exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("build artifact not found at {path} — run `gram build --config {profile}` first"),
-            ));
-        }
-
-        println!("gram run (name={}, target={target})", self.name);
-        let status = Command::new(&path).args(args).status()?;
-        Ok(status.code().unwrap_or(1))
+        Ok(format!("{}/{prefix}{}{ext}", output_dir(project, false, target, profile), project.artifact_name(self)))
     }
 
     pub fn save(&self, project: &Directory) -> Result<(), std::io::Error> {

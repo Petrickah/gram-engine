@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod deploy;
 pub mod directory;
 pub mod lang;
 pub mod pass;

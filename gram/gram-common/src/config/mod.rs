@@ -259,6 +259,21 @@ impl BuildConfig {
             .run(self, target, command.config, &command.args)
     }
 
+    /// The project's main runtime module's executable for `target`, relative to the project root, whether or not
+    /// it was built here (`gram deploy` starts it on another machine).
+    pub fn main_executable_path(&self, target: &str, profile: Profile) -> io::Result<String> {
+        if self.main.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "this project has no main module set (only `gram init` sets one), so there's nothing to run",
+            ));
+        }
+        self.modules.iter()
+            .find(|m| m.name == self.main)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("main module not found: {}", self.main)))?
+            .executable_path(self, target, profile)
+    }
+
     pub fn build(&self, ci: &bool, target: &str, module: &str, profile: Profile, toolchain: Option<Toolchain>) -> io::Result<()> {
         if *ci && !target.is_empty() {
             return Err(io::Error::new(

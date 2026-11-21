@@ -3,3 +3,5 @@ build*/
 .DS_Store
 # Written by gram generate (run by gram build) from the .ron component schemas
 *.generated.*
+# gram deploy's devices: SSH aliases and folders of this machine, not the project's
+Devices.ron
