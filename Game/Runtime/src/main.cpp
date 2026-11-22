@@ -44,16 +44,15 @@ private:
 
         Gram::VulkanDevice& device = m_VulkanRenderer->GetDevice();
 
-        
         const Gram::VulkanShader shader = Gram::VulkanShader::Compute(spec.m_Workspace, RayTracerParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
         RayTracePass& rayTracePass = m_VulkanRenderer->AddPass<RayTracePass>(spec.m_Workspace / "textures" / "autumn_field_puresky_4k.hdr", device, shader, *m_World, m_VulkanRenderer->GetSceneTarget());
-        
-        #ifdef GRAM_IMGUI_ENABLED
+
+#ifdef GRAM_IMGUI_ENABLED
         rayTracePass.RegisterPanels(m_Editor);
-        #else
+#else
         rayTracePass.GenerateBookScene();
-        #endif // #ifdef GRAM_IMGUI_ENABLED
-        
+#endif // #ifdef GRAM_IMGUI_ENABLED
+
         const Gram::VulkanShader accumulate = Gram::VulkanShader::Graphics(spec.m_Workspace, AccumulateParams::Shader, static_cast<vk::Device>(device.GetLogicalDevice()));
         auto& accumulatePass = m_VulkanRenderer->AddPass<PostProcessPass<AccumulateParams>>(device, accumulate, std::vector { rayTracePass.GetOutput() }, vk::Format::eR32G32B32A32Sfloat, [&state = m_Accumulation, &rayTracePass](const PostProcessPass<AccumulateParams>::Context& ctx)
         {
