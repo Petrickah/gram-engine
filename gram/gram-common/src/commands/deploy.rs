@@ -1,5 +1,7 @@
+use std::fs;
 use std::io;
 use std::path::Path;
+use std::process::Command;
 use clap::Args;
 use crate::BuildConfig;
 use crate::deploy::{self, DeployOptions, Devices};
@@ -22,6 +24,10 @@ pub struct DeployCommand {
     /// Start the game over ssh, not through the device's Steam shortcut (when Devices.ron gives it one).
     #[arg(long)]
     pub(crate) direct: bool,
+    /// Start the game under lldb-server, stopped until a debugger connects: VS Code's "Game on device", or lldb with
+    /// build/deploy/debug.lldb (written here).
+    #[arg(long)]
+    pub(crate) debug: bool,
     /// Print the commands instead of running them.
     #[arg(long)]
     pub(crate) dry_run: bool,
@@ -48,7 +54,26 @@ pub fn project(command: DeployCommand) -> io::Result<i32> {
         // gram-engine carries gram's own sources: the device builds that gram, the one that knows this tree's Gram.ron.
         gram_manifest: Path::new("gram/Cargo.toml").exists().then(|| "gram/Cargo.toml".to_owned()),
         direct: command.direct,
+        debug: command.debug,
     };
 
+    if options.debug && options.run && !command.dry_run {
+        write_lldb_commands(device, &options.executable)?;
+    }
     deploy::execute(&deploy::plan(device, &options), command.dry_run)
+}
+
+/// `build/deploy/debug.lldb`, for the debugger here: the paths on the device need its home, asked over ssh.
+fn write_lldb_commands(device: &deploy::Device, executable: &str) -> io::Result<()> {
+    let output = Command::new("ssh").args([device.host.as_str(), "printf %s \"$HOME\""]).output()?;
+    let home = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if !output.status.success() || home.is_empty() {
+        return Err(io::Error::other(format!("couldn't read the home folder of {} over ssh", device.name)));
+    }
+    let local_root = std::env::current_dir()?.display().to_string();
+    let path = Path::new("build/deploy/debug.lldb");
+    fs::create_dir_all(path.parent().expect("a file in a folder"))?;
+    fs::write(path, deploy::lldb_commands(device, &home, executable, &local_root))?;
+    println!("gram deploy: wrote {} (the device's paths for lldb)", path.display());
+    Ok(())
 }

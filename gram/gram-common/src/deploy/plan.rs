@@ -10,6 +10,15 @@ use super::device::{Device, DEVICES_FILE};
 /// The launcher a Steam shortcut starts, installed on the device as `~/gram-launch.sh` by every deploy.
 pub const LAUNCHER: &str = include_str!("gram-launch.sh");
 
+/// `--debug`: the port `lldb-server platform` listens on, through which lldb here reads the device's files (the
+/// executable, every library it loads, `libGameLogic`'s reload copies included: their symbols).
+pub const DEBUG_PLATFORM_PORT: u16 = 1234;
+/// `--debug`: the port `lldb-server gdbserver` waits on with the game, stopped before its first instruction.
+pub const DEBUG_GDB_PORT: u16 = 1235;
+/// The platform's own gdbserver port, never used (the game's is started apart, with the device's environment), but
+/// the platform wants one that doesn't clash.
+const DEBUG_UNUSED_PORT: u16 = 1236;
+
 /// One command of the plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Step {
@@ -48,6 +57,8 @@ pub struct DeployOptions {
     pub gram_manifest: Option<String>,
     /// `--direct`: start the game over ssh even when the device has a Steam shortcut.
     pub direct: bool,
+    /// `--debug`: start the game under lldb-server, stopped until a debugger connects through the run step's tunnels.
+    pub debug: bool,
 }
 
 /// The commands deploying to `device`, in order. Written by the user.
@@ -91,11 +102,12 @@ pub fn plan(device: &Device, options: &DeployOptions) -> Vec<Step> {
     //    text quoted once for the device's shell. ~/.gram-launch is sourced by the launcher: $HOME and the
     //    environment file's ~ expand there.
     let launch = format!(
-        "GRAM_DIR=$HOME/{}\nGRAM_EXECUTABLE={}\nGRAM_CONTAINER={}\nGRAM_ENV={}\n",
+        "GRAM_DIR=$HOME/{}\nGRAM_EXECUTABLE={}\nGRAM_CONTAINER={}\nGRAM_ENV={}\nGRAM_DEBUG={}\n",
         quote(&format!("{}/{dir}", device.dir)),
         quote(&name),
         quote(device.container.as_deref().unwrap_or("")),
         device.env.as_deref().unwrap_or(""),
+        if options.debug { DEBUG_GDB_PORT.to_string() } else { String::new() },
     );
     steps.push(Step {
         what: format!("install the Steam launcher on {}", device.name),
@@ -113,25 +125,63 @@ pub fn plan(device: &Device, options: &DeployOptions) -> Vec<Step> {
     // 5. The game, through the device's Steam shortcut when it has one (Game Mode only shows what Steam starts),
     //    else straight over ssh. Both end the same way: the game's output here until it closes, and Ctrl+C (through
     //    ssh -t's terminal) closing it.
+    //
+    //    With --debug the game starts under lldb-server gdbserver (the launcher does it from GRAM_DEBUG), next to an
+    //    lldb-server platform for the files, both listening only on the device's localhost: the run step's ssh
+    //    carries the two ports here (-L), for as long as it runs. The platform is stopped when the step ends.
+    let mut tunnels = Vec::new();
+    let mut platform_start = String::new();
+    let mut platform_stop = String::new();
+    if options.debug {
+        tunnels = vec!["-o".to_owned(), "ExitOnForwardFailure=yes".to_owned()];
+        for port in [DEBUG_PLATFORM_PORT, DEBUG_GDB_PORT] {
+            tunnels.push("-L".to_owned());
+            tunnels.push(format!("{port}:localhost:{port}"));
+        }
+        // pkill -x: by process name. Not -f (the whole command line): the script itself contains "lldb-server
+        // platform" and would kill itself first. Both servers go, the platform and a previous gdbserver.
+        // {} is where the Steam script puts what enters the container: it runs on the device itself.
+        platform_start = format!(
+            "(pkill -x lldb-server || true)\n{{}}lldb-server platform --server --listen localhost:{DEBUG_PLATFORM_PORT} --gdbserver-port {DEBUG_UNUSED_PORT} > /dev/null 2>&1 &\n"
+        );
+        platform_stop = "pkill -x lldb-server".to_owned();
+    }
+    let waiting = format!(
+        "echo \"gram deploy: {name} waits for the debugger: in VS Code, run Game on device (gram deploy --debug), or lldb -s build/deploy/debug.lldb -o gdb-remote localhost:{DEBUG_GDB_PORT}\"\n",
+        name = quote(&name),
+    );
+
     match (device.steam, options.direct) {
         (Some(app_id), false) => {
             // A shortcut's game id, what steam://rungameid takes (and Steam hands the game as SteamGameId).
             let game_id = (u64::from(app_id) << 32) | 0x0200_0000;
             // No ' in it: each one would be quoted again at every layer (bash -c, ssh, a printed command line).
+            // The script runs on the device itself (steam is the device's), the platform inside the container.
+            let (platform_start, waiting) = if options.debug {
+                (platform_start.replace("{}", &in_container(device)), waiting.clone())
+            } else {
+                (String::new(), String::new())
+            };
             let script = format!(
 r#"(pkill -x {name} && sleep 1) || true
 : > ~/gram-launch.log
-steam steam://rungameid/{game_id} > /dev/null 2>&1 &
+{platform_start}steam steam://rungameid/{game_id} > /dev/null 2>&1 &
 for _ in $(seq 60); do pid=$(pgrep -n -x {name}) && break; sleep 0.5; done
 if [ -z "$pid" ]; then echo "gram deploy: Steam did not start {name}: is steam: Some({app_id}) the id of the shortcut?"; cat ~/gram-launch.log; exit 1; fi
 trap "kill $pid 2> /dev/null" INT HUP TERM
-tail -n +1 -f --pid="$pid" ~/gram-launch.log"#,
+{waiting}tail -n +1 -f --pid="$pid" ~/gram-launch.log{stop}"#,
                 name = quote(&name),
+                stop = if options.debug { format!("\n{platform_stop}") } else { String::new() },
             );
+            let mut args = vec!["-t".to_owned()];
+            args.extend(tunnels);
+            args.push(device.host.clone());
+            args.push(format!("bash -c {}", quote(&script)));
+            let what = if options.debug { "debug" } else { "run" };
             steps.push(Step {
-                what: format!("run {} on {} through Steam", options.executable, device.name),
+                what: format!("{what} {} on {} through Steam", options.executable, device.name),
                 program: "ssh".to_owned(),
-                args: vec!["-t".to_owned(), device.host.clone(), format!("bash -c {}", quote(&script))],
+                args,
             });
         }
         _ => {
@@ -139,9 +189,19 @@ tail -n +1 -f --pid="$pid" ~/gram-launch.log"#,
             // a new name at every login, so the device looks it up. pkill first: one game at a time (it fails when
             // none runs, hence || true). exec: the game replaces the shell, so closing ssh closes the game.
             let session = r#"DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 XAUTHORITY="$(ls /run/user/1000/xauth_* | head -n 1)""#;
-            let run = format!("(pkill -x {} || true) && cd {} && exec env {session} {}",
-                quote(&name), quote(&dir), quote(&format!("./{name}")));
-            steps.push(ssh(device, true, format!("run {} on {}", options.executable, device.name), &run));
+            let game = quote(&format!("./{name}"));
+            if options.debug {
+                // No exec: the shell stays, so its trap stops the platform and the game however the step ends.
+                let platform_start = platform_start.replace("{}", ""); // already inside the container
+                let run = format!(
+                    "(pkill -x {n} || true) && cd {d} || exit 1\n{platform_start}trap \"pkill -x {n}; {platform_stop}\" EXIT\ntrap exit HUP INT TERM\n{waiting}env {session} lldb-server gdbserver localhost:{DEBUG_GDB_PORT} -- {game}",
+                    n = quote(&name), d = quote(&dir),
+                );
+                steps.push(ssh_with(device, &tunnels, format!("debug {} on {}", options.executable, device.name), &run));
+            } else {
+                let run = format!("(pkill -x {} || true) && cd {} && exec env {session} {game}", quote(&name), quote(&dir));
+                steps.push(ssh(device, true, format!("run {} on {}", options.executable, device.name), &run));
+            }
         }
     }
 
@@ -157,6 +217,37 @@ fn ssh(device: &Device, terminal: bool, what: String, command: &str) -> Step {
     args.push(device.host.clone());
     args.push(remote(device, command));
     Step { what, program: "ssh".to_owned(), args }
+}
+
+/// Like `ssh` with a terminal, plus `extra` ssh options before the host (--debug's tunnels).
+fn ssh_with(device: &Device, extra: &[String], what: String, command: &str) -> Step {
+    let mut step = ssh(device, true, what, command);
+    step.args.splice(1..1, extra.iter().cloned());
+    step
+}
+
+/// What runs a command inside the device's container, for a script running on the device itself.
+fn in_container(device: &Device) -> String {
+    match &device.container {
+        Some(container) => format!("distrobox enter {} -- ", quote(container)),
+        None => String::new(),
+    }
+}
+
+/// The lldb commands `gram deploy --debug` writes to `build/deploy/debug.lldb`: the device as lldb's platform (its
+/// files read from there, libraries included), the executable by its path there, and the device's source paths
+/// mapped onto this machine's tree (the same sources, deploy synced them). `home` is the device user's home,
+/// `local_root` this project's absolute path. VS Code's "Game on device" sources it, then connects (`gdb-remote`).
+pub fn lldb_commands(device: &Device, home: &str, executable: &str, local_root: &str) -> String {
+    let remote_root = format!("{home}/{}", device.dir);
+    format!(
+        "# Written by gram deploy --debug for {name}; VS Code's Game on device (launch.json) sources it.\n\
+         platform select remote-linux\n\
+         platform connect connect://localhost:{DEBUG_PLATFORM_PORT}\n\
+         target create \"{remote_root}/{executable}\"\n\
+         settings set target.source-map \"{remote_root}\" \"{local_root}\"\n",
+        name = device.name,
+    )
 }
 
 /// `command` wrapped in the layers between ssh and the project: the device's login shell runs this text, `bash -lc`
@@ -223,6 +314,7 @@ mod tests {
             run: true,
             gram_manifest: Some("gram/Cargo.toml".into()),
             direct: false,
+            debug: false,
         }
     }
 
@@ -263,7 +355,7 @@ mod tests {
             format!(
                 "printf %s {} > ~/gram-launch.sh && chmod +x ~/gram-launch.sh && printf %s {} > ~/.gram-launch",
                 quote(LAUNCHER),
-                "'GRAM_DIR=$HOME/Projects/gram-engine/build/gram-engine/linux/debug\nGRAM_EXECUTABLE=Game\nGRAM_CONTAINER=gram\nGRAM_ENV=~/.gram-env\n'",
+                "'GRAM_DIR=$HOME/Projects/gram-engine/build/gram-engine/linux/debug\nGRAM_EXECUTABLE=Game\nGRAM_CONTAINER=gram\nGRAM_ENV=~/.gram-env\nGRAM_DEBUG=\n'",
             ),
         ]);
 
@@ -289,7 +381,7 @@ mod tests {
         assert_eq!(args(&steps[1]), ["me@10.0.0.2", "bash -lc 'cd ~/gram-engine && gram build --config release --module Game'"]);
         // The launcher is installed anyway, empty container and environment: it then runs the game straight.
         assert!(args(&steps[2])[1].ends_with(
-            "printf %s 'GRAM_DIR=$HOME/gram-engine/build/gram-engine/linux/debug\nGRAM_EXECUTABLE=Game\nGRAM_CONTAINER='\\'''\\''\nGRAM_ENV=\n' > ~/.gram-launch"
+            "printf %s 'GRAM_DIR=$HOME/gram-engine/build/gram-engine/linux/debug\nGRAM_EXECUTABLE=Game\nGRAM_CONTAINER='\\'''\\''\nGRAM_ENV=\nGRAM_DEBUG=\n' > ~/.gram-launch"
         ), "{}", args(&steps[2])[1]);
     }
 
@@ -341,5 +433,65 @@ tail -n +1 -f --pid="$pid" ~/gram-launch.log"#;
         let steps = plan(&device, &options);
 
         assert_eq!(steps.last().unwrap().what, "run build/gram-engine/linux/debug/Game on legion");
+    }
+
+    #[test]
+    fn debug_over_ssh_tunnels_both_ports_and_starts_the_game_under_lldb_server() {
+        let options = DeployOptions { debug: true, ..gram_engine() };
+
+        let steps = plan(&legion(), &options);
+
+        assert!(args(&steps[3])[1].contains("GRAM_DEBUG=1235\n"), "the launcher learns the port too");
+        let run = steps.last().unwrap();
+        assert_eq!(run.what, "debug build/gram-engine/linux/debug/Game on legion");
+        assert_eq!(args(run)[..7], ["-t", "-o", "ExitOnForwardFailure=yes", "-L", "1234:localhost:1234", "-L", "1235:localhost:1235"]);
+        assert_eq!(args(run)[7], "legion");
+        let script = format!(
+            "(pkill -x Game || true) && cd build/gram-engine/linux/debug || exit 1\n\
+             (pkill -x lldb-server || true)\n\
+             lldb-server platform --server --listen localhost:1234 --gdbserver-port 1236 > /dev/null 2>&1 &\n\
+             trap \"pkill -x Game; pkill -x lldb-server\" EXIT\n\
+             trap exit HUP INT TERM\n\
+             echo \"gram deploy: Game waits for the debugger: in VS Code, run Game on device (gram deploy --debug), or lldb -s build/deploy/debug.lldb -o gdb-remote localhost:1235\"\n\
+             env {} lldb-server gdbserver localhost:1235 -- ./Game",
+            r#"DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 XAUTHORITY="$(ls /run/user/1000/xauth_* | head -n 1)""#,
+        );
+        assert_eq!(args(run)[8], remote(&legion(), &script));
+    }
+
+    #[test]
+    fn debug_through_steam_starts_the_platform_in_the_container_and_stops_it_at_the_end() {
+        let device = Device { steam: Some(2661953691), ..legion() };
+        let options = DeployOptions { debug: true, ..gram_engine() };
+
+        let steps = plan(&device, &options);
+
+        let run = steps.last().unwrap();
+        assert_eq!(run.what, "debug build/gram-engine/linux/debug/Game on legion through Steam");
+        assert_eq!(args(run)[..7], ["-t", "-o", "ExitOnForwardFailure=yes", "-L", "1234:localhost:1234", "-L", "1235:localhost:1235"]);
+        let script = r#"(pkill -x Game && sleep 1) || true
+: > ~/gram-launch.log
+(pkill -x lldb-server || true)
+distrobox enter gram -- lldb-server platform --server --listen localhost:1234 --gdbserver-port 1236 > /dev/null 2>&1 &
+steam steam://rungameid/11433004046345043968 > /dev/null 2>&1 &
+for _ in $(seq 60); do pid=$(pgrep -n -x Game) && break; sleep 0.5; done
+if [ -z "$pid" ]; then echo "gram deploy: Steam did not start Game: is steam: Some(2661953691) the id of the shortcut?"; cat ~/gram-launch.log; exit 1; fi
+trap "kill $pid 2> /dev/null" INT HUP TERM
+echo "gram deploy: Game waits for the debugger: in VS Code, run Game on device (gram deploy --debug), or lldb -s build/deploy/debug.lldb -o gdb-remote localhost:1235"
+tail -n +1 -f --pid="$pid" ~/gram-launch.log
+pkill -x lldb-server"#;
+        assert_eq!(args(run)[8], format!("bash -c {}", quote(script)));
+    }
+
+    #[test]
+    fn the_lldb_commands_map_the_device_onto_this_tree() {
+        assert_eq!(
+            lldb_commands(&legion(), "/home/deck", "build/gram-engine/linux/debug/Game", "/Users/me/gram-engine"),
+            "# Written by gram deploy --debug for legion; VS Code's Game on device (launch.json) sources it.\n\
+             platform select remote-linux\n\
+             platform connect connect://localhost:1234\n\
+             target create \"/home/deck/Projects/gram-engine/build/gram-engine/linux/debug/Game\"\n\
+             settings set target.source-map \"/home/deck/Projects/gram-engine\" \"/Users/me/gram-engine\"\n"
+        );
     }
 }

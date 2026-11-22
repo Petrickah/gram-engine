@@ -15,7 +15,7 @@ use std::io;
 use std::process::Command;
 
 pub use device::{Device, Devices, DEVICES_FILE};
-pub use plan::{DeployOptions, Step, plan, quote};
+pub use plan::{DEBUG_GDB_PORT, DEBUG_PLATFORM_PORT, DeployOptions, Step, lldb_commands, plan, quote};
 
 /// Runs every step in order, each one's output going straight to this terminal. Stops at the first step that
 /// fails. Returns the last step's exit code: the game's, when the plan ends by running it.

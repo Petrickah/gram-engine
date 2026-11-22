@@ -52,6 +52,18 @@
             "request": "attach",
             "processId": "${command:pickProcess}"
         },
+        // The game on a device (Devices.ron), started by `gram deploy --debug` under lldb-server, stopped before its
+        // first instruction: run this once the command says the game waits for the debugger. build/deploy/debug.lldb
+        // (written by that command) makes the device lldb's platform, so its libraries' symbols (GameLogic's reload
+        // copies too) are read from there, and maps the device's source paths onto this tree; the run step's ssh
+        // carries the two ports. The game starts paused: Continue.
+        {
+            "name": "Game on device (gram deploy --debug)",
+            "type": "lldb",
+            "request": "custom",
+            "targetCreateCommands": ["command source ${workspaceFolder}/build/deploy/debug.lldb"],
+            "processCreateCommands": ["gdb-remote localhost:1235"]
+        },
         {
             "name": "gram (cargo run)",
             "type": "lldb",
