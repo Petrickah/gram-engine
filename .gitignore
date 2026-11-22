@@ -5,3 +5,7 @@ build*/
 *.generated.*
 # gram deploy's devices: SSH aliases and folders of this machine, not the project's
 Devices.ron
+# Bought assets (Unity Asset Store licenses, through Humble Bundle): usable in the game, not redistributable,
+# so they stay out of git. Only the folder's README is kept; it lists what goes there.
+Game/Content/third-party/*
+!Game/Content/third-party/README.md
