@@ -268,7 +268,8 @@ fn windows_plan(device: &Device, options: &DeployOptions) -> Vec<Step> {
 
     // 4. The game, on the desktop: a program started over ssh runs in session 0, with no desktop, so a scheduled task
     //    starts it in the logged-on user's session (Interactive). cmd's redirection catches its output in a log (a
-    //    Final build has no console), followed here until the game exits; Ctrl+C (through ssh -t) closes it.
+    //    Final build has no console), followed here until the game exits; Ctrl+C (through ssh -t) closes it. cmd
+    //    runs in conhost --headless: a console without a window, or cmd's own would show behind the game.
     steps.push(Step {
         what: format!("run {} on {}", options.executable, device.name),
         program: "ssh".to_owned(),
@@ -285,7 +286,7 @@ fn windows_run_script(remote_dir: &str, device_dir: &str, file: &str, process: &
          $dir = Join-Path $env:USERPROFILE {dir}\n\
          $log = Join-Path $env:USERPROFILE {log}\n\
          Set-Content -Path $log -Value $null\n\
-         $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c ' + {file} + ' > \"' + $log + '\" 2>&1') -WorkingDirectory $dir\n\
+         $action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument ('--headless cmd.exe /c ' + {file} + ' > \"' + $log + '\" 2>&1') -WorkingDirectory $dir\n\
          $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited\n\
          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0)\n\
          Register-ScheduledTask -TaskName 'gram-launch' -Action $action -Principal $principal -Settings $settings -Force | Out-Null\n\
@@ -697,7 +698,7 @@ pkill -x lldb-server"#;
         let script = windows_run_script("gram-engine/release", "gram-engine", "Game.exe", "Game");
         assert!(script.contains("$dir = Join-Path $env:USERPROFILE 'gram-engine/release'\n"), "{script}");
         assert!(script.contains("$log = Join-Path $env:USERPROFILE 'gram-engine/gram-launch.log'\n"), "{script}");
-        assert!(script.contains(r#"-Argument ('/c ' + 'Game.exe' + ' > "' + $log + '" 2>&1') -WorkingDirectory $dir"#), "{script}");
+        assert!(script.contains(r#"-Execute 'conhost.exe' -Argument ('--headless cmd.exe /c ' + 'Game.exe' + ' > "' + $log + '" 2>&1') -WorkingDirectory $dir"#), "{script}");
         assert!(script.contains("-LogonType Interactive"), "{script}");
         assert!(script.contains("Get-Process -Name 'Game'"), "{script}");
     }
