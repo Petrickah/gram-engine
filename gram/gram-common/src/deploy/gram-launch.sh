@@ -25,10 +25,24 @@ if [ -n "$GRAM_DEBUG" ]; then
     echo "gram-launch: under lldb-server, waiting for a debugger on port $GRAM_DEBUG"
 fi
 
+# A game stopped at a breakpoint takes no input and draws nothing: to the device it looks idle, and it dims, then
+# sleeps, cutting the debugger's connection. While debugged, the game runs under an inhibitor. Only a process of
+# the session on the screen may take one (logind asks polkit; over ssh it's refused): this launcher, which Steam
+# started, is one. If it's refused anyway, the game still starts, just without it.
+inhibit=()
+if [ -n "$GRAM_DEBUG" ]; then
+    if systemd-inhibit --what=idle:sleep --who=gram --why="check" true 2>/dev/null; then
+        inhibit=(systemd-inhibit --what=idle:sleep --who=gram --why="gram deploy --debug: the game may be stopped at a breakpoint")
+        echo "gram-launch: keeping the device awake while the game is debugged"
+    else
+        echo "gram-launch: systemd-inhibit refused, the device may sleep while the game is debugged"
+    fi
+fi
+
 # The values travel as arguments ($1..$4), so nothing in them is read as shell code a second time.
 run='if [ -n "$1" ]; then source "$1"; fi; cd "$2" || exit 1; if [ -n "$4" ]; then exec lldb-server gdbserver "localhost:$4" -- "./$3"; fi; exec "./$3"'
 if [ -n "$GRAM_CONTAINER" ]; then
-    exec distrobox enter "$GRAM_CONTAINER" -- bash -lc "$run" gram-launch "$GRAM_ENV" "$GRAM_DIR" "$GRAM_EXECUTABLE" "$GRAM_DEBUG"
+    exec "${inhibit[@]}" distrobox enter "$GRAM_CONTAINER" -- bash -lc "$run" gram-launch "$GRAM_ENV" "$GRAM_DIR" "$GRAM_EXECUTABLE" "$GRAM_DEBUG"
 else
-    exec bash -lc "$run" gram-launch "$GRAM_ENV" "$GRAM_DIR" "$GRAM_EXECUTABLE" "$GRAM_DEBUG"
+    exec "${inhibit[@]}" bash -lc "$run" gram-launch "$GRAM_ENV" "$GRAM_DIR" "$GRAM_EXECUTABLE" "$GRAM_DEBUG"
 fi
