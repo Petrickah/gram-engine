@@ -3,11 +3,9 @@
 #include "BVHTree.hpp"
 #include "Gram/Editor/Editor.hpp"
 #include "Gram/Renderer/Common.hpp"
-#include "Gram/Renderer/VulkanDescriptors.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
-#include "Gram/Renderer/VulkanPass.hpp"
-#include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
+#include "Gram/Renderer/VulkanShaderPass.hpp"
 
 #include "Passes.generated.hpp"
 
@@ -36,7 +34,9 @@ enum class MaterialType : uint32_t { Lambertian, Metal, Dielectric };
 // The game's scene: one complete scene raytraced from Content/shaders/RayTracer.hlsl, drawn into the
 // renderer's scene target (shown by the editor's viewport panel), at whatever size the target currently has.
 // Registered by RuntimeApplication through VulkanRenderer::AddPass; the engine only runs it.
-class RayTracePass : public Gram::VulkanPass
+// Its descriptors, pipeline, uniform and images are VulkanShaderPass's (from RayTracer.pass.ron); what's left
+// here is the scene: packing the World, the BVH, the storage buffers and the dispatch.
+class RayTracePass : public Gram::VulkanShaderPass<RayTracerParams>
 {
 public:
     RayTracePass(std::filesystem::path skybox, Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target);
@@ -53,8 +53,6 @@ public:
 
 public:
     bool PackScene();
-    bool Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override;
-    const char* GetName() const override { return RayTracerParams::Shader; }
 
     std::shared_ptr<Gram::VulkanRenderTarget>& GetOutput()      { return m_Output;      }
     std::shared_ptr<Gram::VulkanRenderTarget>& GetOutputDepth() { return m_OutputDepth; }
@@ -66,22 +64,17 @@ public:
 
     bool ConsumeSceneChanged() { return std::exchange(m_SceneChanged, false); }
     
+protected:
+    bool OnPrepare(Gram::VulkanPass::Context ctx) override;
+    void Fill(RayTracerParams& params, Gram::VulkanPass::Context ctx) override;
+    bool OnRecord(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override;
+
 private:
     Gram::World&                              m_World;
     std::shared_ptr<Gram::VulkanRenderTarget> m_Target;
-    std::optional<uint64_t>                   m_TargetGeneration = std::nullopt;
-    std::optional<uint64_t>                   m_DepthGeneration  = std::nullopt;
     std::shared_ptr<Gram::VulkanRenderTarget> m_Output;
     std::shared_ptr<Gram::VulkanRenderTarget> m_OutputDepth;
     Gram::VulkanImage                         m_Skybox;
-    Gram::VulkanDescriptors                   m_Descriptors;
-    Gram::VulkanDescriptors                   m_ImageDescriptors;
-    Gram::VulkanPipeline                      m_ComputePipeline;
-
-    std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_CameraUniforms;
-    std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_SphereStorages;
-    std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_MaterialStorages;
-    std::array<Gram::VulkanBuffer, Gram::vkMaxFramesInFlight> m_NodeStorages;
 
     bool           m_SceneChanged  = false;
     uint32_t       m_FrameCounter  = 0;

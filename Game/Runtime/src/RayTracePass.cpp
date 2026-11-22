@@ -20,43 +20,27 @@
 #ifdef GRAM_VULKAN_RENDERER
 
 RayTracePass::RayTracePass(std::filesystem::path skybox, Gram::VulkanDevice& device, const Gram::VulkanShader& shader, Gram::World& world, const std::shared_ptr<Gram::VulkanRenderTarget>& target)
-    : m_World(world)
+    : VulkanShaderPass(device, shader)
+    , m_World(world)
     , m_Target(target)
     , m_Skybox(Gram::VulkanImage::Load(device, skybox))
-    , m_Descriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
-        { .binding = RayTracerParams::UniformBinding,   .descriptorType = vk::DescriptorType::eUniformBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = RayTracerParams::SpheresBinding,   .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = RayTracerParams::MaterialsBinding, .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = RayTracerParams::NodesBinding,     .descriptorType = vk::DescriptorType::eStorageBuffer, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute }
-    }))
-    , m_ImageDescriptors(Gram::VulkanDescriptors::Create(device, Gram::vkMaxFramesInFlight, std::vector<vk::DescriptorSetLayoutBinding> {
-        { .binding = RayTracerParams::SkyboxBinding,    .descriptorType = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = RayTracerParams::ResultBinding,    .descriptorType = vk::DescriptorType::eStorageImage, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-        { .binding = RayTracerParams::DepthBinding,     .descriptorType = vk::DescriptorType::eStorageImage, .descriptorCount = 1, .stageFlags = vk::ShaderStageFlagBits::eCompute },
-    }))
-    , m_ComputePipeline(Gram::VulkanPipeline::Compute(device, shader, std::array { m_Descriptors.GetLayout(), m_ImageDescriptors.GetLayout() }))
-    , m_CameraUniforms(Gram::VulkanBuffer::Create<Gram::UniformBuffer<RayTracerParams>>(device))
     , m_SphereCount(512), m_MaterialCount(512)
 {
     m_Output      = target ? std::make_shared<Gram::VulkanRenderTarget>(device, target->GetImage().GetExtent(), vk::Format::eR32G32B32A32Sfloat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled) : nullptr;
     m_OutputDepth = target ? std::make_shared<Gram::VulkanRenderTarget>(device, target->GetImage().GetExtent(), vk::Format::eR32Sfloat,          vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled) : nullptr;
     GramCheckVoid(m_Output && m_OutputDepth, "the output image was not created; no render target recieved");
 
-    Gram::VulkanImage& scene      = m_Output->GetImage();
-    Gram::VulkanImage& sceneDepth = m_OutputDepth->GetImage();
-    if (scene.IsValid())      m_ImageDescriptors.Write(device, RayTracerParams::ResultBinding, scene, vk::ImageLayout::eGeneral);
-    if (sceneDepth.IsValid()) m_ImageDescriptors.Write(device, RayTracerParams::DepthBinding, sceneDepth, vk::ImageLayout::eGeneral);
-    if (m_Skybox.IsValid())   m_ImageDescriptors.Write(device, RayTracerParams::SkyboxBinding, m_Skybox);
+    // Set 1: the base writes their descriptors in Record, again whenever a target is recreated.
+    if (m_Skybox.IsValid()) SetImage(RayTracerParams::SkyboxBinding, m_Skybox);
+    SetImage(RayTracerParams::ResultBinding, m_Output);
+    SetImage(RayTracerParams::DepthBinding,  m_OutputDepth);
 
-    m_SphereStorages   = Gram::VulkanBuffer::Create<Gram::StorageBuffer<SphereData>>(device, m_SphereCount);
-    m_MaterialStorages = Gram::VulkanBuffer::Create<Gram::StorageBuffer<MaterialData>>(device, m_MaterialCount);
-    m_Descriptors.Write(device, RayTracerParams::SpheresBinding, m_SphereStorages  , m_SphereCount   * sizeof(SphereData));
-    m_Descriptors.Write(device, RayTracerParams::MaterialsBinding, m_MaterialStorages, m_MaterialCount * sizeof(MaterialData));
+    // Set 0's storage buffers are still this pass's own (the uniform is the base's).
+    CreateBuffer<SphereData>  (device, RayTracerParams::SpheresBinding,   m_SphereCount);
+    CreateBuffer<MaterialData>(device, RayTracerParams::MaterialsBinding, m_MaterialCount);
 
     // A binary tree over N spheres has at most 2N - 1 nodes.
-    m_NodeStorages = Gram::VulkanBuffer::Create<Gram::StorageBuffer<BVHNode>>(device, 2 * m_SphereCount);
-    m_Descriptors.Write(device, RayTracerParams::NodesBinding, m_NodeStorages, 2 * m_SphereCount * sizeof(BVHNode));
-    m_Descriptors.Write(device, RayTracerParams::UniformBinding, m_CameraUniforms  , sizeof(RayTracerParams));
+    CreateBuffer<BVHNode>     (device, RayTracerParams::NodesBinding,     2 * m_SphereCount); 
 }
 
 // The book's final scene (ch. 14): a ground, a 22×22 grid of small random spheres, three big ones.
@@ -173,98 +157,71 @@ bool RayTracePass::PackScene()
     return changed;
 }
 
-bool RayTracePass::Record(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
+// Before the base binds the images: the outputs follow the scene's size (a resize recreates them, which the
+// base sees as a new generation), and the World becomes this frame's spheres, materials and tree.
+bool RayTracePass::OnPrepare(Gram::VulkanPass::Context ctx)
 {
-    GramCheck(m_ComputePipeline.IsValid(), "RayTracePass: the compute pipeline wasn't created");
     GramCheck(m_Output && m_OutputDepth && m_Target, "RayTracePass: at least one of the images were nullptr");
-    
+
     if (PackScene()) m_SceneChanged = true;
 
     m_Output     ->RequestExtent(m_Target->GetImage().GetExtent(), m_Quality.RenderScale);
     m_Output     ->ApplyRequestedExtent();
     m_OutputDepth->RequestExtent(m_Target->GetImage().GetExtent(), m_Quality.RenderScale);
     m_OutputDepth->ApplyRequestedExtent();
+    return true;
+}
 
+// The camera, written by the base into this frame's uniform buffer.
+void RayTracePass::Fill(RayTracerParams& params, Gram::VulkanPass::Context ctx)
+{
     // The image's own size, not the swapchain's: the ray tracer fills the target, whatever the window.
-    Gram::VulkanImage& scene       = m_Output     ->GetImage();
-    Gram::VulkanImage& sceneDepth  = m_OutputDepth->GetImage();
-    const vk::Extent2D extent      = scene         .GetExtent();
-    const vk::Extent2D extentDepth = sceneDepth    .GetExtent();
+    const vk::Extent2D extent = m_Output->GetImage().GetExtent();
 
-    scene     .Transition(cmd, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader, vk::AccessFlagBits2::eShaderStorageWrite);
-    sceneDepth.Transition(cmd, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader, vk::AccessFlagBits2::eShaderStorageWrite);
+    const float yaw   = glm::radians(m_CameraControls.Yaw);
+    const float pitch = glm::radians(m_CameraControls.Pitch);
 
-    // The target was recreated (a resize): the sets still point at the old image's view.
-    const bool outputRecreated = !m_TargetGeneration || *m_TargetGeneration != m_Output->GetGeneration(); m_TargetGeneration = m_Output->GetGeneration();
-    const bool outputDepthRecreated = !m_DepthGeneration || *m_DepthGeneration != m_OutputDepth->GetGeneration(); m_DepthGeneration = m_OutputDepth->GetGeneration();
+    const glm::vec3 forward = glm::normalize(glm::vec3(std::cos(pitch) * std::sin(yaw), std::sin(pitch), -std::cos(pitch) * std::cos(yaw)));
+    const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));   // lumea are Y în sus
+    const glm::vec3 up      = glm::cross(right, forward);
 
-    // Safe here: ApplyRequestedExtent waited for the device before recreating the image,
-    // so no command buffer uses these sets anymore, not even the other frame in flight's.
-    if (outputRecreated)      m_ImageDescriptors.Write(ctx.Device, RayTracerParams::ResultBinding, m_Output     ->GetImage(), vk::ImageLayout::eGeneral);
-    if (outputDepthRecreated) m_ImageDescriptors.Write(ctx.Device, RayTracerParams::DepthBinding, m_OutputDepth->GetImage(), vk::ImageLayout::eGeneral);
+    // One unit = 1 m. The focal length a full-frame camera (a 24 mm tall sensor) needs for this FOV, and
+    // the lens's radius at this f-stop: N = focal length / aperture diameter, so radius = f / (2N).
+    constexpr float sensorHeight = 0.024f;
+    const     float tanHalfFovY  = std::tan(glm::radians(m_CameraControls.FovY) * 0.5f);
+    const     float focalLength  = (sensorHeight * 0.5f) / tanHalfFovY;
+    // With the post-process depth of field, the ray tracer stays a pinhole: everything sharp, blurred afterwards.
+    const     float lensRadius   = m_CameraControls.PostProcessDoF ? 0.0f : focalLength / (2.0f * m_CameraControls.FStop) * m_CameraControls.BokehScale;
 
-    m_ComputePipeline.Bind(cmd);
-    m_ComputePipeline.BindDescriptorSets(cmd, 0, std::array { m_Descriptors.Get(ctx.ActiveFrame.FrameIndex), m_ImageDescriptors.Get(ctx.ActiveFrame.FrameIndex) });
+    params = RayTracerParams {
+        .Position      = m_CameraControls.Position,      .TanHalfFovY  = tanHalfFovY,
+        .Right         = right,                          .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
+        .Up            = up,                             .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
+        .Forward       = forward,                        .FrameIndex   = m_FrameCounter++,
+        .Samples       = m_Quality.Samples,              .SampleScale  = 1.0f / static_cast<float>(m_Quality.Samples),
+        .MaxBounces    = m_CameraControls.MaxBounces,    .LensRadius   = lensRadius,
+        .FocusDistance = m_CameraControls.FocusDistance,
+        .NodeCount     = static_cast<uint32_t>(m_Tree.GetNodes().size()),
+        .UseBvh        = m_UseBvh ? 1u : 0u,
+        .LargeCount    = m_LargeCount,
+        .DebugView     = m_DebugView,
+        .DebugWholePath  = m_DebugWholePath ? 1u : 0u,
+        .BoxThreshold    = m_BoxThreshold,
+        .SphereThreshold = m_SphereThreshold,
+    };
+}
 
-    m_CameraUniforms[ctx.ActiveFrame.FrameIndex].Send(cmd, [&](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
-    {
-        const float yaw   = glm::radians(m_CameraControls.Yaw);
-        const float pitch = glm::radians(m_CameraControls.Pitch);
+// The pipeline and both sets are bound: upload this frame's buffers, then one thread per pixel, 8x8 per group.
+bool RayTracePass::OnRecord(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
+{
+    Upload<SphereData>  (ctx, RayTracerParams::SpheresBinding,   m_Spheres);
+    Upload<MaterialData>(ctx, RayTracerParams::MaterialsBinding, m_Materials);
+    Upload<BVHNode>     (ctx, RayTracerParams::NodesBinding,     m_Tree.GetNodes());
 
-        const glm::vec3 forward = glm::normalize(glm::vec3(std::cos(pitch) * std::sin(yaw), std::sin(pitch), -std::cos(pitch) * std::cos(yaw)));
-        const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));   // lumea are Y în sus
-        const glm::vec3 up      = glm::cross(right, forward);
-
-        // One unit = 1 m. The focal length a full-frame camera (a 24 mm tall sensor) needs for this FOV, and
-        // the lens's radius at this f-stop: N = focal length / aperture diameter, so radius = f / (2N).
-        constexpr float sensorHeight = 0.024f;
-        const     float tanHalfFovY  = std::tan(glm::radians(m_CameraControls.FovY) * 0.5f);
-        const     float focalLength  = (sensorHeight * 0.5f) / tanHalfFovY;
-        // With the post-process depth of field, the ray tracer stays a pinhole: everything sharp, blurred afterwards.
-        const     float lensRadius   = m_CameraControls.PostProcessDoF ? 0.0f : focalLength / (2.0f * m_CameraControls.FStop) * m_CameraControls.BokehScale;
-
-        RayTracerParams camera {
-            .Position      = m_CameraControls.Position,      .TanHalfFovY  = tanHalfFovY,
-            .Right         = right,                          .Aspect       = static_cast<float>(extent.width) / static_cast<float>(extent.height),
-            .Up            = up,                             .SphereCount  = static_cast<uint32_t>(m_Spheres.size()),
-            .Forward       = forward,                        .FrameIndex   = m_FrameCounter++,
-            .Samples       = m_Quality.Samples,              .SampleScale  = 1.0f / static_cast<float>(m_Quality.Samples),
-            .MaxBounces    = m_CameraControls.MaxBounces,    .LensRadius   = lensRadius,
-            .FocusDistance = m_CameraControls.FocusDistance,
-            .NodeCount     = static_cast<uint32_t>(m_Tree.GetNodes().size()),
-            .UseBvh        = m_UseBvh ? 1u : 0u,
-            .LargeCount    = m_LargeCount,
-            .DebugView     = m_DebugView,
-            .DebugWholePath  = m_DebugWholePath ? 1u : 0u,
-            .BoxThreshold    = m_BoxThreshold,
-            .SphereThreshold = m_SphereThreshold,
-        };
-
-        buffer.Map<RayTracerParams, Gram::VulkanBuffer::Access::Write>().Write(&camera, 0, 1);
-    });
-
-    m_SphereStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
-    {
-        buffer.Map<SphereData, Gram::VulkanBuffer::Access::Write>().Write(m_Spheres.data(), 0, m_Spheres.size());
-    });
-
-    m_NodeStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
-    {
-        const std::vector<BVHNode>& nodes = m_Tree.GetNodes();
-        if (!nodes.empty()) buffer.Map<BVHNode, Gram::VulkanBuffer::Access::Write>().Write(nodes.data(), 0, nodes.size());
-    });
-
-    m_MaterialStorages[ctx.ActiveFrame.FrameIndex].Send(cmd, [this](vk::CommandBuffer cmd, Gram::VulkanBuffer& buffer)
-    {
-        buffer.Map<MaterialData, Gram::VulkanBuffer::Access::Write>().Write(m_Materials.data(), 0, m_Materials.size());
-    });
-
+    const vk::Extent2D extent = m_Output->GetImage().GetExtent();
     cmd.dispatch((extent.width + 7) / 8, (extent.height + 7) / 8, 1);
 
-    // Left ready to sample: ImGui reads it while drawing the viewport panel, inside its own rendering,
-    // where no barrier can go.
-    scene     .Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
-    sceneDepth.Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
+    // No transition back: whoever reads the outputs next (Accumulate, DepthOfField) brings them into its own layout.
     return true;
 }
 
