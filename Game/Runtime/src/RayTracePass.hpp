@@ -2,7 +2,6 @@
 
 #include "BVHTree.hpp"
 #include "Gram/Editor/Editor.hpp"
-#include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
 #include "Gram/Renderer/VulkanShaderPass.hpp"
