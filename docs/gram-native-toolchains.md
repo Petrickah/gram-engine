@@ -42,6 +42,15 @@ Expect MSVC to bring its own set (stricter or different warnings, `/W4`, extensi
 - The system packages in the README (`libgl-dev`, X11 `-dev` packages, …) were verified only on Ubuntu under WSL2.
 
 
+### A Windows device (an old laptop, 2026-11-22)
+
+Windows 11 (build 26200), Intel Iris Xe + NVIDIA RTX 3050 Laptop, 1920x1080@144, reached from the Mac by `gram deploy` (README): nothing is built there, mingw builds it here.
+
+- **OpenSSH Server**: `Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0`, `Start-Service sshd`, `Set-Service sshd -StartupType Automatic`; the firewall rule wasn't created (port 22 closed): `New-NetFirewallRule -Name sshd -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22`. PowerShell as its shell: `HKLM:\SOFTWARE\OpenSSH` `DefaultShell`. The Mac's key (`~/.ssh/id_ed25519_laptop`, a `Host laptop` entry): for an administrator it goes in `%ProgramData%\ssh\administrators_authorized_keys`, which must have exactly `icacls … /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F"`, else it's silently ignored. Plan B if the capability won't install (it goes through Windows Update): Microsoft's MSI from `PowerShell/Win32-OpenSSH`.
+- **Starting it on the desktop**: a program started over ssh runs in session 0, with no desktop; a scheduled task with an Interactive principal runs in the logged-on user's (`SessionId: 1`). Its output goes through `cmd /c … > log`, which also works for Final's `-mwindows` (no console).
+- **Found**: the device scoring picked the RTX over the Iris Xe; ImGui follows a scale change at runtime (Task 1.x-a); Debug lacks the validation layers (no Vulkan SDK there: an error, then it goes on); **Smart App Control** (on by default on a fresh Windows 11) blocked the unsigned `GameLogic.dll` copy (`hot\GameLogic_1.dll`: "An Application Control policy has blocked this file", Code Integrity events 3033/3077/3118) after letting it through once: its decision comes from a cloud lookup, so for code built here it's unpredictable. Turned off on the laptop (and it can be turned on again from the same menu on this build); for players it means signing (Task P.x).
+- PowerShell over ssh without a terminal prints its progress records as `#< CLIXML`: `$ProgressPreference = 'SilentlyContinue'` at the top of every script.
+
 ### SteamOS (Legion Go S, 2026-11-16)
 
 A handheld on SteamOS 3.9 (Arch-based, x86_64, read-only system), used as "a Linux device over SSH"; Valve's SteamOS Devkit Client didn't install on macOS, `gram deploy` (Task 0.12) replaces it. What it took:

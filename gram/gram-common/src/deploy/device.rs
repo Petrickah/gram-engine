@@ -13,6 +13,7 @@
 //!             env: Some("~/.gram-env"),
 //!             steam: Some(2661953691),
 //!         ),
+//!         Device(name: "laptop", host: "laptop", dir: "gram-engine", os: Windows),
 //!     ],
 //! )
 //! ```
@@ -25,15 +26,41 @@ use serde::Deserialize;
 
 pub const DEVICES_FILE: &str = "Devices.ron";
 
-/// One machine `gram deploy` builds and runs on. Only Linux devices for now.
+/// What a device runs, which decides how gram deploys to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+pub enum DeviceOs {
+    /// Built on the device from the synced sources (macOS can't build Linux), in `container` when there's one.
+    #[default]
+    Linux,
+    /// Built here (mingw cross-compiles Windows from anywhere) and copied: the device needs no build tools, only
+    /// OpenSSH Server and a Vulkan driver. Started on the desktop through a scheduled task (a program started over
+    /// ssh runs in session 0, without one). `container`, `env` and `steam` don't apply.
+    Windows,
+}
+
+impl DeviceOs {
+    /// The `gram build` target for it.
+    pub fn target(self) -> &'static str {
+        match self {
+            DeviceOs::Linux => "linux",
+            DeviceOs::Windows => "windows",
+        }
+    }
+}
+
+/// One machine `gram deploy` builds and runs on.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Device {
     /// What `--device` takes.
     pub name: String,
     /// The SSH destination: an alias from `~/.ssh/config` (`legion`) or `user@address`.
     pub host: String,
-    /// Where the project lives on the device, relative to the device user's home (`Projects/gram-engine`).
+    /// Where the project lives on the device, relative to the device user's home (`Projects/gram-engine`). On
+    /// Windows, where the builds go, one folder per configuration (`gram-engine` → `%USERPROFILE%\gram-engine\release`).
     pub dir: String,
+    /// `Linux` (the default) or `Windows`.
+    #[serde(default)]
+    pub os: DeviceOs,
     /// A distrobox to build and run in (SteamOS's system is read-only). `None`: straight on the device.
     #[serde(default)]
     pub container: Option<String>,
@@ -111,7 +138,7 @@ mod tests {
     fn parses_optional_fields_as_none() {
         let devices = Devices::parse(TWO).unwrap();
         assert_eq!(devices.devices[1], Device {
-            name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), container: None, env: None, steam: None,
+            name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), os: DeviceOs::Linux, container: None, env: None, steam: None,
         });
     }
 

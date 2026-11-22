@@ -14,7 +14,7 @@ pub mod plan;
 use std::io;
 use std::process::Command;
 
-pub use device::{Device, Devices, DEVICES_FILE};
+pub use device::{Device, DeviceOs, Devices, DEVICES_FILE};
 pub use plan::{DEBUG_GDB_PORT, DEBUG_PLATFORM_PORT, DeployOptions, Step, lldb_commands, plan, quote};
 
 /// Runs every step in order, each one's output going straight to this terminal. Stops at the first step that

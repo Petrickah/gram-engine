@@ -45,16 +45,23 @@ pub fn project(command: DeployCommand) -> io::Result<i32> {
     let project = BuildConfig::open(".")?;
     let devices = Devices::open(Path::new("."))?;
     let device = devices.find(command.device.as_deref())?;
+    if command.debug && device.os == deploy::DeviceOs::Windows {
+        return Err(io::Error::new(io::ErrorKind::Unsupported, format!(
+            "--debug isn't supported on a Windows device yet ({}): lldb-server is for Linux; a mingw build would want gdbserver",
+            device.name,
+        )));
+    }
 
     let options = DeployOptions {
         config: command.config,
         module: command.module,
-        executable: project.main_executable_path("linux", command.config)?,
+        executable: project.main_executable_path(device.os.target(), command.config)?,
         run: !command.no_run,
         // gram-engine carries gram's own sources: the device builds that gram, the one that knows this tree's Gram.ron.
         gram_manifest: Path::new("gram/Cargo.toml").exists().then(|| "gram/Cargo.toml".to_owned()),
         direct: command.direct,
         debug: command.debug,
+        local_gram: std::env::current_exe()?.display().to_string(),
     };
 
     if options.debug && options.run && !command.dry_run {

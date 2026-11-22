@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::profile::Profile;
 
-use super::device::{Device, DEVICES_FILE};
+use super::device::{Device, DeviceOs, DEVICES_FILE};
 
 /// The launcher a Steam shortcut starts, installed on the device as `~/gram-launch.sh` by every deploy.
 pub const LAUNCHER: &str = include_str!("gram-launch.sh");
@@ -59,10 +59,16 @@ pub struct DeployOptions {
     pub direct: bool,
     /// `--debug`: start the game under lldb-server, stopped until a debugger connects through the run step's tunnels.
     pub debug: bool,
+    /// This gram, which builds for a Windows device here (`std::env::current_exe`).
+    pub local_gram: String,
 }
 
 /// The commands deploying to `device`, in order. Written by the user.
 pub fn plan(device: &Device, options: &DeployOptions) -> Vec<Step> {
+    if device.os == DeviceOs::Windows {
+        return windows_plan(device, options);
+    }
+
     // 1. The sources, mirrored (--delete) but for what's built or this machine's own. rsync is started without a
     //    shell, so its arguments are passed as they are: quoting them would hand rsync the quotes too.
     let excluded = [".git/", "target/", "build/", "build-*/", ".vscode/settings.json", DEVICES_FILE];
@@ -208,6 +214,130 @@ trap "kill $pid 2> /dev/null" INT HUP TERM
     steps
 }
 
+/// A Windows device: built here, copied, started on its desktop. There's no shell on the device to quote for: every
+/// script goes as `powershell -EncodedCommand`, its text in base64, one word nothing can split or expand.
+fn windows_plan(device: &Device, options: &DeployOptions) -> Vec<Step> {
+    let executable = Path::new(&options.executable);
+    let file = executable.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let process = file.strip_suffix(".exe").unwrap_or(&file).to_owned(); // what Get-Process calls it
+    let local_dir = executable.parent().map(|dir| dir.to_string_lossy().into_owned()).unwrap_or_default();
+    // One folder per configuration under the device's folder, relative to the user's profile (ssh starts there).
+    let remote_dir = format!("{}/{}", device.dir, options.config);
+
+    // 1. The build, here: mingw cross-compiles Windows from anywhere.
+    let mut args = vec!["build".to_owned(), "--target".to_owned(), "windows".to_owned(), "--config".to_owned(), options.config.to_string()];
+    if let Some(module) = &options.module {
+        args.push("--module".to_owned());
+        args.push(module.clone());
+    }
+    let mut steps = vec![Step { what: format!("build {} for windows here", options.config), program: options.local_gram.clone(), args }];
+
+    // 2. An empty folder there: what was deleted here goes there too. The game first, or its files are locked.
+    let prepare = format!(
+        "$ProgressPreference = 'SilentlyContinue'\n\
+         Get-Process -Name {process} -ErrorAction SilentlyContinue | Stop-Process -Force\n\
+         Start-Sleep -Milliseconds 500\n\
+         $dir = Join-Path $env:USERPROFILE {dir}\n\
+         if (Test-Path $dir) {{ Remove-Item -Recurse -Force $dir }}\n\
+         New-Item -ItemType Directory -Force -Path $dir | Out-Null",
+        process = ps_quote(&process), dir = ps_quote(&remote_dir),
+    );
+    steps.push(Step {
+        what: format!("prepare {remote_dir} on {}", device.name),
+        program: "ssh".to_owned(),
+        args: vec![device.host.clone(), powershell(&prepare)],
+    });
+
+    // 3. The build's folder, through tar on both ends (Windows 10+ has tar.exe): unlike scp it can leave out gram's
+    //    own executable and the static libraries. A pipe needs a shell here: sh -c. COPYFILE_DISABLE keeps macOS's
+    //    tar from adding its ._ metadata files.
+    let copy = format!(
+        "COPYFILE_DISABLE=1 tar -C {} --exclude gram.exe --exclude {} --exclude {} --exclude {} -cf - . | ssh {} {}",
+        quote(&local_dir), quote("*.a"), quote("*.lib"), quote("*.partial"),
+        quote(&device.host), quote(&format!("tar -xf - -C {}", ps_quote(&remote_dir))),
+    );
+    steps.push(Step {
+        what: format!("copy the build to {}", device.name),
+        program: "sh".to_owned(),
+        args: vec!["-c".to_owned(), copy],
+    });
+
+    if !options.run {
+        return steps;
+    }
+
+    // 4. The game, on the desktop: a program started over ssh runs in session 0, with no desktop, so a scheduled task
+    //    starts it in the logged-on user's session (Interactive). cmd's redirection catches its output in a log (a
+    //    Final build has no console), followed here until the game exits; Ctrl+C (through ssh -t) closes it.
+    steps.push(Step {
+        what: format!("run {} on {}", options.executable, device.name),
+        program: "ssh".to_owned(),
+        args: vec!["-t".to_owned(), device.host.clone(), powershell(&windows_run_script(&remote_dir, &device.dir, &file, &process))],
+    });
+    steps
+}
+
+/// The PowerShell script starting `file` from `remote_dir` through the `gram-launch` scheduled task and following its
+/// log (`<device dir>/gram-launch.log`) until it exits.
+fn windows_run_script(remote_dir: &str, device_dir: &str, file: &str, process: &str) -> String {
+    format!(
+        "$ProgressPreference = 'SilentlyContinue'\n\
+         $dir = Join-Path $env:USERPROFILE {dir}\n\
+         $log = Join-Path $env:USERPROFILE {log}\n\
+         Set-Content -Path $log -Value $null\n\
+         $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c ' + {file} + ' > \"' + $log + '\" 2>&1') -WorkingDirectory $dir\n\
+         $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited\n\
+         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0)\n\
+         Register-ScheduledTask -TaskName 'gram-launch' -Action $action -Principal $principal -Settings $settings -Force | Out-Null\n\
+         Start-ScheduledTask -TaskName 'gram-launch'\n\
+         $game = $null\n\
+         for ($i = 0; $i -lt 60 -and -not $game; $i++) {{ Start-Sleep -Milliseconds 500; $game = Get-Process -Name {process} -ErrorAction SilentlyContinue | Select-Object -First 1 }}\n\
+         if (-not $game) {{ 'gram deploy: the scheduled task did not start ' + {file}; Get-Content $log; exit 1 }}\n\
+         $reader = New-Object System.IO.StreamReader([System.IO.File]::Open($log, 'Open', 'Read', 'ReadWrite'))\n\
+         try {{\n\
+         \x20   while (-not $game.HasExited) {{ $line = $reader.ReadLine(); if ($null -ne $line) {{ $line }} else {{ Start-Sleep -Milliseconds 200 }} }}\n\
+         \x20   while ($null -ne ($line = $reader.ReadLine())) {{ $line }}\n\
+         }} finally {{\n\
+         \x20   if (-not $game.HasExited) {{ Stop-Process -Id $game.Id -Force }}\n\
+         \x20   $reader.Close()\n\
+         }}",
+        dir = ps_quote(remote_dir),
+        log = ps_quote(&format!("{device_dir}/gram-launch.log")),
+        file = ps_quote(file),
+        process = ps_quote(process),
+    )
+}
+
+/// `arg` as a PowerShell string literal: inside '...' nothing is expanded, and a ' is written twice.
+pub fn ps_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "''"))
+}
+
+/// The command line running `script` in Windows PowerShell: its text as UTF-16LE, in base64 (`-EncodedCommand`).
+pub fn powershell(script: &str) -> String {
+    let bytes: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    format!("powershell -NoProfile -NonInteractive -EncodedCommand {}", base64(&bytes))
+}
+
+/// Standard base64 with padding (RFC 4648), all `-EncodedCommand` needs.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut text = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let group = (u32::from(chunk[0]) << 16)
+            | (u32::from(chunk.get(1).copied().unwrap_or(0)) << 8)
+            | u32::from(chunk.get(2).copied().unwrap_or(0));
+        for position in 0..4 {
+            if position <= chunk.len() {
+                text.push(ALPHABET[((group >> (18 - 6 * position)) & 0x3f) as usize] as char);
+            } else {
+                text.push('=');
+            }
+        }
+    }
+    text
+}
+
 /// A step running `command` on the device, inside the project's directory.
 fn ssh(device: &Device, terminal: bool, what: String, command: &str) -> Step {
     let mut args = Vec::new();
@@ -302,6 +432,7 @@ mod tests {
             dir: "Projects/gram-engine".into(),
             container: Some("gram".into()),
             env: Some("~/.gram-env".into()),
+            os: DeviceOs::Linux,
             steam: None,
         }
     }
@@ -315,6 +446,7 @@ mod tests {
             gram_manifest: Some("gram/Cargo.toml".into()),
             direct: false,
             debug: false,
+            local_gram: "gram".into(),
         }
     }
 
@@ -369,7 +501,7 @@ mod tests {
 
     #[test]
     fn a_plain_linux_box_without_container_env_or_run() {
-        let device = Device { name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), container: None, env: None, steam: None };
+        let device = Device { name: "box".into(), host: "me@10.0.0.2".into(), dir: "gram-engine".into(), os: DeviceOs::Linux, container: None, env: None, steam: None };
         // The executable comes from the command (main_executable_path), the debug one here whatever the config.
         let options = DeployOptions { config: Profile::Release, module: Some("Game".into()), run: false, gram_manifest: None, ..gram_engine() };
 
@@ -493,5 +625,90 @@ pkill -x lldb-server"#;
              target create \"/home/deck/Projects/gram-engine/build/gram-engine/linux/debug/Game\"\n\
              settings set target.source-map \"/home/deck/Projects/gram-engine\" \"/Users/me/gram-engine\"\n"
         );
+    }
+
+    #[test]
+    fn base64_matches_rfc_4648() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"M"), "TQ==");
+        assert_eq!(base64(b"Ma"), "TWE=");
+        assert_eq!(base64(b"Man"), "TWFu");
+        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn powershell_encodes_utf16_little_endian() {
+        // d i r → 64 00 69 00 72 00
+        assert_eq!(powershell("dir"), "powershell -NoProfile -NonInteractive -EncodedCommand ZABpAHIA");
+    }
+
+    #[test]
+    fn ps_quote_doubles_a_single_quote() {
+        assert_eq!(ps_quote("gram-engine/release"), "'gram-engine/release'");
+        assert_eq!(ps_quote("it's"), "'it''s'");
+    }
+
+    fn laptop() -> Device {
+        Device { name: "laptop".into(), host: "laptop".into(), dir: "gram-engine".into(), os: DeviceOs::Windows, container: None, env: None, steam: None }
+    }
+
+    fn windows_release() -> DeployOptions {
+        DeployOptions {
+            config: Profile::Release,
+            executable: "build/gram-engine/windows/release/Game.exe".into(),
+            local_gram: "/repo/gram/target/debug/gram".into(),
+            ..gram_engine()
+        }
+    }
+
+    #[test]
+    fn a_windows_device_is_built_here_copied_and_started_through_a_scheduled_task() {
+        let steps = plan(&laptop(), &windows_release());
+        assert_eq!(steps.len(), 4);
+
+        assert_eq!(steps[0].what, "build release for windows here");
+        assert_eq!(steps[0].program, "/repo/gram/target/debug/gram");
+        assert_eq!(args(&steps[0]), ["build", "--target", "windows", "--config", "release"]);
+
+        assert_eq!(steps[1].what, "prepare gram-engine/release on laptop");
+        assert_eq!(args(&steps[1]), ["laptop".to_owned(), powershell(
+            "$ProgressPreference = 'SilentlyContinue'\n\
+             Get-Process -Name 'Game' -ErrorAction SilentlyContinue | Stop-Process -Force\n\
+             Start-Sleep -Milliseconds 500\n\
+             $dir = Join-Path $env:USERPROFILE 'gram-engine/release'\n\
+             if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }\n\
+             New-Item -ItemType Directory -Force -Path $dir | Out-Null",
+        )]);
+
+        assert_eq!(steps[2].what, "copy the build to laptop");
+        assert_eq!(steps[2].program, "sh");
+        assert_eq!(args(&steps[2]), [
+            "-c",
+            r#"COPYFILE_DISABLE=1 tar -C build/gram-engine/windows/release --exclude gram.exe --exclude '*.a' --exclude '*.lib' --exclude '*.partial' -cf - . | ssh laptop 'tar -xf - -C '\''gram-engine/release'\'''"#,
+        ]);
+
+        assert_eq!(steps[3].what, "run build/gram-engine/windows/release/Game.exe on laptop");
+        assert_eq!(args(&steps[3])[..2], ["-t", "laptop"]);
+        assert_eq!(args(&steps[3])[2], powershell(&windows_run_script("gram-engine/release", "gram-engine", "Game.exe", "Game")));
+    }
+
+    #[test]
+    fn the_windows_run_script_starts_the_game_from_its_folder_and_logs_it() {
+        let script = windows_run_script("gram-engine/release", "gram-engine", "Game.exe", "Game");
+        assert!(script.contains("$dir = Join-Path $env:USERPROFILE 'gram-engine/release'\n"), "{script}");
+        assert!(script.contains("$log = Join-Path $env:USERPROFILE 'gram-engine/gram-launch.log'\n"), "{script}");
+        assert!(script.contains(r#"-Argument ('/c ' + 'Game.exe' + ' > "' + $log + '" 2>&1') -WorkingDirectory $dir"#), "{script}");
+        assert!(script.contains("-LogonType Interactive"), "{script}");
+        assert!(script.contains("Get-Process -Name 'Game'"), "{script}");
+    }
+
+    #[test]
+    fn a_windows_device_without_run_stops_after_the_copy() {
+        let options = DeployOptions { run: false, module: Some("Runtime".into()), ..windows_release() };
+
+        let steps = plan(&laptop(), &options);
+
+        assert_eq!(steps.len(), 3);
+        assert_eq!(args(&steps[0])[5..], ["--module", "Runtime"]);
     }
 }
