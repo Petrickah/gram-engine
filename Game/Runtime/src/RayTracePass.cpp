@@ -1,8 +1,5 @@
 #include "Components.generated.hpp"
 #include "Gram/Logging/GramLogger.hpp"
-#include "Gram/Renderer/Common.hpp"
-#include "Gram/Renderer/VulkanBuffer.hpp"
-#include "Gram/Renderer/VulkanDescriptors.hpp"
 #include "Gram/Renderer/VulkanImage.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
@@ -214,9 +211,9 @@ void RayTracePass::Fill(RayTracerParams& params, Gram::VulkanPass::Context ctx)
 // The pipeline and both sets are bound: upload this frame's buffers, then one thread per pixel, 8x8 per group.
 bool RayTracePass::OnRecord(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx)
 {
-    Upload<SphereData>  (ctx, RayTracerParams::SpheresBinding,   m_Spheres);
-    Upload<MaterialData>(ctx, RayTracerParams::MaterialsBinding, m_Materials);
-    Upload<BVHNode>     (ctx, RayTracerParams::NodesBinding,     m_Tree.GetNodes());
+    if(!Upload<SphereData>  (ctx, RayTracerParams::SpheresBinding,   m_Spheres))         return false;
+    if(!Upload<MaterialData>(ctx, RayTracerParams::MaterialsBinding, m_Materials))       return false;
+    if(!Upload<BVHNode>     (ctx, RayTracerParams::NodesBinding,     m_Tree.GetNodes())) return false;
 
     const vk::Extent2D extent = m_Output->GetImage().GetExtent();
     cmd.dispatch((extent.width + 7) / 8, (extent.height + 7) / 8, 1);

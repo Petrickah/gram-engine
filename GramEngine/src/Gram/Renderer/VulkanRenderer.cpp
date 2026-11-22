@@ -106,8 +106,14 @@ bool VulkanRenderer::OnDrawFrame()
     for (auto& pass : m_Passes)
     {
         m_Profiler.Begin(frame->CommandBuffer, pass->GetName());
-        allRecorded = pass->Record(frame->CommandBuffer, ctx) && allRecorded;
+        const bool recorded = pass->Record(frame->CommandBuffer, ctx);
         m_Profiler.End(frame->CommandBuffer);
+
+        // A game pass that fails doesn't close the game (the engine's own passes below still do): the frame
+        // goes on without what it draws, and the passes after it read its outputs as they were last left.
+        // Its own check already said why, every frame; this says once that it's skipped, and once that it's back.
+        if      (!recorded && m_FailingPasses.insert(pass.get()).second) GramError("{}: recording failed, skipped until it records again", pass->GetName());
+        else if ( recorded && m_FailingPasses.erase(pass.get()) > 0)     GramInfo("{}: records again", pass->GetName());
     }
 
     

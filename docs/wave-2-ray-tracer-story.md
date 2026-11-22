@@ -152,6 +152,12 @@ What's left to look at: Sharpen costs ~0.7 ms even at 100%, where it only copies
 
 **Next.** One triangle in the ray tracer (the textured quad's two), then an `.obj` loader with the same BVH over triangles. A rotating model won't need its tree rebuilt: built once in the object's own space, it stays valid while the ray is moved into that space with the object's inverse transform. That's the two-level split hardware ray tracing uses (a bottom-level tree per model, a small top-level one over the instances).
 
+## Part 7 — The passes stop repeating themselves (Nov 22)
+
+Five passes, and each one wrote the same things by hand: two descriptor set layouts, a pipeline, a uniform buffer per frame in flight, and the dance of rewriting an image's descriptor when a resize recreated it. The `.pass.ron` already knew every binding, so the obvious move was to generate the C++ classes too. We didn't: C++ written as strings inside a Rust generator is code nobody can step through or fix where it breaks. The generator writes **data** instead, one table per pass (set, binding, kind of resource, format), and one hand-written template, `VulkanShaderPass<Params>`, reads it at compile time and builds everything from it. A pass now derives from it and writes three hooks: `OnPrepare` (resize its outputs, pack its scene), `Fill` (its uniform) and `OnRecord` (its dispatch or draw). One rule fell out of it: every pass transitions what it uses at its start, and nobody transitions back, because a pass can't know who comes after it.
+
+The negative test was the best part. Uploading the materials into the spheres' buffer should have been caught, and wasn't: `SphereData` and `MaterialData` are both exactly 32 bytes, and the check compared sizes. The buffer now remembers the element's *type* (the address of a per-type template variable), and the wrong upload is refused. The same test also showed that one failing pass closed the whole game; a game pass that fails is now skipped and logged, like a Rust reload that fails.
+
 ## Lessons worth a paragraph each
 
 - **The validation layer is the tutor.** Almost every Vulkan step was a validation error first; reading them carefully was faster than any guess.
@@ -167,6 +173,8 @@ What's left to look at: Sharpen costs ~0.7 ms even at 100%, where it only copies
 - **Cost per pixel means the pixel count is the lever.** Once the profiler showed the ray tracer was the whole frame and scaled with pixels, rendering fewer and upscaling them well bought more than any change to the algorithm had.
 - **A cap hides differences.** V-Sync made 50% and 67% look the same at 175 FPS; below a cap, only the per-pass milliseconds tell settings apart.
 - **Fast isn't real-time.** 290 FPS on a still image says nothing about a moving one: a path tracer's frame is one ray per pixel, and everything that makes it look clean (accumulation) is what motion throws away.
+- **Generate data, write the logic once.** A table the compiler reads is checked, debuggable C++; a class written as text by another program is neither.
+- **A check that compares the wrong thing passes.** Two structs of the same size slipped through a size check; the test that tried to break it on purpose is what found out.
 - **A correct picture can still be useless.** The flat heat map without the BVH was exactly right and showed nothing; adding the surface's shading, or counting whole paths, made the same numbers readable.
 
 ## Screenshots worth taking for the post

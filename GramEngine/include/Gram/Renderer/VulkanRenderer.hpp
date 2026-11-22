@@ -12,6 +12,8 @@
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
+#include <unordered_set>
+
 #ifndef GRAM_EDITOR_ENABLED
 #include "Gram/Renderer/VulkanPresentPass.hpp"
 #endif // #ifndef GRAM_EDITOR_ENABLED
@@ -81,6 +83,8 @@ private:
 
 private:
     std::vector<std::unique_ptr<VulkanPass>> m_Passes;
+    // The game's passes whose last Record failed: skipped, not fatal, and logged only when that changes.
+    std::unordered_set<const VulkanPass*>    m_FailingPasses;
 };
 
 GRAM_NAMESPACE_END

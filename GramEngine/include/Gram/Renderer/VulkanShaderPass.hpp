@@ -18,6 +18,8 @@ template <typename Params>
 class VulkanShaderPass : public VulkanPass
 {
 private:
+    template <typename T> static inline constexpr char ElementTag = 0;
+
     struct ImageSlot
     {
         std::shared_ptr<VulkanRenderTarget> Target;                     // a target that may be recreated (resized)
@@ -27,9 +29,9 @@ private:
 
     struct BufferSlot
     {
-        std::array<VulkanBuffer, vkMaxFramesInFlight> PerFrame;      // one per frame in flight, like the uniform
-        uint32_t                                      Capacity    = 0;   // elements
-        size_t                                        ElementSize = 0;   // sizeof the element it was created for
+        std::array<VulkanBuffer, vkMaxFramesInFlight> PerFrame;                // one per frame in flight, like the uniform
+        uint32_t                                      Capacity    = 0;         // elements
+        const void*                                   ElementType = nullptr;   // the element type it was created for
     };
 
 public:
@@ -138,7 +140,7 @@ protected:
         BufferSlot& slot = m_Buffers[binding];
         slot.PerFrame    = VulkanBuffer::Create<StorageBuffer<Element>>(device, capacity);
         slot.Capacity    = capacity;
-        slot.ElementSize = sizeof(Element);
+        slot.ElementType = &ElementTag<Element>;
 
         m_Descriptors.Write(device, binding, slot.PerFrame, capacity * sizeof(Element));
     }
@@ -147,8 +149,8 @@ protected:
     bool Upload(VulkanPass::Context ctx, uint32_t binding, std::span<const Element> data)
     {
         BufferSlot& slot = m_Buffers[binding];
-        GramCheck(sizeof(Element) == slot.ElementSize, "incompatible buffer type: {} bytes wrote but {} bytes recieved", slot.ElementSize, sizeof(Element));
-        GramCheck(data.size() <= slot.Capacity, "incompatible buffer size: {} elems wrote but {} elems recieved", slot.Capacity, data.size());
+        GramCheck(slot.ElementType == &ElementTag<Element>, "{}: binding {} holds another element type", Params::Shader, binding);
+        GramCheck(data.size() <= slot.Capacity, "{}: binding {} holds a different number of elements", Params::Shader, binding);
 
         if (data.empty()) return true;
         slot.PerFrame[ctx.ActiveFrame.FrameIndex].template Map<Element, VulkanBuffer::Access::Write>().Write(data.data(), 0, data.size());
