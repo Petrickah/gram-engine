@@ -4,6 +4,7 @@
 #ifdef GRAM_LOGGER_ENABLED
 #include <spdlog/pattern_formatter.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/dist_sink.h>
 #include <spdlog/sinks/ringbuffer_sink.h>
 
 GRAM_NAMESPACE_BEGIN
@@ -22,9 +23,65 @@ static spdlog::sink_ptr s_ConsoleSink;
 static spdlog::level::level_enum s_Level = spdlog::level::off;
 static std::map<std::string, std::shared_ptr<spdlog::logger>, std::less<>> s_SystemLoggers;
 
+// Between a logger and its sinks: a warning or an error seen again within a second of its last time (a check
+// failing every frame, a validation message about every frame's commands) is shown once, not 60 times a second,
+// even with other messages in between. When it stops for a second, how many times it was hidden is shown, at
+// the next message. Only warnings and errors: an info message can say the same thing twice on purpose (Greet).
+class RepeatFilterSink final : public spdlog::sinks::dist_sink<std::mutex>
+{
+public:
+    explicit RepeatFilterSink(std::vector<spdlog::sink_ptr> sinks) : dist_sink(std::move(sinks)) {}
+
+protected:
+    void sink_it_(const spdlog::details::log_msg& msg) override
+    {
+        constexpr auto runGap = std::chrono::seconds(1);
+
+        // The runs that ended: a line saying how many times they were hidden, then they're forgotten.
+        for (auto it = m_Runs.begin(); it != m_Runs.end(); )
+        {
+            if (msg.time - it->second.LastSeen < runGap) { ++it; continue; }
+            if (it->second.Hidden > 0)
+            {
+                const std::string text = std::format("(\"{}\" repeated {} more times)", it->first, it->second.Hidden);
+                dist_sink::sink_it_(spdlog::details::log_msg(msg.time, {}, msg.logger_name, it->second.Level, text));
+            }
+            it = m_Runs.erase(it);
+        }
+
+        if (msg.level >= spdlog::level::warn)
+        {
+            const std::string payload(msg.payload.data(), msg.payload.size());
+            auto [run, first] = m_Runs.try_emplace(payload, Run { .Level = msg.level, .LastSeen = msg.time });
+            if (!first)
+            {
+                run->second.LastSeen = msg.time;
+                run->second.Hidden++;
+                return;
+            }
+        }
+
+        dist_sink::sink_it_(msg);
+    }
+
+private:
+    struct Run
+    {
+        spdlog::level::level_enum     Level;
+        spdlog::log_clock::time_point LastSeen;
+        uint64_t                      Hidden = 0;
+    };
+    std::map<std::string, Run, std::less<>> m_Runs;   // by message text: the warnings and errors seen in the last second
+};
+
+static spdlog::sink_ptr FilterRepeats(const spdlog::sinks_init_list& sinks)
+{
+    return std::make_shared<RepeatFilterSink>(std::vector<spdlog::sink_ptr>(sinks));
+}
+
 static std::shared_ptr<spdlog::logger> CreateLogger(const std::string& name, const spdlog::sinks_init_list& sinks, spdlog::level::level_enum level)
 {
-    std::shared_ptr<spdlog::logger> logger = std::make_shared<spdlog::logger>(name, sinks);
+    std::shared_ptr<spdlog::logger> logger = std::make_shared<spdlog::logger>(name, FilterRepeats(sinks));
     logger->set_level(level);
     // [14:03:12.345] [error] [Vulkan] message; %^...%$ colors the level by severity.
     logger->set_pattern("[%T.%e] [%^%l%$] [%n] %v");
@@ -66,7 +123,7 @@ private:
 
 static std::shared_ptr<spdlog::logger> CreateListLogger(const std::string& name, const spdlog::sinks_init_list& sinks, spdlog::level::level_enum level)
 {
-    std::shared_ptr<spdlog::logger> logger = std::make_shared<spdlog::logger>(name, sinks);
+    std::shared_ptr<spdlog::logger> logger = std::make_shared<spdlog::logger>(name, FilterRepeats(sinks));
     logger->set_level(level);
     // "     - [X] message"; %^...%$ colors the marker by severity.
     std::unique_ptr<spdlog::pattern_formatter> formatter = std::make_unique<spdlog::pattern_formatter>();
