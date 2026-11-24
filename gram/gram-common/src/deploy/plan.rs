@@ -63,7 +63,7 @@ pub struct DeployOptions {
     pub local_gram: String,
 }
 
-/// The commands deploying to `device`, in order. Written by the user.
+/// The commands deploying to `device`, in order. Started by the user, finished by Claude (Task 0.12).
 pub fn plan(device: &Device, options: &DeployOptions) -> Vec<Step> {
     if device.os == DeviceOs::Windows {
         return windows_plan(device, options);
@@ -398,7 +398,8 @@ fn remote(device: &Device, command: &str) -> String {
     }
 }
 
-/// `arg` quoted for a POSIX shell, so the shell reads it back as exactly one word, unchanged. Written by the user.
+/// `arg` quoted for a POSIX shell, so the shell reads it back as exactly one word, unchanged. Started by the user
+/// (with its tests), finished by Claude (Task 0.12).
 pub fn quote(arg: &str) -> String {
     // Letters, digits and these mean nothing to a shell: left bare, so printed commands stay readable.
     let safe = |c: char| c.is_ascii_alphanumeric() || "_-./:=@,+%".contains(c);
