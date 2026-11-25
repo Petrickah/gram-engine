@@ -62,6 +62,9 @@ public:
     float GetSharpening() const { return m_Quality.Sharpening; }
 
     bool ConsumeSceneChanged() { return std::exchange(m_SceneChanged, false); }
+
+    // What ran, for a benchmark recording's settings (VulkanRenderer::SetBenchmarkSettings).
+    void AppendBenchmarkSettings(Gram::BenchmarkRecorder::Settings& settings) const;
     
 protected:
     bool OnPrepare(Gram::VulkanPass::Context ctx) override;

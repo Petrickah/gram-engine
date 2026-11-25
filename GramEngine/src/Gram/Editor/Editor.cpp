@@ -115,9 +115,13 @@ Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& wo
 #endif // #ifdef GRAM_LOGGER_ENABLED
 #ifdef GRAM_VULKAN_RENDERER
     if (sceneTarget) m_Viewport = Register<ViewportPanel>(PanelOwner::Engine, *sceneTarget);
-    if (renderer)    m_Profiler = Register<ProfilerPanel>(PanelOwner::Engine, *renderer);
 #endif // #ifdef GRAM_VULKAN_RENDERER
 #endif // #ifdef GRAM_EDITOR_ENABLED
+
+#ifdef GRAM_VULKAN_RENDERER
+    // The engine's one panel in Release too: benchmarks are measured there (docs/wave-2-benchmarking.md).
+    if (renderer) m_Profiler = Register<ProfilerPanel>(PanelOwner::Engine, *renderer);
+#endif // #ifdef GRAM_VULKAN_RENDERER
 
     // After the toolbar: windows drawn before it would be placed in the work area it hasn't shrunk yet.
     GramCheckVoid(m_UI.RegisterLayer<EditorFunctionPanels>(m_FunctionPanels, *m_MenuBar), "couldn't create the editor's function panels");

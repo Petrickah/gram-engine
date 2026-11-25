@@ -22,7 +22,8 @@ public:
     void Begin(vk::CommandBuffer cmd, const char* name);
     void End  (vk::CommandBuffer cmd);
 
-    const std::vector<Timing>& GetTimings() const { return m_Timings; }   // the last frame read back, smoothed
+    const std::vector<Timing>& GetTimings()      const { return m_Timings;      }   // the last frame read back, smoothed
+    const std::vector<Timing>& GetFrameTimings() const { return m_FrameTimings; }   // the same frame, raw: for recordings
 
 private:
     void Smooth(const std::string& name, float ms);
@@ -40,6 +41,7 @@ private:
     uint32_t m_Query = 0;   // the next free query in it
 
     std::vector<Timing> m_Timings;
+    std::vector<Timing> m_FrameTimings;   // empty when nothing was read back this frame
 };
 
 GRAM_NAMESPACE_END

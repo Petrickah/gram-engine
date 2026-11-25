@@ -117,8 +117,8 @@ private:
     std::shared_ptr<LoggerPanel>          m_Logger;
     std::shared_ptr<SystemsPanel>         m_Systems;
     std::shared_ptr<ViewportPanel>        m_Viewport;
-    std::shared_ptr<ProfilerPanel>        m_Profiler;
 #endif // #ifdef GRAM_EDITOR_ENABLED
+    std::shared_ptr<ProfilerPanel>        m_Profiler;   // in Release too: benchmarks are recorded there
 };
 
 GRAM_NAMESPACE_END

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Gram/Renderer/Common.hpp"
+#include "Gram/Renderer/BenchmarkRecorder.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanFrame.hpp"
 #include "Gram/Renderer/VulkanImGui.hpp"
@@ -12,6 +13,8 @@
 #include "Gram/Renderer/VulkanSurface.hpp"
 #include "Gram/Renderer/VulkanSwapchain.hpp"
 
+#include <chrono>
+#include <functional>
 #include <unordered_set>
 
 #ifndef GRAM_EDITOR_ENABLED
@@ -66,8 +69,17 @@ public:
         return found != m_Passes.end() ? found->get() : nullptr;
     }
 
+    // Benchmark recordings (the Profiler panel's Record button): the engine's settings (machine, driver,
+    // configuration, resolution, V-Sync, disabled passes) plus the game's, from the function it set here.
+    using BenchmarkSettingsFunction = std::function<void(BenchmarkRecorder::Settings&)>;
+    void SetBenchmarkSettings(BenchmarkSettingsFunction settings) { m_BenchmarkSettings = std::move(settings); }
+    bool StartRecording(const std::filesystem::path& folder, float intervalSeconds, float durationSeconds);
+    void StopRecording() { m_Recorder.Stop(); }
+    const BenchmarkRecorder& GetRecorder() const { return m_Recorder; }
+
 private:
     bool RecreateSwapchain();
+    BenchmarkRecorder::Settings EngineBenchmarkSettings() const;
     bool SaveScreenshot(const std::filesystem::path& path);
 
 private:
@@ -80,6 +92,9 @@ private:
     VulkanProfiler m_Profiler;
     std::optional<std::filesystem::path> m_ScreenshotPath;
     std::shared_ptr<VulkanRenderTarget> m_SceneTarget;
+    BenchmarkRecorder                   m_Recorder;
+    BenchmarkSettingsFunction           m_BenchmarkSettings;
+    std::optional<std::chrono::steady_clock::time_point> m_LastFrameStart;   // a frame's time = from one OnDrawFrame to the next
     GramImGuiOnly(VulkanImGui m_VulkanImGui);
 
 #ifndef GRAM_EDITOR_ENABLED

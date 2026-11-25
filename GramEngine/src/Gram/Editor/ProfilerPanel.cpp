@@ -1,9 +1,10 @@
 #include "Gram/Renderer/VulkanProfiler.hpp"
 #include "Gram/Renderer/VulkanRenderer.hpp"
+#include "Gram/Platform.hpp"
 #include <imgui.h>
 #include "Gram/Editor/ProfilerPanel.hpp"
 
-#if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_VULKAN_RENDERER)
+#if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_VULKAN_RENDERER)
 GRAM_NAMESPACE_BEGIN
 
 void ProfilerPanel::DrawContents()
@@ -48,7 +49,40 @@ void ProfilerPanel::DrawContents()
         }
         ImGui::EndTable();
     }
+
+    DrawRecording();
+}
+
+// Record: a CSV of these timings over time, in benchmarks/ next to the executable (docs/wave-2-benchmarking.md).
+void ProfilerPanel::DrawRecording()
+{
+    ImGui::SeparatorText("Recording");
+    const BenchmarkRecorder& recorder = m_Renderer.GetRecorder();
+
+    if (recorder.IsRecording())
+    {
+        const float elapsed  = recorder.GetElapsed();
+        const float duration = recorder.GetDuration();
+        const std::string progress = std::format("{:.0f} / {:.0f} s", elapsed, duration);
+        ImGui::ProgressBar(duration > 0.0f ? elapsed / duration : 0.0f, ImVec2(-1.0f, 0.0f), progress.c_str());
+        if (ImGui::Button("Stop")) m_Renderer.StopRecording();
+    }
+    else
+    {
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::InputFloat("Row every (s)", &m_RecordInterval, 0.1f, 1.0f, "%.1f");
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::InputFloat("Duration (s)", &m_RecordDuration, 5.0f, 30.0f, "%.0f");
+        m_RecordInterval = std::clamp(m_RecordInterval, 0.1f, 60.0f);
+        m_RecordDuration = std::clamp(m_RecordDuration, m_RecordInterval, 3600.0f);
+
+        if (ImGui::Button("Record")) m_Renderer.StartRecording(GetExecutableDirectory() / "benchmarks", m_RecordInterval, m_RecordDuration);
+        ImGui::SameLine();
+        ImGui::TextDisabled("fix the resolution and turn V-Sync off first (Debug/Display)");
+    }
+
+    if (!recorder.GetPath().empty()) ImGui::TextDisabled("%s", recorder.GetPath().string().c_str());
 }
 
 GRAM_NAMESPACE_END
-#endif // #if defined(GRAM_EDITOR_ENABLED) && defined(GRAM_VULKAN_RENDERER)
+#endif // #if defined(GRAM_IMGUI_ENABLED) && defined(GRAM_VULKAN_RENDERER)

@@ -75,6 +75,11 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
 
 bool VulkanRenderer::OnDrawFrame()
 {
+    // The whole frame's time, CPU and waiting included: what FPS is made of, next to the GPU's share.
+    const auto  frameStart = std::chrono::steady_clock::now();
+    const float frameMs    = m_LastFrameStart ? std::chrono::duration<float, std::milli>(frameStart - *m_LastFrameStart).count() : 0.0f;
+    m_LastFrameStart = frameStart;
+
     // Resized, or an earlier acquire/present reported the swapchain out of date. A false here
     // is not fatal: it is a minimized window (or a build error already logged), so skip the
     // frame and retry on the next one.
@@ -95,6 +100,7 @@ bool VulkanRenderer::OnDrawFrame()
     if (!frame) return true;
 
     m_Profiler.BeginFrame(frame->CommandBuffer, frame->FrameIndex);
+    if (m_Recorder.IsRecording()) m_Recorder.AddFrame(m_Profiler.GetFrameTimings(), frameMs);
     
     VulkanPass::Context ctx {
         .Device      = m_VulkanDevice,
@@ -235,6 +241,66 @@ bool VulkanRenderer::SaveScreenshot(const std::filesystem::path& path)
 
     GramInfo("screenshot saved: {} ({}x{})", path.string(), extent.width, extent.height);
     return true;
+}
+
+bool VulkanRenderer::StartRecording(const std::filesystem::path& folder, float intervalSeconds, float durationSeconds)
+{
+    // The columns: the passes as the profiler last saw them, in the order they ran.
+    std::vector<std::string> passes;
+    for (const VulkanProfiler::Timing& timing : m_Profiler.GetTimings()) passes.push_back(timing.Name);
+    GramCheck(!passes.empty(), "benchmark: no GPU timings to record (timestamps not supported, or nothing measured yet)");
+
+    BenchmarkRecorder::Settings settings = EngineBenchmarkSettings();
+    if (m_BenchmarkSettings) m_BenchmarkSettings(settings);
+    return m_Recorder.Start(folder, std::move(passes), settings, intervalSeconds, durationSeconds);
+}
+
+// What section 1 of docs/wave-2-benchmarking.md asks to write down, as far as the engine knows it.
+BenchmarkRecorder::Settings VulkanRenderer::EngineBenchmarkSettings() const
+{
+    BenchmarkRecorder::Settings settings;
+    auto add = [&settings](std::string key, std::string value) { settings.push_back({ std::move(key), std::move(value) }); };
+
+#if defined(GRAM_PLATFORM_APPLE)
+    add("os", "macOS");
+#elif defined(GRAM_PLATFORM_LINUX)
+    add("os", "Linux");
+#elif defined(_WIN32)
+    add("os", "Windows");
+#endif
+
+#if defined(GRAM_CONFIG_FINAL)
+    add("configuration", "Final");
+#elif defined(GRAM_CONFIG_RELEASE)
+    add("configuration", "Release");
+#else
+    add("configuration", "Debug");
+#endif
+
+    // The device and its driver (MoltenVK or KosmicKrisp on the Mac, RADV on the Legion Go): core since Vulkan 1.2.
+    const vk::PhysicalDevice physical(m_VulkanDevice.GetPhysicalDevice());
+    const auto properties = physical.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceDriverProperties>();
+    const vk::PhysicalDeviceProperties&       device = properties.get<vk::PhysicalDeviceProperties2>().properties;
+    const vk::PhysicalDeviceDriverProperties& driver = properties.get<vk::PhysicalDeviceDriverProperties>();
+    add("gpu",         device.deviceName.data());
+    add("driver",      driver.driverName.data());
+    add("driver_info", driver.driverInfo.data());
+
+    if (m_SceneTarget)
+    {
+        const vk::Extent2D extent = m_SceneTarget->GetImage().GetExtent();
+        add("resolution", std::format("{}x{}", extent.width, extent.height));
+        add("resolution_fixed", m_SceneTarget->GetFixedExtent() ? "yes" : "no (follows the viewport)");
+    }
+    add("vsync", GetVSync() ? "on" : "off");
+
+    std::string disabled;
+    for (const std::unique_ptr<VulkanPass>& pass : m_Passes)
+    {
+        if (!pass->IsEnabled()) disabled += (disabled.empty() ? "" : ", ") + std::string(pass->GetName());
+    }
+    add("disabled_passes", disabled.empty() ? "none" : disabled);
+    return settings;
 }
 
 GRAM_NAMESPACE_END

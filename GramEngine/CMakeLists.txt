@@ -55,6 +55,7 @@ find_package(Stb REQUIRED)
 
 # --- Gram Engine ---
 add_library(GramRenderer STATIC
+    src/Gram/Renderer/BenchmarkRecorder.cpp
     src/Gram/Renderer/VulkanBuffer.cpp
     src/Gram/Renderer/VulkanDevice.cpp
     src/Gram/Renderer/VulkanFrame.cpp

@@ -29,6 +29,7 @@ void VulkanProfiler::BeginFrame(vk::CommandBuffer cmd, uint32_t frameIndex)
     if (!m_Valid) return;
     m_Frame = frameIndex;
     m_Query = 0;
+    m_FrameTimings.clear();
 
     // 1. This slot's last frame is done (VulkanFrame::Begin waited for its fence): read its times.
     std::vector<std::string>& names = m_Names[frameIndex];
@@ -51,6 +52,7 @@ void VulkanProfiler::BeginFrame(vk::CommandBuffer cmd, uint32_t frameIndex)
             {
                 const float ms = static_cast<float>(stamps[2 * i + 1] - stamps[2 * i]) * m_Period / 1'000'000.0f;   // ticks → ns → ms
                 Smooth(names[i], ms);
+                m_FrameTimings.push_back({ names[i], ms });
             }
         }
     }

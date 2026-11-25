@@ -51,6 +51,7 @@ private:
 
 #ifdef GRAM_IMGUI_ENABLED
         rayTracePass.RegisterPanels(m_Editor);
+        m_VulkanRenderer->SetBenchmarkSettings([&rayTracePass](Gram::BenchmarkRecorder::Settings& settings) { rayTracePass.AppendBenchmarkSettings(settings); });
 #else
         rayTracePass.GenerateBookScene();
 #endif // #ifdef GRAM_IMGUI_ENABLED

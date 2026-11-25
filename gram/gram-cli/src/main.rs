@@ -4,6 +4,7 @@ use gram_common::AddOutcome;
 use gram_common::commands::Cli;
 use gram_common::commands::Commands;
 use gram_common::commands::add;
+use gram_common::commands::benchmark;
 use gram_common::commands::build;
 use gram_common::commands::deploy;
 use gram_common::commands::generate;
@@ -90,6 +91,14 @@ fn main() {
             }
         Commands::Deploy(command) =>
             match deploy::project(command) {
+                Ok(code) => std::process::exit(code),
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(1)
+                }
+            }
+        Commands::Benchmark(command) =>
+            match benchmark::plot(command) {
                 Ok(code) => std::process::exit(code),
                 Err(err) => {
                     eprintln!("Error: {err}");

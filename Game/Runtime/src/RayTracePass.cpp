@@ -221,6 +221,23 @@ bool RayTracePass::OnRecord(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx
     return true;
 }
 
+// What actually ran, not what's ticked: FSR 1 only runs below 100% (UsesFsr), the resolution is the output's own.
+void RayTracePass::AppendBenchmarkSettings(Gram::BenchmarkRecorder::Settings& settings) const
+{
+    auto add = [&settings](std::string key, std::string value) { settings.push_back({ std::move(key), std::move(value) }); };
+    const vk::Extent2D extent = m_Output ? m_Output->GetImage().GetExtent() : vk::Extent2D {};
+
+    add("ray_tracer_resolution", std::format("{}x{}", extent.width, extent.height));
+    add("render_scale",          std::format("{:.0f}%", m_Quality.RenderScale * 100.0f));
+    add("fsr",                   UsesFsr() ? std::format("on, sharpening {:.2f}", m_Quality.Sharpening) : "off");
+    add("samples_per_frame",     std::to_string(m_Quality.Samples));
+    add("max_bounces",           std::to_string(m_CameraControls.MaxBounces));
+    add("depth_of_field",        m_CameraControls.PostProcessDoF ? "post-process" : "lens");
+    add("spheres",               std::to_string(m_Spheres.size()));
+    add("bvh",                   !m_UseBvh ? "off" : m_TreeStrategy == BVHTree::Strategy::Sah ? "SAH" : "Midpoint");
+    add("bvh_tree",              std::format("{} nodes, depth {}, fullest leaf {}, {}", m_TreeStats.Nodes, m_TreeStats.MaxDepth, m_TreeStats.MaxLeafSize, m_TreeStats.Error.empty() ? "valid" : "invalid"));
+}
+
 #ifdef GRAM_IMGUI_ENABLED
 void RayTracePass::DrawRayTracerUI()
 {
