@@ -3,7 +3,6 @@
 #include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanImage.hpp"
-#include "vulkan/vulkan.hpp"
 
 #include <cstdint>
 

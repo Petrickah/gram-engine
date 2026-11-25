@@ -8,7 +8,7 @@
 #include "Gram/Renderer/VulkanPass.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
-#include "vulkan/vulkan.hpp"
+
 #include <optional>
 
 #ifdef GRAM_VULKAN_RENDERER

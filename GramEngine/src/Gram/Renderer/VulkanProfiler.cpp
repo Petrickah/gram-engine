@@ -1,5 +1,4 @@
 #include "Gram/Renderer/VulkanProfiler.hpp"
-#include "vulkan/vulkan.hpp"
 
 #ifdef GRAM_VULKAN_RENDERER
 GRAM_NAMESPACE_BEGIN
