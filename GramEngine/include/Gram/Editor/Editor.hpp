@@ -14,7 +14,7 @@ class InspectorPanel;
 class LoggerPanel;
 class OutlinerPanel;
 class ProfilerPanel;
-class VulkanProfiler;
+class VulkanRenderer;
 class SystemsPanel;
 class ViewportPanel;
 class VulkanRenderTarget;
@@ -74,7 +74,7 @@ class Editor : private UniqueObject
 {
 public:
     using Func = std::function<void()>;
-    Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, std::shared_ptr<VulkanRenderTarget> sceneTarget = nullptr, const VulkanProfiler* profiler = nullptr);
+    Editor(LayerOwner<ImGuiApplicationLayer>& ui, World& world, GameAPILoader& loader, std::shared_ptr<VulkanRenderTarget> sceneTarget = nullptr, VulkanRenderer* renderer = nullptr);
 
     // A game's own panel drawn by a function, listed in the Game menu under its path ("Debug/Ray Tracer").
     FunctionPanel& AddPanel(std::string_view path, Func draw)

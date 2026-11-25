@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Gram/Renderer/Common.hpp"
 #include "Gram/Renderer/VulkanBuffer.hpp"
 #include "Gram/Renderer/VulkanDevice.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
@@ -40,7 +39,7 @@ public:
     // An intermediate pass whose output follows another target's size (the scene's, for an upscaler whose
     // input is smaller than the screen).
     PostProcessPass(Gram::VulkanDevice& device, const Gram::VulkanShader& shader, std::vector<std::shared_ptr<Gram::VulkanRenderTarget>> inputs, vk::Format format, std::shared_ptr<Gram::VulkanRenderTarget> sizeOf, FillFunction fill)
-        : PostProcessPass(device, shader, inputs, std::make_shared<Gram::VulkanRenderTarget>(device, sizeOf->GetImage().GetExtent(), format, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled), std::move(fill))
+        : PostProcessPass(device, shader, inputs, std::make_shared<Gram::VulkanRenderTarget>(device, sizeOf->GetImage().GetExtent(), format, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst), std::move(fill))
     {
         m_SizeOf = std::move(sizeOf);
     }
@@ -83,7 +82,8 @@ protected:
             m_TargetOutput->ApplyRequestedExtent();
         }
 
-        m_OutputRecreated = !m_OutputGeneration || *m_OutputGeneration != m_TargetOutput->GetGeneration();
+        // OnPrepare: the generation check, plus "the last frame was a bypass"
+        m_OutputRecreated  = !m_OutputGeneration || *m_OutputGeneration != m_TargetOutput->GetGeneration() || std::exchange(m_Bypassed, false);
         m_OutputGeneration = m_TargetOutput->GetGeneration();
         return true;
     }
@@ -97,6 +97,22 @@ protected:
             .FrameIndex      = ctx.ActiveFrame.FrameIndex,
             .OutputRecreated = m_OutputRecreated,
         });
+    }
+
+    // While disabled: the first input straight into the output, so the passes after this one see the chain
+    // as if it weren't there.
+    bool Bypass(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx) override
+    {
+        if (!OnPrepare(ctx)) return false;   // an output of our own still follows its size
+
+        Gram::VulkanImage& output = m_TargetOutput->GetImage();
+        m_TargetInputs[0]->GetImage().Blit(cmd, output.GetState());
+
+        // Left ready to sample, like OnRecord leaves it.
+        output.Transition(cmd, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eShaderSampledRead);
+
+        m_Bypassed = true;
+        return true;
     }
 
     // The pipeline and both sets are bound: draw the quad into the output.
@@ -139,6 +155,7 @@ private:
     std::vector<std::shared_ptr<Gram::VulkanRenderTarget>> m_TargetInputs;
     std::optional<uint64_t>                                m_OutputGeneration = std::nullopt;
     bool                                                   m_OutputRecreated  = false;
+    bool                                                   m_Bypassed         = false;
 
     Gram::VulkanBuffer                        m_VertexBuffer;
     Gram::VulkanBuffer                        m_IndexBuffer;

@@ -8,7 +8,6 @@
 #include "RayTracePass.hpp"
 #include "BVHTree.hpp"
 #include "Passes.generated.hpp"
-#include "vulkan/vulkan.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -23,7 +22,7 @@ RayTracePass::RayTracePass(std::filesystem::path skybox, Gram::VulkanDevice& dev
     , m_Skybox(Gram::VulkanImage::Load(device, skybox))
     , m_SphereCount(512), m_MaterialCount(512)
 {
-    m_Output      = target ? std::make_shared<Gram::VulkanRenderTarget>(device, target->GetImage().GetExtent(), vk::Format::eR32G32B32A32Sfloat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled) : nullptr;
+    m_Output      = target ? std::make_shared<Gram::VulkanRenderTarget>(device, target->GetImage().GetExtent(), vk::Format::eR32G32B32A32Sfloat, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc) : nullptr;
     m_OutputDepth = target ? std::make_shared<Gram::VulkanRenderTarget>(device, target->GetImage().GetExtent(), vk::Format::eR32Sfloat,          vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled) : nullptr;
     GramCheckVoid(m_Output && m_OutputDepth, "the output image was not created; no render target recieved");
 

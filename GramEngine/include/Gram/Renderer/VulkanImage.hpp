@@ -14,6 +14,7 @@ public:
     {
         vk::Image               Image  = {};
         vk::ImageView           View   = {};
+        vk::Extent2D            Extent = {};
         vk::ImageLayout         Layout = vk::ImageLayout::eUndefined;
         vk::PipelineStageFlags2 Stage  = vk::PipelineStageFlagBits2::eNone;
         vk::AccessFlags2        Access = vk::AccessFlagBits2::eNone;
@@ -32,8 +33,9 @@ private:
         , m_Format(format)
     {
         // The raw handles of what this object owns; they stay the same when it's moved.
-        m_State.Image = *m_Image;
-        m_State.View  = *m_View;
+        m_State.Image  = *m_Image;
+        m_State.View   = *m_View;
+        m_State.Extent = m_Extent;
     }
 
 public:
@@ -50,13 +52,19 @@ public:
         m_State.Transition(cmd, layout, stage, access);
     }
 
+    // Copies this whole image into the whole of `destination` (scaled when the sizes differ, converted when the
+    // formats do), and leaves both in their transfer layouts. Both need the matching eTransferSrc/eTransferDst usage.
+    void Blit(vk::CommandBuffer cmd, VulkanImage::State& destination, vk::Filter filter = vk::Filter::eLinear);
+
     void BeginRendering(vk::CommandBuffer cmd, vk::AttachmentLoadOp loadOp);
     bool IsValid() const { return m_Image && m_View && m_Sampler; }
 
-    vk::Image     GetHandle()  const { return *m_Image;   }
-    vk::ImageView GetView()    const { return *m_View;    }
-    vk::Sampler   GetSampler() const { return *m_Sampler; }
-    vk::Extent2D  GetExtent()  const { return m_Extent;   }
+    vk::Image          GetHandle()  const { return *m_Image;   }
+    vk::ImageView      GetView()    const { return *m_View;    }
+    vk::Sampler        GetSampler() const { return *m_Sampler; }
+    vk::Extent2D       GetExtent()  const { return m_Extent;   }
+    const VulkanImage::State& GetState() const { return m_State;    }
+          VulkanImage::State& GetState()       { return m_State;    }
 
 private:
     VulkanImage::State      m_State   = {};

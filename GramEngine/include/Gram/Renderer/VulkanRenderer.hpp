@@ -57,7 +57,14 @@ public:
     // the start of the next frame, before any pass records into it. Logs where it went.
     void RequestScreenshot(std::filesystem::path path) { m_ScreenshotPath = std::move(path); }
     // Each pass's GPU time, shown by the editor's Profiler panel.
-    const VulkanProfiler&  GetProfiler() const  { return m_Profiler; }
+    const VulkanProfiler& GetProfiler() const { return m_Profiler; }
+    // The game's pass the profiler calls `name`, for the Profiler panel's checkbox; nullptr for the engine's own
+    // (the present pass, ImGui), which can't be turned off.
+    VulkanPass* FindPass(std::string_view name) const
+    {
+        auto found = std::ranges::find_if(m_Passes, [name](const std::unique_ptr<VulkanPass>& pass) { return name == pass->GetName(); });
+        return found != m_Passes.end() ? found->get() : nullptr;
+    }
 
 private:
     bool RecreateSwapchain();

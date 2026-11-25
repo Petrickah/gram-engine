@@ -176,7 +176,8 @@ bool VulkanSwapchain::CreateSwapchain(std::vector<VulkanImage::State>& swapchain
 
         swapchainImages.push_back(VulkanImage::State { 
             .Image  = image, 
-            .View   = imageView
+            .View   = imageView,
+            .Extent = extent,
         });
     }
 

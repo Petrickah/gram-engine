@@ -97,7 +97,7 @@ bool EditorFunctionPanels::OnDrawFrame()
     return true;
 }
 
-Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& world, [[maybe_unused]] GameAPILoader& loader, [[maybe_unused]] std::shared_ptr<VulkanRenderTarget> sceneTarget, [[maybe_unused]] const VulkanProfiler* profiler)
+Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& world, [[maybe_unused]] GameAPILoader& loader, [[maybe_unused]] std::shared_ptr<VulkanRenderTarget> sceneTarget, [[maybe_unused]] VulkanRenderer* renderer)
     : m_UI(ui)
 {
     GramCheckVoid(m_UI.RegisterLayer<EditorMenuBar>(m_MenuBar, sceneTarget), "couldn't create the editor's menu bar");
@@ -115,7 +115,7 @@ Editor::Editor(LayerOwner<ImGuiApplicationLayer>& ui, [[maybe_unused]] World& wo
 #endif // #ifdef GRAM_LOGGER_ENABLED
 #ifdef GRAM_VULKAN_RENDERER
     if (sceneTarget) m_Viewport = Register<ViewportPanel>(PanelOwner::Engine, *sceneTarget);
-    if (profiler)    m_Profiler = Register<ProfilerPanel>(PanelOwner::Engine, *profiler);
+    if (renderer)    m_Profiler = Register<ProfilerPanel>(PanelOwner::Engine, *renderer);
 #endif // #ifdef GRAM_VULKAN_RENDERER
 #endif // #ifdef GRAM_EDITOR_ENABLED
 

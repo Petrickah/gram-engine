@@ -11,6 +11,8 @@
 #include "Passes.generated.hpp"
 #include "PostProcessPass.hpp"
 #include "RayTracePass.hpp"
+// #include "TrianglePass.hpp"
+
 #include <cstddef>
 #include <imgui.h>
 #include <vector>
@@ -216,7 +218,7 @@ private:
     void RegisterPanels()
     {
         // The scene target: the editor's Viewport (Debug only) shows what the passes render into it.
-        m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI, m_VulkanRenderer->GetSceneTarget(), &m_VulkanRenderer->GetProfiler());
+        m_Editor = std::make_unique<Gram::Editor>(m_VulkanRenderer->GetImGuiApplication(), *m_World, *m_GameAPI, m_VulkanRenderer->GetSceneTarget(), &*m_VulkanRenderer);
         // The game's own panels: in Debug next to the engine's, in Release the only ones, to test the game with.
         m_Editor->AddPanel("Debug/Greeting", [this] { DrawGameUI(); });
         m_Editor->AddPanel("Debug/Display",  [this] { DrawDisplayUI(); });

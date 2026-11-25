@@ -20,7 +20,7 @@ public:
         VulkanFrame&        Frame;
         uint32_t            FrameIndex    = 0;
         uint32_t            ImageIndex    = 0;
-        // The acquired swapchain image's state (owned by the swapchain): every transition of it goes
+        // The acquired swapchain image state (owned by the swapchain): every transition of it goes
         // through here, so End knows the layout the last pass left it in.
         VulkanImage::State& SwapchainImage;
         // Set by BeginSwapchainRendering. Still false in End means nothing drew this frame: End clears the image.

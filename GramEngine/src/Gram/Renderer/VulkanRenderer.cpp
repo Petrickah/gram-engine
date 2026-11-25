@@ -51,7 +51,7 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererSpecification *rendererSpec)
         m_VulkanDevice
         , vk::Extent2D { 1280, 720 }     // until the viewport panel asks for its own size
         , vk::Format::eR32G32B32A32Sfloat
-        , vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc
+        , vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst
     ))
     GramImGuiOnly(, m_VulkanImGui(
         & m_RendererSpec
@@ -106,7 +106,8 @@ bool VulkanRenderer::OnDrawFrame()
     for (auto& pass : m_Passes)
     {
         m_Profiler.Begin(frame->CommandBuffer, pass->GetName());
-        const bool recorded = pass->Record(frame->CommandBuffer, ctx);
+        // A disabled pass is bypassed, not failed: measured too, so the panel shows what its copy costs.
+        const bool recorded = pass->IsEnabled() ? pass->Record(frame->CommandBuffer, ctx) : pass->Bypass(frame->CommandBuffer, ctx);
         m_Profiler.End(frame->CommandBuffer);
 
         // A game pass that fails doesn't close the game (the engine's own passes below still do): the frame
