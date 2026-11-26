@@ -110,6 +110,10 @@ private:
 
     std::vector<MaterialData> m_Materials;
     std::vector<SphereData>   m_Spheres;
+
+    // Triangles from the World's TriangleCorner spheres (three per triangle), filled by PackScene; no tree over them yet.
+    static constexpr uint32_t  m_TriangleCapacity = 256;
+    std::vector<TriangleData>  m_Triangles;
 };
 
 #endif // #ifdef GRAM_VULKAN_RENDERER

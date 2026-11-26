@@ -3,6 +3,7 @@
 #include "Gram/Renderer/VulkanImage.hpp"
 #include "Gram/Renderer/VulkanPipeline.hpp"
 #include "Gram/Renderer/VulkanRenderTarget.hpp"
+#include "Gram/Scripting/ECS/ObjectID.hpp"
 #include "Gram/Scripting/ECS/World.hpp"
 
 #include "RayTracePass.hpp"
@@ -12,6 +13,7 @@
 #include <chrono>
 #include <filesystem>
 #include <random>
+#include <utility>
 
 #ifdef GRAM_VULKAN_RENDERER
 
@@ -37,6 +39,7 @@ RayTracePass::RayTracePass(std::filesystem::path skybox, Gram::VulkanDevice& dev
 
     // A binary tree over N spheres has at most 2N - 1 nodes.
     CreateBuffer<BVHNode>     (device, RayTracerParams::NodesBinding,     2 * m_SphereCount); 
+    CreateBuffer<TriangleData>(device, RayTracerParams::TrianglesBinding, m_TriangleCapacity);
 }
 
 // The book's final scene (ch. 14): a ground, a 22×22 grid of small random spheres, three big ones.
@@ -98,11 +101,12 @@ bool RayTracePass::PackScene()
 {
     std::vector<SphereData>   spheres;
     std::vector<MaterialData> materials;
+    std::vector<TriangleData> triangles;
 
     m_World.Each<Gram::Sphere>([&](Gram::ObjectID entity, Gram::Sphere& sphere)
     {
         const Gram::Material* material = m_World.Get<Gram::Material>(entity);
-        if (!material || spheres.size() >= m_SphereCount) return;   // fără material nu are ce randa; bufferul e plin
+        if (!material || spheres.size() >= m_SphereCount) return;   // no material to rande; the buffer is full
 
         materials.push_back({
             .Albedo             = material->Albedo,
@@ -119,13 +123,41 @@ bool RayTracePass::PackScene()
         });
     });
 
+    std::map<uint32_t, std::array<std::optional<Gram::Sphere>, 3>> corners;   // triangle number → its three corners
+    m_World.Each<Gram::TriangleCorner>([&](Gram::ObjectID entity, Gram::TriangleCorner& c)
+    {
+        Gram::Sphere* sphere = m_World.Get<Gram::Sphere>(entity);
+        if (sphere == nullptr || c.Corner > 2) return;
+
+        corners[c.Triangle][c.Corner] = *sphere;
+    });
+
+    for (const auto& [number, group] : corners)   // in the triangles' numbers order: the same buffer every frame
+    {
+        if (triangles.size() >= m_TriangleCapacity) break;
+
+        // A group missing a corner (one of its spheres was deleted) makes no triangle.
+        if (!group[0].has_value() || !group[1].has_value() || !group[2].has_value()) continue;
+
+        const Gram::Sphere& a = group[0].value();
+        const Gram::Sphere& b = group[1].value();
+        const Gram::Sphere& c = group[2].value();
+
+        triangles.push_back({
+            .Vertex1 = a.Center, .Radius1 = a.Radius,
+            .Vertex2 = b.Center, .Radius2 = b.Radius,
+            .Vertex3 = c.Center, .Radius3 = c.Radius
+        });
+    }
+
     auto differs = [](const auto& a, const auto& b)
     {
         return a.size() != b.size() || std::memcmp(a.data(), b.data(), a.size() * sizeof(a[0])) != 0;
     };
     // Compared with the last frame's array as it came from the World, not with m_Spheres: building the tree
     // reorders the spheres, so a scene that didn't move would look changed every frame.
-    const bool changed = differs(spheres, m_PackedSpheres) || differs(materials, m_Materials);
+    const bool changed = differs(spheres, m_PackedSpheres) || differs(materials, m_Materials) || differs(triangles, m_Triangles);
+    m_Triangles     = std::move(triangles);
     m_PackedSpheres = spheres;
 
     if (changed || std::exchange(m_RebuildTree, false))
@@ -204,6 +236,7 @@ void RayTracePass::Fill(RayTracerParams& params, Gram::VulkanPass::Context ctx)
         .DebugWholePath  = m_DebugWholePath ? 1u : 0u,
         .BoxThreshold    = m_BoxThreshold,
         .SphereThreshold = m_SphereThreshold,
+        .TriangleCount   = static_cast<uint32_t>(m_Triangles.size()),
     };
 }
 
@@ -213,6 +246,7 @@ bool RayTracePass::OnRecord(vk::CommandBuffer cmd, Gram::VulkanPass::Context ctx
     if(!Upload<SphereData>  (ctx, RayTracerParams::SpheresBinding,   m_Spheres))         return false;
     if(!Upload<MaterialData>(ctx, RayTracerParams::MaterialsBinding, m_Materials))       return false;
     if(!Upload<BVHNode>     (ctx, RayTracerParams::NodesBinding,     m_Tree.GetNodes())) return false;
+    if(!Upload<TriangleData>(ctx, RayTracerParams::TrianglesBinding, m_Triangles))       return false;
 
     const vk::Extent2D extent = m_Output->GetImage().GetExtent();
     cmd.dispatch((extent.width + 7) / 8, (extent.height + 7) / 8, 1);
@@ -234,6 +268,7 @@ void RayTracePass::AppendBenchmarkSettings(Gram::BenchmarkRecorder::Settings& se
     add("max_bounces",           std::to_string(m_CameraControls.MaxBounces));
     add("depth_of_field",        m_CameraControls.PostProcessDoF ? "post-process" : "lens");
     add("spheres",               std::to_string(m_Spheres.size()));
+    add("triangles",             std::to_string(m_Triangles.size()));
     add("bvh",                   !m_UseBvh ? "off" : m_TreeStrategy == BVHTree::Strategy::Sah ? "SAH" : "Midpoint");
     add("bvh_tree",              std::format("{} nodes, depth {}, fullest leaf {}, {}", m_TreeStats.Nodes, m_TreeStats.MaxDepth, m_TreeStats.MaxLeafSize, m_TreeStats.Error.empty() ? "valid" : "invalid"));
 }
@@ -306,6 +341,26 @@ void RayTracePass::DrawRayTracerUI()
             .AbsorptionDistance = 1.0f,
             .Kind = static_cast<uint32_t>(MaterialType::Lambertian)
         });
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+
+    // Three spheres marked as the corners of a new triangle (TriangleCorner): moving one in the Inspector moves the
+    // triangle's corner, its radius the dot drawn there. PackScene turns each complete group of three into a TriangleData.
+    ImGui::BeginDisabled(m_Spheres.size() + 3 > m_SphereCount || m_Triangles.size() >= m_TriangleCapacity);
+    if (ImGui::Button("Add Triangle"))
+    {
+        uint32_t triangle = 0;   // the next free triangle number
+        m_World.Each<Gram::TriangleCorner>([&triangle](Gram::ObjectID, Gram::TriangleCorner& corner) { triangle = std::max(triangle, corner.Triangle + 1); });
+
+        constexpr std::array<glm::vec3, 3> corners { glm::vec3 { -0.5f, -0.3f, -0.6f }, glm::vec3 { 0.5f, -0.3f, -0.6f }, glm::vec3 { 0.0f, 0.5f, -0.6f } };
+        for (uint32_t corner = 0; corner < 3; corner++)
+        {
+            const Gram::ObjectID entity = m_World.CreateEntity();
+            m_World.Add(entity, Gram::Sphere { .Center = corners[corner], .Radius = 0.05f, .InnerRadius = 0.0f });
+            m_World.Add(entity, Gram::Material { .Albedo = { 0.9f, 0.9f, 0.9f }, .Kind = static_cast<uint32_t>(MaterialType::Lambertian) });
+            m_World.Add(entity, Gram::TriangleCorner { .Triangle = triangle, .Corner = corner });
+        }
     }
     ImGui::EndDisabled();
     ImGui::SameLine();

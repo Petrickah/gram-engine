@@ -124,6 +124,40 @@ bool HitSurface(float3 center, float radius, float outwardSign, in Ray ray, floa
     return true;
 }
 
+bool HitTriangle(in TriangleData t, in Ray ray, float tmin, float tmax, out HitRecord rec)
+{
+    g_SphereTests++;
+
+    const float3 edge1  = t.Vertex2 - t.Vertex1;
+    const float3 edge2  = t.Vertex3 - t.Vertex1;
+    const float3 normal = normalize(cross(edge1, edge2));
+    const float3 rayCrossEdge2 = cross(ray.Direction, edge2);
+    const float  det = dot(edge1, rayCrossEdge2);
+    
+    if (abs(det) < 1e-8f) return false; // ray parallel to triangle
+
+    const float invDet = 1.0f / det;
+
+    const float3 s = ray.Origin - t.Vertex1;
+    const float  u = invDet * dot(s, rayCrossEdge2);
+
+    if (u < 0.0f || u > 1.0f) return false; // u: how far along edge1; outside [0, 1], the ray passes beside the triangle
+
+    const float3 sCrossEdge1 = cross(s, edge1);
+    const float  v = invDet * dot(ray.Direction, sCrossEdge1);
+
+    if (v < 0.0f || u + v > 1.0f) return false; // v: how far along edge2; u + v > 1 is past the third edge
+
+    const float root = invDet * dot(edge2, sCrossEdge1); // the distance along the ray to the triangle's plane
+    if (root <= tmin || root >= tmax) return false; // behind the ray (or too close), or farther than the closest hit so far
+
+    rec.Distance      = root;
+    rec.Position      = RayAt(ray, rec.Distance);
+    rec.MaterialIndex = 0;
+    SetFaceNormal(rec, ray.Direction, normal);
+    return true;
+}
+
 float HitBox(float3 boxMin, float3 boxMax, float3 origin, float3 invDirection, float tmin, float tmax)
 {
     g_BoxTests++;
@@ -244,6 +278,43 @@ bool HitSpheres(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
     return hitAnything;
 }
 
+bool HitTriangles(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
+{
+    HitRecord temp;
+    bool hitAnything = false;
+    float hitClosest = tmax;
+
+    // if (Params.UseBvh != 0) return HitSpheresBvh(ray, tmin, tmax, hitRecord);
+
+    for (uint index = 0; index < Params.TriangleCount; index++)
+    {
+        if (HitTriangle(Triangles[index], ray, tmin, hitClosest, temp))
+        {
+            hitAnything = true;
+            hitClosest  = temp.Distance;
+            hitRecord   = temp;
+        }
+    }
+
+    return hitAnything;
+}
+
+// Everything a ray can hit, closest first: the triangles, then the spheres only closer than the triangle found.
+// RayColor's bounces and PrimaryHit's pinhole ray (the depth output, the heat map) both go through it.
+bool HitScene(in Ray ray, float tmin, float tmax, out HitRecord hitRecord)
+{
+    bool hit = HitTriangles(ray, tmin, tmax, hitRecord);
+
+    HitRecord sphereHit;
+    if (HitSpheres(ray, tmin, hit ? hitRecord.Distance : tmax, sphereHit))
+    {
+        hit       = true;
+        hitRecord = sphereHit;
+    }
+
+    return hit;
+}
+
 bool Scatter(in MaterialData mat, inout Ray ray, in HitRecord hit, out float3 attenuation)
 {
     attenuation = mat.Albedo;
@@ -301,7 +372,7 @@ float3 RayColor(in Ray ray)
     for (uint bounce = 0; bounce < Params.MaxBounces; bounce++)
     {
         HitRecord hitRecord;
-        if (!HitSpheres(ray, 0.01f, 3.402823466e+38f, hitRecord))
+        if (!HitScene(ray, 0.01f, 3.402823466e+38f, hitRecord))
         {
             return attenuation * Skybox.SampleLevel(SkyboxSampler, DirToSphericalUV(ray.Direction), 0).rgb;
         }
@@ -333,7 +404,7 @@ bool PrimaryHit(in RayTracerParams cam, uint2 pixel, uint2 size, out Ray ray, ou
     ray.Origin    = cam.Position;
     ray.Direction = normalize(cam.Forward + ndc.x * cam.Aspect * cam.TanHalfFovY * cam.Right
                                           + ndc.y *              cam.TanHalfFovY * cam.Up);
-    return HitSpheres(ray, 0.01f, 3.402823466e+38f, hit);
+    return HitScene(ray, 0.01f, 3.402823466e+38f, hit);
 }
 
 // 0 → black, 0.5 → blue, 1 → red, past 1 → white: one measure of the heat map, read at a glance.

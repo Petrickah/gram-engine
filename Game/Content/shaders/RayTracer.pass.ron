@@ -22,6 +22,7 @@ Pass(
         Field(name: "debug_whole_path", ty: U32),        // the heat map counts: 0 = the camera's ray only, 1 = its whole path (every bounce)
         Field(name: "box_threshold",    ty: U32),        // the heat map: this many box tests = full red
         Field(name: "sphere_threshold", ty: U32),        // ... this many sphere tests = full blue; past either one, white
+        Field(name: "triangle_count",   ty: U32),
     ],
     buffers: [
         Buffer(name: "spheres", element: "SphereData", fields: [
@@ -29,6 +30,11 @@ Pass(
             Field(name: "radius",         ty: F32),
             Field(name: "inner_radius",   ty: F32),      // 0 = solid
             Field(name: "material_index", ty: U32),
+        ]),
+        Buffer(name: "triangles", element: "TriangleData", fields: [
+            Field(name: "vertex1", ty: Vec3), Field(name: "radius1", ty: F32),
+            Field(name: "vertex2", ty: Vec3), Field(name: "radius2", ty: F32),
+            Field(name: "vertex3", ty: Vec3), Field(name: "radius3", ty: F32),
         ]),
         Buffer(name: "materials", element: "MaterialData", fields: [
             Field(name: "albedo",              ty: Vec3),

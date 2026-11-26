@@ -1,0 +1,7 @@
+Component(
+    name: "TriangleCorner",
+    fields: [
+        Field(name: "triangle", ty: U32),   // which triangle this sphere is a corner of
+        Field(name: "corner",   ty: U32),   // 0, 1 or 2: the order gives the winding
+    ],
+)
