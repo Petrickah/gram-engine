@@ -5,8 +5,10 @@
 Personal game engine project (C++ + Rust), started from rediscovered passion rather than portfolio obligation. Structured in "waves", each producing a working artifact plus a devlog post on `petretiberiu.dev`.
 
 - **Wave 0 — Gram Build** (done): `gram`, a pure-Rust CLI build tool that orchestrates `cargo`, multi-file `cmake` and nested `gram` modules, and builds this whole repo, itself included. Devlog: [Episode 0](https://petretiberiu.dev/posts/gram-engine-00-gram-build/).
-- **Wave 1 — Hello Triangle** (in progress): the rendering half is done on Windows, Linux and macOS: a Vulkan 1.3 renderer (dynamic rendering, two frames in flight, swapchain recreation), HLSL shaders compiled to SPIR-V at build time, a docking ImGui overlay, an spdlog-based logger and a layer system. Next is the Rust half: a stateless gameplay `cdylib` the C++ executable loads and hot-reloads.
-- **Wave 2 — Ray Tracer**: a Vulkan compute pipeline with spheres, first owned by C++, then driven by Rust entities.
+- **Wave 1 — Hello Triangle + Rust gameplay** (done): Vulkan 1.3 renderer, ImGui, C++-owned world and hot-reloaded Rust systems/components. Devlog: [Episode 1](https://petretiberiu.dev/posts/gram-engine-01-hello-triangle/).
+- **Wave 2 — Ray Tracer** (closed): compute-shader path tracing with Rust-driven sphere entities, pass schemas, BVH, GPU profiler and FSR 1. Episodes: [2](https://petretiberiu.dev/posts/gram-engine-02-ray-tracing-in-one-weekend-on-the-gpu/) and [2.5](https://petretiberiu.dev/posts/gram-engine-02-5-optimizing-for-real-hardware/).
+- **Wave 3 — Triangles and Blender scenes** (planned): Möller–Trumbore, OBJ/MTL import, triangle BVH and unified material, validated against the existing Blender scene.
+- **Wave 4 — Raster pipeline** (later): G-buffer, shadows and lighting; keep unplanned until Wave 3 is complete.
 
 Current task-level progress lives in `.gram.kanban.md`; architecture and design decisions in `CLAUDE.md` and `docs/`. To change Gram Build itself, start with [docs/gram-architecture.md](docs/gram-architecture.md), the developer guide: data model, command flows, backends, how to add a language or a dependency source, tests, and known limits.
 
