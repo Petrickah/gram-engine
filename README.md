@@ -94,6 +94,7 @@ gram benchmark [<recording.csv or folder>...] [--config debug|release|final] [--
 
 - `Game/Content/textures/autumn_field_puresky_4k.hdr` — [Autumn Field (Pure Sky)](https://polyhaven.com/a/autumn_field_puresky) from Poly Haven, CC0.
 - `Game/Content/textures/texture.jpg` — [statue photo](https://pixabay.com/photos/statue-sculpture-figure-1275469/) from Pixabay, the CC0 image used by the Vulkan tutorial's texture chapter.
+- `Game/Content/shaders/ffx/` — [AMD FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) headers, © 2021 Advanced Micro Devices, MIT (license text kept in each file).
 - `Game/Content/scenes/random-objects/` — my own Blender scene: primitives and Suzanne on a plane, with hand-made materials.
 
 ## License
