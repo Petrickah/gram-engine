@@ -90,6 +90,12 @@ gram benchmark [<recording.csv or folder>...] [--config debug|release|final] [--
   - A Windows device (`os: Windows` in `Devices.ron`; `dir` is then the folder under the user's profile receiving one folder per configuration) is built here instead (`gram build --target windows`, mingw), copied with `tar` through ssh (without `gram.exe` and the static libraries), and started on the desktop through a scheduled task (`gram-launch`, Interactive: a program started over ssh runs in session 0, with no desktop), its output in `<dir>\gram-launch.log`, followed here until it exits. Every script goes as `powershell -EncodedCommand` (base64), so nothing needs quoting. The device needs OpenSSH Server (with a firewall rule for port 22 and PowerShell as its shell; an administrator's key goes in `%ProgramData%\ssh\administrators_authorized_keys`) and a Vulkan driver, no build tools. Windows 11's Smart App Control may block the unsigned `GameLogic.dll` ("An Application Control policy has blocked this file"): turn it off on a development machine (*Windows Security → App & browser control*). `--debug` isn't supported there yet. Debug starts Stopped and its Play button can't build there: Release or Final run the systems from the start.
 - `gram init`/`add`/`remove` also keep `.vscode/settings.json` in sync (`rust-analyzer.linkedProjects` for every cargo module), merging with any settings already there.
 
+## Credits
+
+- `Game/Content/textures/autumn_field_puresky_4k.hdr` — [Autumn Field (Pure Sky)](https://polyhaven.com/a/autumn_field_puresky) from Poly Haven, CC0.
+- `Game/Content/textures/texture.jpg` — [statue photo](https://pixabay.com/photos/statue-sculpture-figure-1275469/) from Pixabay, the CC0 image used by the Vulkan tutorial's texture chapter.
+- `Game/Content/scenes/random-objects/` — my own Blender scene: primitives and Suzanne on a plane, with hand-made materials.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Assets in `Game/Content/third-party/` are not part of the repository and are not covered by it.
