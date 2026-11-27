@@ -175,7 +175,7 @@ Run them with `cargo test --manifest-path gram/Cargo.toml`. A bug fix starts as 
 - Enums for `kind`/`lang` in `Gram.ron`, like `DependencySpec` (another one-time migration of the files).
 - Precompiled binaries as a dependency source (`--bin <url> --for <target>`, discussed for DXC; not needed since DXC comes with the Vulkan SDK).
 - `gram test`, running `cargo test` / `ctest` per module.
-- **Macros** (inspired by Ubisoft's TeaBox): named recipes in `Gram.ron`, each a list of steps run in order, where a step is an existing gram command, so a macro knows nothing about CMake or Cargo. For example:
+- **Macros** (inspired by an internal Ubisoft tool): named recipes in `Gram.ron`, each a list of steps run in order, where a step is an existing gram command, so a macro knows nothing about CMake or Cargo. For example:
   ```ron
   macros: {
       "play":    [ Build(target: "macos"), Run(module: "Game") ],
