@@ -90,4 +90,4 @@ Reload: every 0.5 s `GameAPILoader::OnDrawFrame` compares the original library's
 
 ## Repo model
 
-Private GitHub repo (`Petrickah/gram-engine`) is the sole origin for now — deliberately not the Gitea-first convention used elsewhere in the author's `Projects` monorepo, chosen for durable code history and eventual Patreon early-access (repo-level separation when that happens, not a branch split). Gitea gets added later only as an automatic pull-mirror of GitHub, once "Personal Builds" actually starts — not before.
+Public GitHub repo (`Petrickah/gram-engine`), the sole origin for now — deliberately not the Gitea-first convention used elsewhere in the author's `Projects` monorepo, chosen for durable code history. Public since 2026-11 (it was private, kept for an eventual Patreon early access that never existed): the project is built in public, so the devlog articles can point at the code and anyone can read it. Releases go on its GitHub Releases page (`v0.1.0`, a preview, 2026-11-28: `tools/release/make_release.py`). Gitea gets added later only as an automatic pull-mirror of GitHub, once "Personal Builds" actually starts — not before.
