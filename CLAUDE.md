@@ -27,6 +27,7 @@ The `gram` crates live in a cargo workspace at `gram/Cargo.toml` (`gram-cli`, pa
 - Build: `cargo build --manifest-path gram/Cargo.toml`
 - Run: `cargo run --manifest-path gram/Cargo.toml -- <args>` (e.g. `-- --help`, `-- init hello-world`)
 - Test: `cargo test --manifest-path gram/Cargo.toml` — command-level tests in `gram/gram-cli/tests/` (one file per subcommand plus `nested.rs`; read `tests/support/mod.rs` first). They run the real binary in a temp sandbox, kept on failure. The `build`/`run` tests need cmake and a C++ compiler; one test needs crates.io and is `#[ignore]`d.
+- Preview release: `python3 tools/release/make_release.py` from the repo root zips macOS and Windows, Debug and Release, into `build/release/<version>/` (README templates, panel layouts `imgui-<config>.ini` and the notices next to it); the macOS folders it starts from are prepared by hand (`docs/gram-native-toolchains.md`, *A preview release*).
 - Self-hosted (once bootstrapped): from the repo root, `gram/target/debug/gram build` (or `build --ci`, `build --module GameLogic`, `run`) builds the whole tree from the checked-in root `Gram.ron` — `gram` itself, `GramEngine` and the game. The tool's own artifact lands as `build/<project>/<target>/<config>/gram`.
 
 ## Architecture (current)

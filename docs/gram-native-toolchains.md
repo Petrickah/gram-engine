@@ -42,6 +42,14 @@ Expect MSVC to bring its own set (stricter or different warnings, `/W4`, extensi
 - The system packages in the README (`libgl-dev`, X11 `-dev` packages, …) were verified only on Ubuntu under WSL2.
 
 
+### A preview release (2026-11-28)
+
+Packages for machines that never had the toolchain: `tools/release/make_release.py` zips macOS and Windows, Debug and Release, into `build/release/<version>/`, each with a `README.txt` (from the templates next to the script), `LICENSE.txt`, `THIRD_PARTY_NOTICES.txt` (the licenses of everything compiled in or shipped: MIT, zlib and Apache 2.0 want their text next to the binaries) and, when `tools/release/imgui-<config>.ini` exists, the panels' default layout as `imgui.ini`.
+
+- **Windows** needs nothing next to `Game.exe`: mingw's runtime and the vcpkg dependencies are static, the rest is Windows (UCRT included), and `vulkan-1.dll` comes with the GPU driver.
+- **macOS** needs Vulkan shipped: `Game` asks for `@rpath/libvulkan.1.4.363.dylib`, and its only rpath was the build machine's `vcpkg_installed` ("Library not loaded" on another Mac); the loader then needs a driver, MoltenVK, which only the Vulkan SDK installs. Done by hand per configuration in `build/package/gram-engine-macos-<config>/`: the vcpkg loader and `/usr/local/lib/libMoltenVK.dylib` copied next to `Game` (both depend only on system frameworks), a `MoltenVK_icd.json` with `"library_path": "./libMoltenVK.dylib"`, `install_name_tool -delete_rpath <build path> -add_rpath @executable_path Game`, then `codesign -f -s - Game` (changing a binary voids its signature, and Apple Silicon kills an unsigned one), and `run.command` setting `VK_DRIVER_FILES` (the loader only looks in system folders for drivers). Debug also ships the validation layer (`lipo -thin arm64` of the SDK's, its JSON's `library_path` made `./…`, `VK_ADD_LAYER_PATH`). Checked with `vmmap` on the running game: all of them loaded from the folder. Tried on a MacBook without the SDK: Release runs.
+- Not solved: Gatekeeper (a downloaded build isn't notarized: *Privacy & Security → Open Anyway*), SmartScreen and Smart App Control on Windows (unsigned); an `.app` would also need the reload copies (`hot/`) written elsewhere, since a downloaded `.app` runs translocated, read-only. All for the packaging wave (Task P.x).
+
 ### A Windows device (an old laptop, 2026-11-22)
 
 Windows 11 (build 26200), Intel Iris Xe + NVIDIA RTX 3050 Laptop, 1920x1080@144, reached from the Mac by `gram deploy` (README): nothing is built there, mingw builds it here.
