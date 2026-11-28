@@ -12,6 +12,10 @@ Personal game engine project (C++ + Rust), started from rediscovered passion rat
 
 Current task-level progress lives in `.gram.kanban.md`; architecture and design decisions in `CLAUDE.md` and `docs/`. To change Gram Build itself, start with [docs/gram-architecture.md](docs/gram-architecture.md), the developer guide: data model, command flows, backends, how to add a language or a dependency source, tests, and known limits.
 
+## Try it
+
+A preview build is on the Releases page: [v0.1.0](https://github.com/Petrickah/gram-engine/releases/tag/v0.1.0), for macOS (Apple Silicon, macOS 26+) and Windows (x64), each in Release and Debug. Nothing to install; each zip's `README.txt` says how to run it. To build from source, see [Setup](#setup).
+
 ## How this is built
 
 I build Gram Engine with Claude Code as a pair programmer. Most commits carry a `Co-Authored-By: Claude` trailer: it marks commits Claude took part in (code, tests, docs, or just making the commit), not how much of the code is Claude's. I usually asked Claude to commit, for fast and concrete descriptions of what the change does, even when it didn't modify any code.

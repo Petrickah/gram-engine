@@ -39,9 +39,10 @@ This is the editor: Outliner, Inspector, Log, Profiler and the Viewport. The
 scene starts with the sky only: open Game > Debug > Ray Tracer and click
 "Generate Scene", then select a sphere in the Outliner to edit it in the
 Inspector.
-The game starts stopped. Its Play button rebuilds the game's logic with the
-developer's tools, which aren't included: here Play fails and the Rust logic
-doesn't run, so nothing moves. The Release build runs it.
+The game starts stopped: press Play in the toolbar to run the game's logic
+(the small spheres bob up and down), Stop to put the scene back. On the
+developer's machine Play first rebuilds that logic; the tools for it aren't
+included, so here it plays what's loaded, and the Log says so.
 {VALIDATION}
 """,
 }
